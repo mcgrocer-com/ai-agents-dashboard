@@ -1,0 +1,1 @@
+# MCGrocer Dashboard - React + Vite
