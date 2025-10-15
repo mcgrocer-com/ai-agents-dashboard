@@ -54,6 +54,7 @@ export interface ScrapedProduct {
   width: number | null
   length: number | null
   volumetric_weight: number | null
+  pinned: boolean | null
   created_at: string | null
 }
 

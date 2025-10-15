@@ -10,7 +10,6 @@
 
 import { useState } from 'react'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { RetryButton } from '@/components/ui/RetryButton'
 import { Model3DViewer, type MeshData } from '@/components/ui/Model3DViewer'
 import {
   Wrench,
@@ -30,7 +29,6 @@ import { formatDateTime } from '@/lib/utils/format'
 import DimensionDisplay from '@/components/agents/weight-dimension/DimensionDisplay'
 
 interface WeightDimensionTabProps {
-  productId: string
   status: 'pending' | 'processing' | 'complete' | 'failed'
   weightValue?: number | null
   weightUnit?: string | null
@@ -60,11 +58,9 @@ interface WeightDimensionTabProps {
   feedback?: string | null
   glbUrl?: string | null
   updatedAt?: string
-  onRetry?: () => void
 }
 
 export function WeightDimensionTab({
-  productId,
   status,
   weightValue,
   weightUnit,
@@ -93,7 +89,6 @@ export function WeightDimensionTab({
   feedback,
   glbUrl,
   updatedAt,
-  onRetry,
 }: WeightDimensionTabProps) {
   const [show3DViewer, setShow3DViewer] = useState(false)
   const [meshData, setMeshData] = useState<MeshData | null>(null)
@@ -133,15 +128,7 @@ export function WeightDimensionTab({
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <StatusBadge status={status} />
-            <RetryButton
-              productId={productId}
-              agentType="weight_dimension"
-              agentName="Weight & Dimension Agent"
-              onRetry={onRetry}
-            />
-          </div>
+          <StatusBadge status={status} />
           {updatedAt && (
             <p className="text-sm text-gray-500">
               Updated: {formatDateTime(updatedAt)}
@@ -176,17 +163,7 @@ export function WeightDimensionTab({
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <StatusBadge status={status} />
-          {(status === 'complete' || status === 'failed') && (
-            <RetryButton
-              productId={productId}
-              agentType="weight_dimension"
-              agentName="Weight & Dimension Agent"
-              onRetry={onRetry}
-            />
-          )}
-        </div>
+        <StatusBadge status={status} />
         {updatedAt && (
           <p className="text-sm text-gray-500">
             Updated: {formatDateTime(updatedAt)}

@@ -8,10 +8,12 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { Toast } from '@/components/ui/Toast'
+import { useToast } from '@/hooks/useToast'
 import {
   LoginPage,
   DashboardPage,
-  ProductsPage,
+  ScraperAgentPage,
   ProductDetailPage,
   AgentsPage,
   CategoryAgentPage,
@@ -22,8 +24,11 @@ import {
 } from '@/pages'
 
 function App() {
+  const { message, type, hideToast } = useToast()
+
   return (
     <HashRouter>
+      {message && <Toast message={message} type={type} onClose={hideToast} />}
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
@@ -32,8 +37,8 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/products" element={<ProductsPage />} />
-            <Route path="/products/:id" element={<ProductDetailPage />} />
+            <Route path="/scraper-agent" element={<ScraperAgentPage />} />
+            <Route path="/scraper-agent/:id" element={<ProductDetailPage />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/agents/category" element={<CategoryAgentPage />} />
             <Route path="/agents/weight" element={<WeightAgentPage />} />

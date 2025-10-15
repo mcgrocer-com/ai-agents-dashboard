@@ -159,7 +159,7 @@ export default function WeightDimensionTable({ products }: WeightDimensionTableP
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <Link
-                    to={`/products/${product.item_code}`}
+                    to={`/scraper-agent/${product.item_code}`}
                     className="text-indigo-600 hover:text-indigo-900 inline-flex items-center gap-1"
                   >
                     <Eye className="h-4 w-4" />

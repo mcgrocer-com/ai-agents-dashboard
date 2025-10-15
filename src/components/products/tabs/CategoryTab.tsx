@@ -7,12 +7,10 @@
 
 import React from 'react'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { RetryButton } from '@/components/ui/RetryButton'
 import { Layers, Wrench, AlertCircle, ChevronRight, MessageSquare } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils/format'
 
 interface CategoryTabProps {
-  productId: string
   status: 'pending' | 'processing' | 'complete' | 'failed'
   categoryMapped?: string | null
   breadcrumbs?: any
@@ -23,11 +21,9 @@ interface CategoryTabProps {
   errorMessage?: string | null
   feedback?: string | null
   updatedAt?: string
-  onRetry?: () => void
 }
 
 export function CategoryTab({
-  productId,
   status,
   categoryMapped,
   breadcrumbs,
@@ -37,7 +33,6 @@ export function CategoryTab({
   errorMessage,
   feedback,
   updatedAt,
-  onRetry,
 }: CategoryTabProps) {
   if (status === 'pending') {
     return (
@@ -54,15 +49,7 @@ export function CategoryTab({
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <StatusBadge status={status} />
-            <RetryButton
-              productId={productId}
-              agentType="category"
-              agentName="Category Agent"
-              onRetry={onRetry}
-            />
-          </div>
+          <StatusBadge status={status} />
           {updatedAt && (
             <p className="text-sm text-gray-500">
               Updated: {formatDateTime(updatedAt)}
@@ -96,17 +83,7 @@ export function CategoryTab({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <StatusBadge status={status} />
-          {(status === 'complete' || status === 'failed') && (
-            <RetryButton
-              productId={productId}
-              agentType="category"
-              agentName="Category Agent"
-              onRetry={onRetry}
-            />
-          )}
-        </div>
+        <StatusBadge status={status} />
         {updatedAt && (
           <p className="text-sm text-gray-500">
             Updated: {formatDateTime(updatedAt)}

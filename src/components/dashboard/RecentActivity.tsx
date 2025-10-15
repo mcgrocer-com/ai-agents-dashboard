@@ -39,7 +39,7 @@ export function RecentActivity() {
 
   const handleProductClick = useCallback(
     (productId: string) => {
-      navigate(`/products/${productId}`)
+      navigate(`/scraper-agent/${productId}`)
     },
     [navigate]
   )
@@ -583,6 +583,3 @@ export function RecentActivity() {
     </div>
   )
 }
-
-
-

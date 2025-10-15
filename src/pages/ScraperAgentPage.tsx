@@ -1,106 +1,113 @@
 /**
- * ProductsPage Component
+ * ScraperAgentPage Component
  *
- * Displays Scraper Products from Supabase with search, filtering, sorting, and pagination.
+ * Displays Scraper Products with tabs for All Products and Pinned Products.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, Search, SlidersHorizontal } from 'lucide-react'
-import { useScraperProducts } from '@/hooks'
-import { scraperProductsService, type ScraperProduct } from '@/services/scraperProducts.service'
-import { AdvancedFilterBuilder, type FilterRule } from '@/components/filters/AdvancedFilterBuilder'
+import { Package, Search, SlidersHorizontal, Pin } from 'lucide-react'
+import { productsService } from '@/services'
 import { Pagination } from '@/components/ui/Pagination'
-import { Dialog } from '@/components/ui/Dialog'
+import type { ScrapedProduct, ProductFilters } from '@/types'
 
-type SortField = 'name' | 'price' | 'vendor' | 'created_at'
+type SortField = 'name' | 'price' | 'updated_at' | 'created_at'
 type SortDirection = 'asc' | 'desc'
+type TabType = 'all' | 'pinned'
 
-export function ProductsPage() {
+export function ScraperAgentPage() {
+  const [activeTab, setActiveTab] = useState<TabType>('all')
+  const [products, setProducts] = useState<ScrapedProduct[]>([])
+  const [count, setCount] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [appliedFilters, setAppliedFilters] = useState<FilterRule[]>([])
-  const [tempFilters, setTempFilters] = useState<FilterRule[]>([])
-  const [showFilterDialog, setShowFilterDialog] = useState(false)
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
 
-  const columns = scraperProductsService.getAvailableColumns()
+  useEffect(() => {
+    fetchProducts()
+  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection])
 
-  const { products, count, isLoading, error } = useScraperProducts({
-    filters: appliedFilters,
-    page,
-    pageSize,
-  })
+  const fetchProducts = async () => {
+    setIsLoading(true)
+    setError(null)
+
+    const filters: ProductFilters = {
+      search: searchTerm || undefined,
+      sortBy: sortField,
+      sortOrder: sortDirection,
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    }
+
+    const result = activeTab === 'pinned'
+      ? await productsService.getPinnedProducts(filters)
+      : await productsService.getProducts(filters)
+
+    if (result.error) {
+      setError(result.error)
+    } else {
+      setProducts(result.products)
+      setCount(result.count)
+    }
+
+    setIsLoading(false)
+  }
 
   const handleSearch = (value: string) => {
     setSearchTerm(value)
     setPage(1)
-
-    // Add search filter to applied filters
-    if (value.trim()) {
-      const searchFilter: FilterRule = {
-        id: 'search',
-        column: 'name',
-        operator: 'contains',
-        value: value.trim(),
-      }
-
-      // Remove existing search filter and add new one
-      setAppliedFilters((prev) => [...prev.filter((f) => f.id !== 'search'), searchFilter])
-    } else {
-      // Remove search filter if empty
-      setAppliedFilters((prev) => prev.filter((f) => f.id !== 'search'))
-    }
   }
 
-  const handleOpenFilterDialog = () => {
-    // Copy applied filters (excluding search) to temp filters
-    setTempFilters(appliedFilters.filter((f) => f.id !== 'search'))
-    setShowFilterDialog(true)
-  }
-
-  const handleApplyFilters = () => {
-    // Apply temp filters to applied filters, preserving search filter
-    const searchFilter = appliedFilters.find((f) => f.id === 'search')
-    setAppliedFilters(searchFilter ? [...tempFilters, searchFilter] : tempFilters)
-    setShowFilterDialog(false)
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab)
     setPage(1)
+    setSearchTerm('')
   }
-
-  const handleCancelFilters = () => {
-    setShowFilterDialog(false)
-    // Reset temp filters
-    setTempFilters(appliedFilters.filter((f) => f.id !== 'search'))
-  }
-
-  // Apply sorting to products
-  const sortedProducts = [...products].sort((a, b) => {
-    let aVal: any = a[sortField]
-    let bVal: any = b[sortField]
-
-    if (sortField === 'price') {
-      aVal = Number(aVal) || 0
-      bVal = Number(bVal) || 0
-    }
-
-    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
-    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
-    return 0
-  })
-
-  // Count filters excluding search
-  const filterCount = appliedFilters.filter((f) => f.id !== 'search').length
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-secondary-900">Products</h1>
+        <h1 className="text-3xl font-bold text-secondary-900">Scraper Agent</h1>
         <p className="text-secondary-600 mt-1">
-          Browse and filter products scraped from various sources
+          Browse and manage products scraped from various sources
         </p>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex gap-6">
+          <button
+            onClick={() => handleTabChange('all')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'all'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              All Products
+            </div>
+          </button>
+          <button
+            onClick={() => handleTabChange('pinned')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'pinned'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Pin className="w-4 h-4" />
+              Pinned Products
+            </div>
+          </button>
+        </nav>
       </div>
 
       {/* Search and Controls Bar */}
@@ -110,26 +117,12 @@ export function ProductsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary-400" />
           <input
             type="text"
-            placeholder="Search products..."
+            placeholder={`Search ${activeTab === 'pinned' ? 'pinned ' : ''}products...`}
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
-
-        {/* Filter Toggle */}
-        <button
-          onClick={handleOpenFilterDialog}
-          className="flex items-center gap-2 px-4 py-2 border border-secondary-300 rounded-lg transition-colors text-secondary-700 hover:bg-secondary-50"
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-          <span className="text-sm font-medium">Filters</span>
-          {filterCount > 0 && (
-            <span className="bg-primary-500 text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] text-center">
-              {filterCount}
-            </span>
-          )}
-        </button>
 
         {/* Sort Dropdown */}
         <select
@@ -144,57 +137,29 @@ export function ProductsPage() {
         >
           <option value="created_at-desc">Newest First</option>
           <option value="created_at-asc">Oldest First</option>
+          <option value="updated_at-desc">Recently Updated</option>
+          <option value="updated_at-asc">Least Recently Updated</option>
           <option value="name-asc">Name A-Z</option>
           <option value="name-desc">Name Z-A</option>
           <option value="price-asc">Price Low-High</option>
           <option value="price-desc">Price High-Low</option>
-          <option value="vendor-asc">Vendor A-Z</option>
-          <option value="vendor-desc">Vendor Z-A</option>
         </select>
       </div>
-
-      {/* Filter Dialog */}
-      <Dialog open={showFilterDialog} onClose={handleCancelFilters} title="Filter Products">
-        <div className="space-y-6">
-          <AdvancedFilterBuilder
-            columns={columns}
-            filters={tempFilters}
-            onFiltersChange={setTempFilters}
-            onApply={handleApplyFilters}
-          />
-          <div className="flex justify-end gap-3 pt-4 border-t border-secondary-200">
-            <button
-              onClick={handleCancelFilters}
-              className="px-4 py-2 border border-secondary-300 rounded-lg text-secondary-700 hover:bg-secondary-50 transition-colors font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleApplyFilters}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
-            >
-              Apply Filters
-            </button>
-          </div>
-        </div>
-      </Dialog>
 
       {/* Results Summary */}
       <div className="flex items-center justify-between text-sm">
         <p className="text-secondary-600">
-          Showing {sortedProducts.length} of {count?.toLocaleString()} products
+          Showing {products.length} of {count.toLocaleString()} {activeTab === 'pinned' ? 'pinned ' : ''}products
         </p>
-        {appliedFilters.length > 0 && (
+        {searchTerm && (
           <button
             onClick={() => {
-              setAppliedFilters([])
-              setTempFilters([])
               setSearchTerm('')
               setPage(1)
             }}
             className="text-primary-600 hover:text-primary-700 font-medium"
           >
-            Clear all filters
+            Clear search
           </button>
         )}
       </div>
@@ -205,7 +170,7 @@ export function ProductsPage() {
           <p className="text-red-800">Error loading products: {error.message}</p>
         </div>
       ) : (
-        <ScraperProductsList products={sortedProducts} isLoading={isLoading} />
+        <ProductsList products={products} isLoading={isLoading} showPinned={activeTab === 'pinned'} />
       )}
 
       {/* Pagination */}
@@ -223,15 +188,17 @@ export function ProductsPage() {
 }
 
 /**
- * Scraper Products List Component
+ * Products List Component
  */
-interface ScraperProductsListProps {
-  products: ScraperProduct[]
+interface ProductsListProps {
+  products: ScrapedProduct[]
   isLoading: boolean
+  showPinned?: boolean
 }
 
-function ScraperProductsList({ products, isLoading }: ScraperProductsListProps) {
+function ProductsList({ products, isLoading, showPinned = false }: ProductsListProps) {
   const navigate = useNavigate()
+
   if (isLoading) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-secondary-200">
@@ -269,12 +236,24 @@ function ScraperProductsList({ products, isLoading }: ScraperProductsListProps) 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-secondary-200">
         <div className="flex flex-col items-center justify-center py-12">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 via-primary-50 to-purple-100 flex items-center justify-center mb-4 border border-primary-200">
-            <Package className="w-10 h-10 text-primary-400" />
+          <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${
+            showPinned
+              ? 'from-yellow-100 via-yellow-50 to-amber-100 border-yellow-200'
+              : 'from-primary-100 via-primary-50 to-purple-100 border-primary-200'
+          } flex items-center justify-center mb-4 border`}>
+            {showPinned ? (
+              <Pin className="w-10 h-10 text-yellow-500" />
+            ) : (
+              <Package className="w-10 h-10 text-primary-400" />
+            )}
           </div>
-          <p className="text-secondary-600 text-center font-medium">No products found</p>
+          <p className="text-secondary-600 text-center font-medium">
+            {showPinned ? 'No pinned products found' : 'No products found'}
+          </p>
           <p className="text-sm text-secondary-500 text-center mt-2">
-            Try adjusting your filters or search term
+            {showPinned
+              ? 'Pin products from the product detail page to see them here'
+              : 'Try adjusting your search term'}
           </p>
         </div>
       </div>
@@ -312,10 +291,17 @@ function ScraperProductsList({ products, isLoading }: ScraperProductsListProps) 
         {products.map((product) => (
           <div
             key={product.id}
-            onClick={() => navigate(`/products/${product.id}`)}
-            className="block p-4 hover:bg-secondary-50 transition-colors cursor-pointer"
+            onClick={() => navigate(`/scraper-agent/${product.id}`)}
+            className="block p-4 hover:bg-secondary-50 transition-colors cursor-pointer relative"
           >
-            <div className="flex items-start gap-4">
+            {/* Pin indicator for pinned products */}
+            {showPinned && (
+              <div className="absolute top-4 right-4">
+                <Pin className="w-5 h-5 text-yellow-500 fill-current" />
+              </div>
+            )}
+
+            <div className={`flex items-start gap-4 ${showPinned ? 'pr-8' : ''}`}>
               {/* Product Image */}
               {product.main_image ? (
                 <img

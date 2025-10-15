@@ -5,12 +5,10 @@
  */
 
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { RetryButton } from '@/components/ui/RetryButton'
 import { Tag, FileText, Link, Wrench, AlertCircle, MessageSquare } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils/format'
 
 interface SeoTabProps {
-  productId: string
   status: 'pending' | 'processing' | 'complete' | 'failed'
   seoResult?: any
   optimizedTitle?: string | null
@@ -23,11 +21,9 @@ interface SeoTabProps {
   errorMessage?: string | null
   feedback?: string | null
   updatedAt?: string
-  onRetry?: () => void
 }
 
 export function SeoTab({
-  productId,
   status,
   seoResult,
   optimizedTitle,
@@ -39,7 +35,6 @@ export function SeoTab({
   errorMessage,
   feedback,
   updatedAt,
-  onRetry,
 }: SeoTabProps) {
   // Extract data from seoResult if it exists (backward compatibility)
   const title = optimizedTitle || seoResult?.title || seoResult?.optimized_title
@@ -75,15 +70,7 @@ export function SeoTab({
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <StatusBadge status={status} />
-            <RetryButton
-              productId={productId}
-              agentType="seo"
-              agentName="SEO Agent"
-              onRetry={onRetry}
-            />
-          </div>
+          <StatusBadge status={status} />
           {updatedAt && (
             <p className="text-sm text-gray-500">
               Updated: {formatDateTime(updatedAt)}
@@ -117,17 +104,7 @@ export function SeoTab({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <StatusBadge status={status} />
-          {(status === 'complete' || status === 'failed') && (
-            <RetryButton
-              productId={productId}
-              agentType="seo"
-              agentName="SEO Agent"
-              onRetry={onRetry}
-            />
-          )}
-        </div>
+        <StatusBadge status={status} />
         {updatedAt && (
           <p className="text-sm text-gray-500">
             Updated: {formatDateTime(updatedAt)}

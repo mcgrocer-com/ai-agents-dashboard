@@ -26,21 +26,21 @@ export function ProcessingQueue({
       pending: categoryAgent.pending,
       complete: categoryAgent.complete,
       color: 'blue',
-      href: '/agents',
+      href: '/agents/category',
     },
     {
       name: 'Weight & Dimension',
       pending: weightAgent.pending,
       complete: weightAgent.complete,
       color: 'green',
-      href: '/agents',
+      href: '/agents/weight',
     },
     {
       name: 'SEO Optimizer',
       pending: seoAgent.pending,
       complete: seoAgent.complete,
       color: 'purple',
-      href: '/agents',
+      href: '/agents/seo',
     },
   ]
 

@@ -197,11 +197,15 @@ class ProductsService {
         category_mapped: pendingProduct.category,
       } : null
 
-      // Combine data
-      const combinedProduct: ProductWithAgentData = {
-        ...product,
-        ...parsedPendingProduct,
-      }
+      // Combine data - exclude 'id' from pending product to avoid overwriting scraped_products.id
+      const combinedProduct: ProductWithAgentData = parsedPendingProduct
+        ? {
+            ...product,
+            ...Object.fromEntries(
+              Object.entries(parsedPendingProduct).filter(([key]) => key !== 'id')
+            ),
+          }
+        : product
 
       return {
         product: combinedProduct,
@@ -329,6 +333,83 @@ class ProductsService {
     } catch (error) {
       return {
         products: [],
+        error: error as Error,
+      }
+    }
+  }
+
+  /**
+   * Toggle pin status of a product
+   */
+  async togglePinProduct(id: string, pinned: boolean) {
+    try {
+      // Perform the update without requesting the response data
+      const { error: updateError } = await supabase
+        .from('scraped_products')
+        .update({ pinned })
+        .eq('id', id)
+
+      if (updateError) throw updateError
+
+      // Return success without fetching the updated product
+      // The caller will update the local state
+      return {
+        success: true,
+        error: null,
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error as Error,
+      }
+    }
+  }
+
+  /**
+   * Get all pinned products
+   */
+  async getPinnedProducts(filters: ProductFilters = {}) {
+    try {
+      let query = supabase
+        .from('scraped_products')
+        .select('*', { count: 'exact' })
+        .eq('pinned', true)
+
+      // Apply search filter
+      if (filters.search) {
+        query = query.or(
+          `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`
+        )
+      }
+
+      // Apply vendor filter
+      if (filters.vendor) {
+        query = query.eq('vendor', filters.vendor)
+      }
+
+      // Apply sorting
+      const sortBy = filters.sortBy || 'updated_at'
+      const sortOrder = filters.sortOrder || 'desc'
+      query = query.order(sortBy, { ascending: sortOrder === 'asc' })
+
+      // Apply pagination
+      const limit = filters.limit || 20
+      const offset = filters.offset || 0
+      query = query.range(offset, offset + limit - 1)
+
+      const { data, error, count } = await query
+
+      if (error) throw error
+
+      return {
+        products: data as ScrapedProduct[],
+        count: count || 0,
+        error: null,
+      }
+    } catch (error) {
+      return {
+        products: [],
+        count: 0,
         error: error as Error,
       }
     }

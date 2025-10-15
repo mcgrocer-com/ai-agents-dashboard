@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { FileText, Tags, Package, Search, Code } from 'lucide-react'
-import { productsService } from '@/services'
+import { productsService, erpnextService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
 import { ProductTabs, type Tab } from '@/components/products/ProductTabs'
@@ -16,13 +16,18 @@ import { CategoryTab } from '@/components/products/tabs/CategoryTab'
 import { WeightDimensionTab } from '@/components/products/tabs/WeightDimensionTab'
 import { SeoTab } from '@/components/products/tabs/SeoTab'
 import { RawDataTab } from '@/components/products/tabs/RawDataTab'
+import { RetryButton } from '@/components/ui/RetryButton'
+import { useToast } from '@/hooks/useToast'
 
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [sendingToErpnext, setSendingToErpnext] = useState(false)
+  const [togglingPin, setTogglingPin] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -49,6 +54,70 @@ export function ProductDetailPage() {
     window.location.reload()
   }
 
+  const handleSendToErpnext = async () => {
+    if (!product?.url) {
+      showToast('Product URL is required to send to ERPNext', 'error')
+      return
+    }
+
+    setSendingToErpnext(true)
+
+    try {
+      const { data, error: erpnextError } = await erpnextService.pushToErpnext(product.url)
+
+      if (erpnextError || !data) {
+        throw erpnextError || new Error('Failed to send to ERPNext')
+      }
+
+      if (data.success && data.summary.successful > 0) {
+        const result = data.results[0]
+        const itemCode = result.production?.item_code || result.staging?.item_code
+        showToast(`Successfully sent to ERPNext! Item Code: ${itemCode}`, 'success')
+
+        // Refresh product data to get updated erpnext_updated_at
+        setTimeout(() => window.location.reload(), 2000)
+      } else {
+        const result = data.results[0]
+        throw new Error(result.error || 'Failed to send to ERPNext')
+      }
+    } catch (err: any) {
+      console.error('Error sending to ERPNext:', err)
+      showToast(`Failed to send to ERPNext: ${err.message}`, 'error')
+    } finally {
+      setSendingToErpnext(false)
+    }
+  }
+
+  const handleTogglePin = async () => {
+    if (!product?.id) return
+
+    setTogglingPin(true)
+
+    try {
+      const newPinnedState = !product.pinned
+      const { success, error } = await productsService.togglePinProduct(
+        product.id,
+        newPinnedState
+      )
+
+      if (error || !success) {
+        throw error || new Error('Failed to update pin status')
+      }
+
+      // Update local state
+      setProduct({ ...product, pinned: newPinnedState })
+      showToast(
+        newPinnedState ? 'Product pinned successfully' : 'Product unpinned successfully',
+        'success'
+      )
+    } catch (err: any) {
+      console.error('Error toggling pin:', err)
+      showToast(`Failed to toggle pin: ${err.message}`, 'error')
+    } finally {
+      setTogglingPin(false)
+    }
+  }
+
   if (loading) {
     return <ShimmerLoader type="product-detail" />
   }
@@ -58,7 +127,7 @@ export function ProductDetailPage() {
       <div className="text-center py-12">
         <p className="text-lg text-gray-600 mb-4">{error || 'Product not found'}</p>
         <button
-          onClick={() => navigate('/products')}
+          onClick={() => navigate('/scraper-agent')}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           Back to Products
@@ -87,7 +156,6 @@ export function ProductDetailPage() {
       icon: <Tags className="h-4 w-4" />,
       content: (
         <CategoryTab
-          productId={product.id}
           status={product.category_status || 'pending'}
           categoryMapped={product.category_mapped}
           breadcrumbs={product.breadcrumbs}
@@ -96,7 +164,6 @@ export function ProductDetailPage() {
           toolsUsed={product.category_tools_used}
           feedback={product.category_feedback}
           updatedAt={product.updated_at}
-          onRetry={handleRetry}
         />
       ),
     },
@@ -106,7 +173,6 @@ export function ProductDetailPage() {
       icon: <Package className="h-4 w-4" />,
       content: (
         <WeightDimensionTab
-          productId={product.id}
           status={product.weight_and_dimension_status || 'pending'}
           weightValue={product.weight_value}
           weightUnit={product.weight_unit}
@@ -135,7 +201,6 @@ export function ProductDetailPage() {
           feedback={product.weight_dimension_feedback}
           glbUrl={product.glb_url}
           updatedAt={product.updated_at}
-          onRetry={handleRetry}
         />
       ),
     },
@@ -145,7 +210,6 @@ export function ProductDetailPage() {
       icon: <Search className="h-4 w-4" />,
       content: (
         <SeoTab
-          productId={product.id}
           status={product.seo_status || 'pending'}
           optimizedTitle={product.optimized_title}
           optimizedDescription={product.optimized_description}
@@ -155,7 +219,6 @@ export function ProductDetailPage() {
           toolsUsed={product.seo_tools_used}
           feedback={product.seo_feedback}
           updatedAt={product.updated_at}
-          onRetry={handleRetry}
         />
       ),
     },
@@ -190,6 +253,43 @@ export function ProductDetailPage() {
     }
   }
 
+  // Extract alternative images from the images field
+  const extractAlternativeImages = (imagesData: any): string[] => {
+    if (!imagesData) return []
+
+    try {
+      let images: string[] = []
+
+      // Handle different possible structures
+      if (typeof imagesData === 'string') {
+        // If it's a JSON string, parse it
+        const parsed = JSON.parse(imagesData)
+        if (Array.isArray(parsed)) {
+          images = parsed.filter((img: any) => typeof img === 'string')
+        }
+      } else if (Array.isArray(imagesData)) {
+        // If it's already an array
+        images = imagesData.filter((img: any) => typeof img === 'string')
+      } else if (typeof imagesData === 'object') {
+        // If it's an object, extract values
+        Object.values(imagesData).forEach((value: any) => {
+          if (typeof value === 'string') {
+            images.push(value)
+          } else if (Array.isArray(value)) {
+            images.push(...value.filter((img: any) => typeof img === 'string'))
+          }
+        })
+      }
+
+      return images.filter((img) => img && img.trim() !== '')
+    } catch (error) {
+      console.error('Error parsing images data:', error)
+      return []
+    }
+  }
+
+  const alternativeImages = extractAlternativeImages(product.images)
+
   return (
     <div className="space-y-6">
       {/* Product Header */}
@@ -198,59 +298,100 @@ export function ProductDetailPage() {
         code={product.product_id || undefined}
         vendor={product.vendor || undefined}
         price={product.price || undefined}
+        originalPrice={product.original_price || undefined}
         imageUrl={product.main_image || undefined}
+        alternativeImages={alternativeImages}
         productUrl={product.url || undefined}
+        erpnextUpdatedAt={product.erpnext_updated_at || undefined}
+        pinned={product.pinned || false}
+        onSendToErpnext={handleSendToErpnext}
+        sendingToErpnext={sendingToErpnext}
+        onTogglePin={handleTogglePin}
+        togglingPin={togglingPin}
       />
 
       {/* Agent Status Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Category Agent */}
         <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between mb-3 min-h-[60px]">
             <div className="flex-1">
               <p className="text-xs text-gray-500 uppercase mb-2">Category Mapping</p>
               <p className={`text-sm font-semibold ${getStatusColor(categoryStatus)}`}>
                 {getStatusText(categoryStatus)}
               </p>
-              {product.category_mapped && (
+              {product.category_mapped ? (
                 <p className="text-xs text-gray-600 mt-1 truncate">{product.category_mapped}</p>
+              ) : (
+                <p className="text-xs text-gray-600 mt-1 invisible">placeholder</p>
               )}
             </div>
             <Tags className={`h-6 w-6 ${getStatusColor(categoryStatus)}`} />
+          </div>
+          <div className={categoryStatus === 'pending' || categoryStatus === 'processing' ? 'opacity-50 pointer-events-none' : ''}>
+            <RetryButton
+              productId={product.id}
+              agentType="category"
+              agentName="Category Agent"
+              onRetry={handleRetry}
+              className="w-full justify-center"
+            />
           </div>
         </div>
 
         {/* Weight & Dimension Agent */}
         <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between mb-3 min-h-[60px]">
             <div className="flex-1">
               <p className="text-xs text-gray-500 uppercase mb-2">Weight & Dimensions</p>
               <p className={`text-sm font-semibold ${getStatusColor(weightStatus)}`}>
                 {getStatusText(weightStatus)}
               </p>
-              {product.weight_value && (
+              {product.weight_value ? (
                 <p className="text-xs text-gray-600 mt-1">
                   {product.weight_value} {product.weight_unit || 'kg'}
                 </p>
+              ) : (
+                <p className="text-xs text-gray-600 mt-1 invisible">placeholder</p>
               )}
             </div>
             <Package className={`h-6 w-6 ${getStatusColor(weightStatus)}`} />
+          </div>
+          <div className={weightStatus === 'pending' || weightStatus === 'processing' ? 'opacity-50 pointer-events-none' : ''}>
+            <RetryButton
+              productId={product.id}
+              agentType="weight_dimension"
+              agentName="Weight & Dimension Agent"
+              onRetry={handleRetry}
+              className="w-full justify-center"
+            />
           </div>
         </div>
 
         {/* SEO Agent */}
         <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between mb-3 min-h-[60px]">
             <div className="flex-1">
               <p className="text-xs text-gray-500 uppercase mb-2">SEO Optimization</p>
               <p className={`text-sm font-semibold ${getStatusColor(seoStatus)}`}>
                 {getStatusText(seoStatus)}
               </p>
-              {product.optimized_title && (
+              {product.optimized_title ? (
                 <p className="text-xs text-gray-600 mt-1 truncate">{product.optimized_title}</p>
+              ) : (
+                <p className="text-xs text-gray-600 mt-1 invisible">placeholder</p>
               )}
             </div>
             <Search className={`h-6 w-6 ${getStatusColor(seoStatus)}`} />
+          </div>
+          <div className={seoStatus === 'pending' || seoStatus === 'processing' ? 'opacity-50 pointer-events-none' : ''}>
+            <RetryButton
+              productId={product.id}
+              agentType="seo"
+              agentName="SEO Agent"
+              onRetry={handleRetry}
+              className="w-full justify-center"
+            />
           </div>
         </div>
       </div>

@@ -13,6 +13,7 @@ import { Package, type LucideIcon } from 'lucide-react'
 import type { AgentProduct, AgentStatus } from '@/types'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import type { AgentType } from '@/services/agents.service'
+import { formatCurrency } from '@/lib/utils/format'
 
 interface AgentProductCardProps {
   agentProduct: AgentProduct
@@ -75,10 +76,10 @@ export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick
   const agentStatus = getAgentStatus()
   const agentConfidence = getAgentConfidence()
 
-  // Format price
+  // Format price - use the utility function
   const formatPrice = (price: number | null) => {
     if (!price) return 'N/A'
-    return `£${price.toFixed(2)}`
+    return formatCurrency(price)
   }
 
   // Format stock status

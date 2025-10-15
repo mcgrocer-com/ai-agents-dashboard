@@ -619,7 +619,7 @@ function ProductsList({ products, isLoading, agentType, agentConfig, navigate }:
             iconColor: agentConfig.iconColor,
             primaryColor: agentConfig.primaryColor,
           }}
-          onClick={() => agentProduct.productData?.id && navigate(`/products/${agentProduct.productData.id}`)}
+          onClick={() => agentProduct.productData?.id && navigate(`/scraper-agent/${agentProduct.productData.id}`)}
         />
       ))}
     </div>

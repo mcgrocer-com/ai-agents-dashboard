@@ -29,7 +29,7 @@ export function DashboardLayout() {
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Products', path: '/products', icon: Package },
+    { name: 'Scraper Agent', path: '/scraper-agent', icon: Package },
     { name: 'Category Agent', path: '/agents/category', icon: Tag },
     { name: 'Weight Agent', path: '/agents/weight', icon: Scale },
     { name: 'SEO Agent', path: '/agents/seo', icon: Search },
