@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "homepage": "https://mcgrocer-com.github.io/linode-server-agents",
+  "homepage": "https://mcgrocer-com.github.io/ai-agents-dashboard",
   "scripts": {
     "dev": "vite",
     "predeploy": "npm run build",
