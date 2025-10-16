@@ -6,8 +6,9 @@
  */
 
 import { useEffect, useState } from 'react'
-import { CheckCircle, Database, CloudUpload, AlertCircle } from 'lucide-react'
+import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info } from 'lucide-react'
 import { scraperProductsService } from '@/services/scraperProducts.service'
+import { supabase } from '@/lib/supabase/client'
 import type { VendorStatistics as VendorStats } from '@/types/statistics'
 
 interface VendorStatisticsProps {
@@ -18,6 +19,8 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
   const [stats, setStats] = useState<VendorStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isPushing, setIsPushing] = useState(false)
+  const [pushSuccess, setPushSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     if (!vendor || vendor === 'all') {
@@ -45,6 +48,41 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
       setError('An error occurred while loading statistics')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handlePushToPending = async () => {
+    if (!vendor || vendor === 'all') return
+
+    setIsPushing(true)
+    setPushSuccess(null)
+    setError(null)
+
+    try {
+      const { data, error: funcError } = await supabase.functions.invoke('manual-push-to-pending', {
+        body: { vendor, limit: 1000 }
+      })
+
+      if (funcError) throw funcError
+
+      if (data.success) {
+        setPushSuccess(`Successfully queued ${data.stats?.successfully_inserted || 0} products for processing`)
+        // Refresh statistics after successful push
+        setTimeout(() => {
+          fetchStatistics()
+        }, 1000)
+      } else {
+        setError(data.error || 'Failed to push products to queue')
+      }
+    } catch (err) {
+      console.error('Error pushing to pending:', err)
+      setError('An error occurred while pushing products to queue')
+    } finally {
+      setIsPushing(false)
+      // Clear success message after 5 seconds
+      setTimeout(() => {
+        setPushSuccess(null)
+      }, 5000)
     }
   }
 
@@ -145,14 +183,62 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
   return (
     <div className="mb-4">
       {/* Vendor Header */}
-      <div className="mb-3">
-        <h2 className="text-lg font-semibold text-secondary-900 capitalize">
-          {vendor} Statistics
-        </h2>
-        <p className="text-sm text-secondary-600">
-          Total Products: {stats.totalProducts.toLocaleString()}
-        </p>
+      <div className="mb-3 flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-secondary-900 capitalize">
+            {vendor} Statistics
+          </h2>
+          <p className="text-sm text-secondary-600">
+            Total Products: {stats.totalProducts.toLocaleString()}
+          </p>
+        </div>
+
+        {/* Send to Queue Button with Tooltip */}
+        <div className="flex items-center gap-2">
+          <div className="relative group">
+            <button
+              type="button"
+              className="text-xs text-gray-600 hover:text-gray-800"
+              aria-label="Information about Send to Queue"
+            >
+              <Info className="w-4 h-4" />
+            </button>
+            {/* Tooltip */}
+            <div className="absolute right-0 top-full mt-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 shadow-lg">
+              <div className="absolute -top-1 right-4 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+              <p className="font-medium mb-1">Send to Queue</p>
+              <p className="text-gray-300">
+                Push products from this vendor to the pending queue for AI agent processing (category, weight/dimension, and SEO optimization).
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handlePushToPending}
+            disabled={isPushing}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isPushing ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Sending...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                <span>Send to Queue</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Success Message */}
+      {pushSuccess && (
+        <div className="mb-3 bg-green-50 border border-green-200 rounded-lg p-3">
+          <p className="text-sm text-green-800">{pushSuccess}</p>
+        </div>
+      )}
 
       {/* Statistics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
