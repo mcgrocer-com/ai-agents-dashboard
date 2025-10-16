@@ -82,12 +82,9 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
     }
   }
 
-  const handleDeleteExistingKeyword = async (id: string, keyword: string) => {
-    if (!confirm(`Are you sure you want to delete the keyword "${keyword}"?`)) {
-      return
-    }
-
+  const handleDeleteKeyword = async (id: string) => {
     setDeleting(id)
+
     try {
       const { error } = await supabase
         .from('seo_keywords')
@@ -386,7 +383,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleDeleteExistingKeyword(kw.id, kw.keyword)}
+                        onClick={() => handleDeleteKeyword(kw.id)}
                         disabled={deleting === kw.id}
                         className="ml-3 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                         title="Delete keyword"
