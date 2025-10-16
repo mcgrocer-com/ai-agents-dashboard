@@ -60,7 +60,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
 
     try {
       const { data, error: funcError } = await supabase.functions.invoke('manual-push-to-pending', {
-        body: { vendor, limit: 1000 }
+        body: { vendor }
       })
 
       if (funcError) throw funcError
@@ -189,7 +189,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
             {vendor} Statistics
           </h2>
           <p className="text-sm text-secondary-600">
-            Total Products: {stats.totalProducts.toLocaleString()}
+            Total Products in queue: {stats.totalProducts.toLocaleString()}
           </p>
         </div>
 
@@ -226,7 +226,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
             ) : (
               <>
                 <Send className="w-4 h-4" />
-                <span>Send to Queue</span>
+                <span>Send all to Queue</span>
               </>
             )}
           </button>

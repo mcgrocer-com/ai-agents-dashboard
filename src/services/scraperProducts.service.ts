@@ -199,11 +199,14 @@ class ScraperProductsService {
       const { data, error } = await supabase.rpc('get_vendor_statistics', {
         vendor_name: vendor,
       })
-
       if (error) {
-        // If RPC doesn't exist, fall back to client-side aggregation
-        console.warn('RPC function not found, using client-side aggregation:', error)
-        return await this.getVendorStatisticsClientSide(vendor)
+        return {
+          totalProducts: 0,
+          withCategoryAndWeight: 0,
+          withAllData: 0,
+          syncedToErpNext: 0,
+          failedToSync: 0,
+        }
       }
 
       // The RPC function returns a JSON object with our statistics
@@ -224,59 +227,7 @@ class ScraperProductsService {
     }
   }
 
-  /**
-   * Client-side fallback for vendor statistics
-   * Fetches all pending_products for vendor and calculates stats
-   */
-  private async getVendorStatisticsClientSide(vendor: string): Promise<VendorStatistics | null> {
-    try {
-      const { data, error } = await supabase
-        .from('pending_products')
-        .select('category_status, weight_and_dimension_status, seo_status, erpnext_updated_at, failed_sync_at')
-        .eq('vendor', vendor)
 
-      if (error) throw error
-
-      if (!data) {
-        return {
-          totalProducts: 0,
-          withCategoryAndWeight: 0,
-          withAllData: 0,
-          syncedToErpNext: 0,
-          failedToSync: 0,
-        }
-      }
-
-      // Calculate statistics
-      const stats: VendorStatistics = {
-        totalProducts: data.length,
-        withCategoryAndWeight: data.filter(
-          (p) => p.category_status === 'complete' && p.weight_and_dimension_status === 'complete'
-        ).length,
-        withAllData: data.filter(
-          (p) =>
-            p.category_status === 'complete' &&
-            p.weight_and_dimension_status === 'complete' &&
-            p.seo_status === 'complete'
-        ).length,
-        syncedToErpNext: data.filter(
-          (p) =>
-            p.erpnext_updated_at !== null &&
-            (p.failed_sync_at === null || (p.failed_sync_at && p.erpnext_updated_at && new Date(p.failed_sync_at) < new Date(p.erpnext_updated_at)))
-        ).length,
-        failedToSync: data.filter(
-          (p) =>
-            p.failed_sync_at !== null &&
-            (p.erpnext_updated_at === null || (p.erpnext_updated_at && p.failed_sync_at && new Date(p.failed_sync_at) > new Date(p.erpnext_updated_at)))
-        ).length,
-      }
-
-      return stats
-    } catch (error) {
-      console.error('Error in client-side vendor statistics:', error)
-      return null
-    }
-  }
 }
 
 export const scraperProductsService = new ScraperProductsService()

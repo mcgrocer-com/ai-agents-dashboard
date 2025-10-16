@@ -115,6 +115,29 @@ class ActivityStatsService {
       return { data: null, error: err as Error }
     }
   }
+
+  /**
+   * Get processing products (products currently being processed by agents)
+   * Uses RPC function that automatically resets stale processing products (>5 min) back to pending
+   * @param limit - Maximum number of products to return (default: 50)
+   */
+  async getProcessingProducts(limit: number = 50) {
+    try {
+      const { data, error } = await supabase.rpc('get_processing_products_with_cleanup', {
+        row_limit: limit,
+      })
+
+      if (error) {
+        console.error('Error fetching processing products:', error)
+        return { data: null, error }
+      }
+
+      return { data, error: null }
+    } catch (err) {
+      console.error('Exception fetching processing products:', err)
+      return { data: null, error: err as Error }
+    }
+  }
 }
 
 export const activityStatsService = new ActivityStatsService()

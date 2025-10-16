@@ -20,7 +20,6 @@ interface WarehouseDataUploadProps {
 
 export function WarehouseDataUpload({ open, onClose, onSuccess }: WarehouseDataUploadProps) {
   const [formData, setFormData] = useState({
-    item_code: '',
     name: '',
     weight: '',
     width: '',
@@ -38,11 +37,6 @@ export function WarehouseDataUpload({ open, onClose, onSuccess }: WarehouseDataU
     e.preventDefault()
 
     // Validation
-    if (!formData.item_code.trim()) {
-      setToast({ message: 'Item code is required', type: 'error' })
-      return
-    }
-
     if (!formData.name.trim()) {
       setToast({ message: 'Product name is required', type: 'error' })
       return
@@ -58,7 +52,6 @@ export function WarehouseDataUpload({ open, onClose, onSuccess }: WarehouseDataU
     try {
       // Insert into warehouse table
       const { error } = await supabase.from('warehouse').insert({
-        item_code: formData.item_code.trim(),
         name: formData.name.trim(),
         weight: parseFloat(formData.weight),
         width: formData.width ? parseFloat(formData.width) : null,
@@ -72,7 +65,6 @@ export function WarehouseDataUpload({ open, onClose, onSuccess }: WarehouseDataU
 
       // Reset form
       setFormData({
-        item_code: '',
         name: '',
         weight: '',
         width: '',
@@ -100,7 +92,6 @@ export function WarehouseDataUpload({ open, onClose, onSuccess }: WarehouseDataU
   const handleClose = () => {
     if (!uploading) {
       setFormData({
-        item_code: '',
         name: '',
         weight: '',
         width: '',
@@ -125,25 +116,6 @@ export function WarehouseDataUpload({ open, onClose, onSuccess }: WarehouseDataU
                 </p>
               </div>
             </div>
-          </div>
-
-          {/* Item Code */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Item Code <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.item_code}
-              onChange={(e) => handleInputChange('item_code', e.target.value)}
-              placeholder="e.g., PROD-12345"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              disabled={uploading}
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Unique identifier for the product
-            </p>
           </div>
 
           {/* Product Name */}

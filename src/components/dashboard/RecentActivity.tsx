@@ -10,7 +10,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { Activity } from 'lucide-react'
 import { formatRelativeTime } from '@/lib/utils/format'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase/client'
 import { activityStatsService } from '@/services'
 import { useRecentActivityRealtime } from '@/hooks'
 import type { RecentActivity as RecentActivityType, AgentStatus } from '@/types'
@@ -157,24 +156,8 @@ export function RecentActivity() {
           setActivities(freshActivities)
         }
       } else {
-        // Processing tab - fetch processing activities
-        const { data, error } = await supabase
-          .from('pending_products')
-          .select(
-            `
-            id,
-            scraped_product_id,
-            category_status,
-            weight_and_dimension_status,
-            seo_status,
-            updated_at,
-            scraped_products!inner(name, vendor, main_image)
-          `
-          )
-          .or(
-            'category_status.eq.processing,weight_and_dimension_status.eq.processing,seo_status.eq.processing'
-          )
-          .order('updated_at', { ascending: false })
+        // Processing tab - fetch processing activities using service
+        const { data, error } = await activityStatsService.getProcessingProducts(30)
 
         if (error) {
           console.error('Error fetching activities:', error)
@@ -185,9 +168,10 @@ export function RecentActivity() {
           const freshActivities: RecentActivityType[] = []
 
           data.forEach((item: any) => {
-            const productName = item.scraped_products?.name || 'Product'
-            const vendor = item.scraped_products?.vendor || ''
-            const imageUrl = item.scraped_products?.main_image || ''
+            // RPC returns flattened data with product_name, vendor, main_image directly
+            const productName = item.product_name || 'Product'
+            const vendor = item.vendor || ''
+            const imageUrl = item.main_image || ''
 
             // Category agent activity
             if (item.category_status && item.category_status !== 'pending') {
