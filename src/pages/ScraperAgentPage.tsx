@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp } from 'lucide-react'
+import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock } from 'lucide-react'
 import { productsService } from '@/services'
 import { Pagination } from '@/components/ui/Pagination'
 import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/components/filters/AdvancedFilterBuilder'
@@ -488,6 +488,37 @@ function ProductsList({ products, isLoading, showPinned = false }: ProductsListP
                         }`}
                       >
                         {product.stock_status}
+                      </span>
+                    </>
+                  )}
+                  {/* ERPNext Sync Status Badge */}
+                  {product.sync_status && (
+                    <>
+                      <span className="text-xs text-secondary-400">•</span>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                          product.sync_status === 'synced'
+                            ? 'bg-blue-100 text-blue-700'
+                            : product.sync_status === 'failed'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                        title={
+                          product.sync_status === 'synced'
+                            ? `Synced to ERPNext${product.item_code ? ` (${product.item_code})` : ''}`
+                            : product.sync_status === 'failed'
+                            ? `Sync failed${product.failed_sync_error_message ? `: ${product.failed_sync_error_message}` : ''}`
+                            : 'Not yet synced'
+                        }
+                      >
+                        {product.sync_status === 'synced' && <CloudUpload className="w-3 h-3" />}
+                        {product.sync_status === 'failed' && <AlertTriangle className="w-3 h-3" />}
+                        {product.sync_status === 'pending' && <Clock className="w-3 h-3" />}
+                        <span>
+                          {product.sync_status === 'synced' && 'Synced'}
+                          {product.sync_status === 'failed' && 'Sync Failed'}
+                          {product.sync_status === 'pending' && 'Pending'}
+                        </span>
                       </span>
                     </>
                   )}

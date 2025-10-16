@@ -57,6 +57,10 @@ export interface ScrapedProduct {
   pinned: boolean | null
   created_at: string | null
   updated_at: string | null
+  // ERPNext sync status (joined from pending_products)
+  sync_status?: 'synced' | 'failed' | 'pending'
+  item_code?: string | null
+  failed_sync_error_message?: string | null
 }
 
 export interface PendingProduct {

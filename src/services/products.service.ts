@@ -15,12 +15,22 @@ import type {
 class ProductsService {
   /**
    * Get products with filters and pagination
+   * Includes ERPNext sync status from pending_products table
    */
   async getProducts(filters: ProductFilters = {}) {
     try {
+      // Join with pending_products to get sync status
       let query = supabase
         .from('scraped_products')
-        .select('*', { count: 'exact' })
+        .select(`
+          *,
+          pending_products!pending_products_scraped_product_id_fkey (
+            erpnext_updated_at,
+            failed_sync_at,
+            failed_sync_error_message,
+            item_code
+          )
+        `, { count: 'exact' })
 
       // Apply search filter
       if (filters.search) {
@@ -96,8 +106,32 @@ class ProductsService {
 
       if (error) throw error
 
+      // Process products and calculate sync_status from pending_products join
+      const productsWithSyncStatus = (data || []).map((product: any) => {
+        const pending = product.pending_products?.[0] || product.pending_products
+
+        let sync_status: 'synced' | 'failed' | 'pending' = 'pending'
+        if (pending) {
+          if (pending.erpnext_updated_at && (!pending.failed_sync_at || new Date(pending.failed_sync_at) < new Date(pending.erpnext_updated_at))) {
+            sync_status = 'synced'
+          } else if (pending.failed_sync_at && (!pending.erpnext_updated_at || new Date(pending.failed_sync_at) > new Date(pending.erpnext_updated_at))) {
+            sync_status = 'failed'
+          }
+        }
+
+        // Remove the nested pending_products object and flatten the data
+        const { pending_products, ...productData } = product
+
+        return {
+          ...productData,
+          sync_status,
+          item_code: pending?.item_code,
+          failed_sync_error_message: pending?.failed_sync_error_message,
+        } as ScrapedProduct
+      })
+
       return {
-        products: data as ScrapedProduct[],
+        products: productsWithSyncStatus,
         count: count || 0,
         error: null,
       }
@@ -422,12 +456,21 @@ class ProductsService {
 
   /**
    * Get all pinned products
+   * Includes ERPNext sync status from pending_products table
    */
   async getPinnedProducts(filters: ProductFilters = {}) {
     try {
       let query = supabase
         .from('scraped_products')
-        .select('*', { count: 'exact' })
+        .select(`
+          *,
+          pending_products!pending_products_scraped_product_id_fkey (
+            erpnext_updated_at,
+            failed_sync_at,
+            failed_sync_error_message,
+            item_code
+          )
+        `, { count: 'exact' })
         .eq('pinned', true)
 
       // Apply search filter
@@ -499,8 +542,32 @@ class ProductsService {
 
       if (error) throw error
 
+      // Process products and calculate sync_status from pending_products join
+      const productsWithSyncStatus = (data || []).map((product: any) => {
+        const pending = product.pending_products?.[0] || product.pending_products
+
+        let sync_status: 'synced' | 'failed' | 'pending' = 'pending'
+        if (pending) {
+          if (pending.erpnext_updated_at && (!pending.failed_sync_at || new Date(pending.failed_sync_at) < new Date(pending.erpnext_updated_at))) {
+            sync_status = 'synced'
+          } else if (pending.failed_sync_at && (!pending.erpnext_updated_at || new Date(pending.failed_sync_at) > new Date(pending.erpnext_updated_at))) {
+            sync_status = 'failed'
+          }
+        }
+
+        // Remove the nested pending_products object and flatten the data
+        const { pending_products, ...productData } = product
+
+        return {
+          ...productData,
+          sync_status,
+          item_code: pending?.item_code,
+          failed_sync_error_message: pending?.failed_sync_error_message,
+        } as ScrapedProduct
+      })
+
       return {
-        products: data as ScrapedProduct[],
+        products: productsWithSyncStatus,
         count: count || 0,
         error: null,
       }
