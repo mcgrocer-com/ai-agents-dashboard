@@ -10,6 +10,7 @@ import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp } from 
 import { productsService } from '@/services'
 import { Pagination } from '@/components/ui/Pagination'
 import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/components/filters/AdvancedFilterBuilder'
+import { VendorStatistics } from '@/components/scraper/VendorStatistics'
 import type { ScrapedProduct, ProductFilters } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
@@ -188,6 +189,11 @@ export function ScraperAgentPage() {
           </button>
         </nav>
       </div>
+
+      {/* Vendor Statistics - Shows when specific vendor is selected */}
+      {defaultVendor && defaultVendor !== 'all' && (
+        <VendorStatistics vendor={defaultVendor} />
+      )}
 
       {/* Search and Controls Bar */}
       <div className="flex gap-3 items-center">
