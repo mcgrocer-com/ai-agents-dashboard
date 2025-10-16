@@ -4,27 +4,12 @@
  * Agent management and monitoring.
  */
 
-import { useAgentMetrics, useTriggerAgent } from '@/hooks'
+import { useAgentMetrics } from '@/hooks'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import type { AgentType } from '@/services'
 
 export function AgentsPage() {
   const { metrics, isLoading } = useAgentMetrics()
-  const { trigger, loading: triggering } = useTriggerAgent()
-
-  const handleTrigger = async (agentType: AgentType) => {
-    const result = await trigger({
-      agentType,
-      batchSize: 10,
-      testMode: false,
-    })
-
-    if (result.success) {
-      alert(`${agentType} agent triggered successfully!`)
-    } else {
-      alert(`Failed to trigger agent: ${result.error?.message}`)
-    }
-  }
 
   const agentIcons: Record<string, string> = {
     category: '🏷️',
@@ -90,23 +75,6 @@ export function AgentsPage() {
                     </span>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleTrigger(agentType)}
-                  disabled={triggering}
-                  className="w-full mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {triggering ? (
-                    <>
-                      <LoadingSpinner
-                        size="sm"
-                        className="border-white border-t-transparent"
-                      />
-                      <span>Triggering...</span>
-                    </>
-                  ) : (
-                    <span>Trigger Agent</span>
-                  )}
-                </button>
               </div>
             )
           })}

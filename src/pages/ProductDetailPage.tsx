@@ -5,8 +5,8 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { FileText, Tags, Package, Search, Code } from 'lucide-react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { FileText, Tags, Package, Search, Code, ChevronRight, Home } from 'lucide-react'
 import { productsService, erpnextService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
@@ -18,16 +18,20 @@ import { SeoTab } from '@/components/products/tabs/SeoTab'
 import { RawDataTab } from '@/components/products/tabs/RawDataTab'
 import { RetryButton } from '@/components/ui/RetryButton'
 import { useToast } from '@/hooks/useToast'
+import { EditProductDialog, type EditProductData } from '@/components/products/EditProductDialog'
 
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const { showToast } = useToast()
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sendingToErpnext, setSendingToErpnext] = useState(false)
   const [togglingPin, setTogglingPin] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -115,6 +119,37 @@ export function ProductDetailPage() {
       showToast(`Failed to toggle pin: ${err.message}`, 'error')
     } finally {
       setTogglingPin(false)
+    }
+  }
+
+  const handleEdit = () => {
+    setEditDialogOpen(true)
+  }
+
+  const handleSaveEdit = async (data: EditProductData) => {
+    if (!product?.id) return
+
+    setSavingEdit(true)
+
+    try {
+      const { success, product: updatedProduct, error } = await productsService.updateBasicProductInfo(
+        product.id,
+        data
+      )
+
+      if (error || !success || !updatedProduct) {
+        throw error || new Error('Failed to update product')
+      }
+
+      // Update local state with the updated product data
+      setProduct({ ...product, ...updatedProduct })
+      showToast('Product updated successfully', 'success')
+      setEditDialogOpen(false)
+    } catch (err: any) {
+      console.error('Error updating product:', err)
+      showToast(`Failed to update product: ${err.message}`, 'error')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -290,8 +325,45 @@ export function ProductDetailPage() {
 
   const alternativeImages = extractAlternativeImages(product.images)
 
+  // Determine navigation source from location state or default to scraper agent
+  const fromPage = (location.state as any)?.from || 'scraper-agent'
+  const getPageLabel = (page: string) => {
+    switch (page) {
+      case 'dashboard':
+        return 'Dashboard'
+      case 'scraper-agent':
+        return 'Scraper Agent'
+      case 'agent-monitoring':
+        return 'Agent Monitoring'
+      default:
+        return 'Products'
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {/* Breadcrumb Navigation */}
+      <nav className="flex items-center gap-2 text-sm text-gray-600">
+        <button
+          onClick={() => navigate('/')}
+          className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+        >
+          <Home className="h-4 w-4" />
+          <span>Home</span>
+        </button>
+        <ChevronRight className="h-4 w-4 text-gray-400" />
+        <button
+          onClick={() => navigate(`/${fromPage}`)}
+          className="hover:text-blue-600 transition-colors"
+        >
+          {getPageLabel(fromPage)}
+        </button>
+        <ChevronRight className="h-4 w-4 text-gray-400" />
+        <span className="text-gray-900 font-medium truncate max-w-md">
+          {product.name || 'Product Details'}
+        </span>
+      </nav>
+
       {/* Product Header */}
       <ProductHeader
         name={product.name || 'Unknown Product'}
@@ -308,6 +380,7 @@ export function ProductDetailPage() {
         sendingToErpnext={sendingToErpnext}
         onTogglePin={handleTogglePin}
         togglingPin={togglingPin}
+        onEdit={handleEdit}
       />
 
       {/* Agent Status Overview Cards */}
@@ -398,6 +471,21 @@ export function ProductDetailPage() {
 
       {/* Tabbed Content */}
       <ProductTabs tabs={tabs} />
+
+      {/* Edit Product Dialog */}
+      <EditProductDialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        product={{
+          name: product.name || '',
+          price: product.price || 0,
+          original_price: product.original_price || 0,
+          description: product.description || '',
+          stock_status: product.stock_status || 'In Stock',
+        }}
+        onSave={handleSaveEdit}
+        saving={savingEdit}
+      />
     </div>
   )
 }

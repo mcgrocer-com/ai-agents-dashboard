@@ -39,7 +39,7 @@ export function RecentActivity() {
 
   const handleProductClick = useCallback(
     (productId: string) => {
-      navigate(`/scraper-agent/${productId}`)
+      navigate(`/scraper-agent/${productId}`, { state: { from: 'dashboard' } })
     },
     [navigate]
   )

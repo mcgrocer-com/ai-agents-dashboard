@@ -8,7 +8,7 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAgentMetrics, usePendingForAgent, useTriggerAgent, useVendors, useAgentRealtime } from '@/hooks'
+import { useAgentMetrics, usePendingForAgent, useVendors, useAgentRealtime } from '@/hooks'
 import { agentsService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -74,7 +74,6 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
   const { metrics, isLoading: metricsLoading } = useAgentMetrics()
-  const { trigger, loading: triggering } = useTriggerAgent()
   const { vendors } = useVendors()
 
   const agent = metrics?.find((m) => m.agentType === agentType)
@@ -92,21 +91,6 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     vendor: selectedVendor || undefined,
     status: selectedStatus || undefined,
   })
-
-  const handleTrigger = async () => {
-    const result = await trigger({
-      agentType,
-      batchSize: 10,
-      testMode: false,
-    })
-
-    if (result.success) {
-      setToast({ message: `${config.title} triggered successfully!`, type: 'success' })
-      refresh()
-    } else {
-      setToast({ message: `Failed to trigger agent: ${result.error?.message}`, type: 'error' })
-    }
-  }
 
   const handleSearch = (value: string) => {
     setSearchTerm(value)
@@ -182,25 +166,6 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
               <p className="text-secondary-600 mt-1">{config.subtitle}</p>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleTrigger}
-            disabled={triggering}
-            className={`px-6 py-3 bg-${config.primaryColor}-600 text-white rounded-lg hover:bg-${config.primaryColor}-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}
-          >
-            {triggering ? (
-              <>
-                <LoadingSpinner size="sm" className="border-white border-t-transparent" />
-                <span>Triggering...</span>
-              </>
-            ) : (
-              <>
-                <Activity className="h-5 w-5" />
-                <span>Trigger Agent</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
 
@@ -619,7 +584,7 @@ function ProductsList({ products, isLoading, agentType, agentConfig, navigate }:
             iconColor: agentConfig.iconColor,
             primaryColor: agentConfig.primaryColor,
           }}
-          onClick={() => agentProduct.productData?.id && navigate(`/scraper-agent/${agentProduct.productData.id}`)}
+          onClick={() => agentProduct.productData?.id && navigate(`/scraper-agent/${agentProduct.productData.id}`, { state: { from: 'agent-monitoring' } })}
         />
       ))}
     </div>

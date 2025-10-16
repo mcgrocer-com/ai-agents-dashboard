@@ -39,6 +39,49 @@ class ProductsService {
         query = query.eq('status', filters.status)
       }
 
+      // Apply dynamic filters
+      if (filters.dynamicFilters && filters.dynamicFilters.length > 0) {
+        filters.dynamicFilters.forEach((filter) => {
+          const { field, operator, value } = filter
+
+          switch (operator) {
+            case '=':
+              query = query.eq(field, value)
+              break
+            case '≠':
+              query = query.neq(field, value)
+              break
+            case '>':
+              query = query.gt(field, value)
+              break
+            case '<':
+              query = query.lt(field, value)
+              break
+            case '>=':
+              query = query.gte(field, value)
+              break
+            case '<=':
+              query = query.lte(field, value)
+              break
+            case 'contains':
+              query = query.ilike(field, `%${value}%`)
+              break
+            case 'starts with':
+              query = query.ilike(field, `${value}%`)
+              break
+            case 'ends with':
+              query = query.ilike(field, `%${value}`)
+              break
+            case 'is null':
+              query = query.is(field, null)
+              break
+            case 'is not null':
+              query = query.not(field, 'is', null)
+              break
+          }
+        })
+      }
+
       // Apply sorting
       const sortBy = filters.sortBy || 'updated_at'
       const sortOrder = filters.sortOrder || 'desc'
@@ -269,11 +312,21 @@ class ProductsService {
       }
     }
   }
+ 
 
   /**
-   * Update product
+   * Update basic product fields (name, price, original_price, description, stock_status)
    */
-  async updateProduct(id: string, updates: Partial<ScrapedProduct>) {
+  async updateBasicProductInfo(
+    id: string,
+    updates: {
+      name?: string
+      price?: number
+      original_price?: number
+      description?: string
+      stock_status?: string
+    }
+  ) {
     try {
       const { data, error } = await supabase
         .from('scraped_products')
@@ -285,11 +338,13 @@ class ProductsService {
       if (error) throw error
 
       return {
+        success: true,
         product: data as ScrapedProduct,
         error: null,
       }
     } catch (error) {
       return {
+        success: false,
         product: null,
         error: error as Error,
       }
@@ -385,6 +440,49 @@ class ProductsService {
       // Apply vendor filter
       if (filters.vendor) {
         query = query.eq('vendor', filters.vendor)
+      }
+
+      // Apply dynamic filters
+      if (filters.dynamicFilters && filters.dynamicFilters.length > 0) {
+        filters.dynamicFilters.forEach((filter) => {
+          const { field, operator, value } = filter
+
+          switch (operator) {
+            case '=':
+              query = query.eq(field, value)
+              break
+            case '≠':
+              query = query.neq(field, value)
+              break
+            case '>':
+              query = query.gt(field, value)
+              break
+            case '<':
+              query = query.lt(field, value)
+              break
+            case '>=':
+              query = query.gte(field, value)
+              break
+            case '<=':
+              query = query.lte(field, value)
+              break
+            case 'contains':
+              query = query.ilike(field, `%${value}%`)
+              break
+            case 'starts with':
+              query = query.ilike(field, `${value}%`)
+              break
+            case 'ends with':
+              query = query.ilike(field, `%${value}`)
+              break
+            case 'is null':
+              query = query.is(field, null)
+              break
+            case 'is not null':
+              query = query.not(field, 'is', null)
+              break
+          }
+        })
       }
 
       // Apply sorting

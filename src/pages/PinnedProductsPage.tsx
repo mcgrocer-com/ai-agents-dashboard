@@ -228,7 +228,7 @@ function PinnedProductsList({ products, isLoading }: PinnedProductsListProps) {
         {products.map((product) => (
           <div
             key={product.id}
-            onClick={() => navigate(`/scraper-agent/${product.id}`)}
+            onClick={() => navigate(`/scraper-agent/${product.id}`, { state: { from: 'scraper-agent' } })}
             className="block p-4 hover:bg-secondary-50 transition-colors cursor-pointer relative"
           >
             {/* Pin indicator */}

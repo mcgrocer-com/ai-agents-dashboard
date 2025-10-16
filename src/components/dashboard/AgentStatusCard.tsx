@@ -6,7 +6,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { AgentMetrics } from '@/types/database'
-import { formatNumber, formatCurrency, formatPercentage } from '@/lib/utils/format'
+import { formatNumber, formatPercentage } from '@/lib/utils/format'
 
 interface AgentStatusCardProps {
   agent: AgentMetrics
@@ -72,7 +72,7 @@ export function AgentStatusCard({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div>
           <p className="text-xs text-gray-600">Total Products</p>
           <p className="text-lg font-bold text-gray-900">
@@ -87,12 +87,6 @@ export function AgentStatusCard({
           <p className="text-xs text-gray-600">Avg Confidence</p>
           <p className="text-lg font-bold text-gray-900">
             {formatPercentage(agent.avgConfidence)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-600">Total Cost</p>
-          <p className="text-lg font-bold text-gray-900">
-            {formatCurrency(agent.totalCost)}
           </p>
         </div>
       </div>

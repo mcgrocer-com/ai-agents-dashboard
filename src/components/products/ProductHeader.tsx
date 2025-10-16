@@ -4,7 +4,7 @@
  * Displays product header with image, name, and basic information.
  */
 
-import { Package, ExternalLink, Send, Pin } from 'lucide-react'
+import { Package, ExternalLink, Send, Pin, Edit } from 'lucide-react'
 import { formatCurrency, formatDateTime } from '@/lib/utils/format'
 
 interface ProductHeaderProps {
@@ -22,6 +22,7 @@ interface ProductHeaderProps {
   sendingToErpnext?: boolean
   onTogglePin?: () => void
   togglingPin?: boolean
+  onEdit?: () => void
 }
 
 export function ProductHeader({
@@ -39,6 +40,7 @@ export function ProductHeader({
   sendingToErpnext = false,
   onTogglePin,
   togglingPin = false,
+  onEdit,
 }: ProductHeaderProps) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
@@ -46,43 +48,71 @@ export function ProductHeader({
         {/* Main Product Image - Tall */}
         <div className="flex-shrink-0 space-y-3">
           {imageUrl ? (
-            <div className="relative w-48 h-64 bg-gray-100 rounded-lg overflow-hidden">
+            <div className="relative w-48 h-64 bg-gray-100 rounded-lg overflow-hidden group">
               <img
                 src={imageUrl}
                 alt={name}
                 className="w-full h-full object-contain"
               />
+              {/* Pin Button - Circular Overlay at Top Left */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onTogglePin?.()
+                }}
+                disabled={togglingPin}
+                className={`absolute top-2 left-2 p-2 rounded-full shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                  pinned
+                    ? 'bg-yellow-500 text-white hover:bg-yellow-600 hover:scale-110'
+                    : 'bg-white text-gray-600 hover:bg-gray-100 hover:scale-110'
+                }`}
+                title={pinned ? 'Unpin Product' : 'Pin Product'}
+              >
+                {togglingPin ? (
+                  <div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Pin className={`h-5 w-5 ${pinned ? 'fill-current' : ''}`} />
+                )}
+              </button>
             </div>
           ) : (
-            <div className="w-48 h-64 bg-gray-100 rounded-lg flex items-center justify-center">
+            <div className="relative w-48 h-64 bg-gray-100 rounded-lg flex items-center justify-center group">
               <Package className="h-16 w-16 text-gray-400" />
+              {/* Pin Button - Circular Overlay at Top Left */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onTogglePin?.()
+                }}
+                disabled={togglingPin}
+                className={`absolute top-2 left-2 p-2 rounded-full shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                  pinned
+                    ? 'bg-yellow-500 text-white hover:bg-yellow-600 hover:scale-110'
+                    : 'bg-white text-gray-600 hover:bg-gray-100 hover:scale-110'
+                }`}
+                title={pinned ? 'Unpin Product' : 'Pin Product'}
+              >
+                {togglingPin ? (
+                  <div className="h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Pin className={`h-5 w-5 ${pinned ? 'fill-current' : ''}`} />
+                )}
+              </button>
             </div>
           )}
 
           {/* Action Buttons */}
           <div className="space-y-2">
-            {/* Pin/Unpin Button */}
-            <button
-              onClick={onTogglePin}
-              disabled={togglingPin}
-              className={`w-full px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-                pinned
-                  ? 'bg-yellow-500 text-white hover:bg-yellow-600'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              {togglingPin ? (
-                <>
-                  <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  {pinned ? 'Unpinning...' : 'Pinning...'}
-                </>
-              ) : (
-                <>
-                  <Pin className={`h-4 w-4 ${pinned ? 'fill-current' : ''}`} />
-                  {pinned ? 'Unpin Product' : 'Pin Product'}
-                </>
-              )}
-            </button>
+            {/* Edit Button */}
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+              >
+                <Edit className="h-4 w-4" />
+                Edit Product
+              </button>
+            )}
 
             {/* Send to ERPNext Button */}
             <button

@@ -6,14 +6,37 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, Search, SlidersHorizontal, Pin } from 'lucide-react'
+import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp } from 'lucide-react'
 import { productsService } from '@/services'
 import { Pagination } from '@/components/ui/Pagination'
-import type { ScrapedProduct, ProductFilters } from '@/types'
+import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/components/filters/AdvancedFilterBuilder'
+import type { ScrapedProduct, ProductFilters, DynamicFilter } from '@/types'
 
 type SortField = 'name' | 'price' | 'updated_at' | 'created_at'
 type SortDirection = 'asc' | 'desc'
 type TabType = 'all' | 'pinned'
+
+// All available columns including vendor (for default filter column selector)
+const ALL_COLUMNS: FilterColumn[] = [
+  { label: 'Vendor', value: 'vendor', type: 'text' },
+  { label: 'Name', value: 'name', type: 'text' },
+  { label: 'Product ID', value: 'product_id', type: 'text' },
+  { label: 'Price', value: 'price', type: 'number' },
+  { label: 'Selling Price', value: 'selling_price', type: 'number' },
+  { label: 'Stock Status', value: 'stock_status', type: 'text' },
+  { label: 'Category', value: 'category', type: 'text' },
+  { label: 'Description', value: 'description', type: 'text' },
+  { label: 'Height', value: 'height', type: 'number' },
+  { label: 'Width', value: 'width', type: 'number' },
+  { label: 'Length', value: 'length', type: 'number' },
+  { label: 'Weight', value: 'weight', type: 'number' },
+  { label: 'Volumetric Weight', value: 'volumetric_weight', type: 'number' },
+  { label: 'Created Date', value: 'created_at', type: 'date' },
+  { label: 'Updated Date', value: 'updated_at', type: 'date' },
+]
+
+// Filter columns for user-added filters (Vendor is handled by default filter)
+const FILTER_COLUMNS: FilterColumn[] = ALL_COLUMNS.filter((col) => col.value !== 'vendor')
 
 export function ScraperAgentPage() {
   const [activeTab, setActiveTab] = useState<TabType>('all')
@@ -27,25 +50,82 @@ export function ScraperAgentPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
 
+  // Filter states
+  const [filters, setFilters] = useState<FilterRule[]>([])
+  const [showFilters, setShowFilters] = useState(false)
+  const [vendors, setVendors] = useState<Array<{ name: string; count: number }>>([])
+  const [defaultVendor, setDefaultVendor] = useState<string>('')
+
+  // Fetch vendors on mount and set default vendor filter
+  useEffect(() => {
+    const loadVendors = async () => {
+      const { vendors: vendorList } = await productsService.getVendors()
+      if (vendorList && vendorList.length > 0) {
+        setVendors(vendorList)
+        setDefaultVendor('all')
+
+        // Create dropdown options from vendors with "All Vendors" at top
+        const vendorOptions = [
+          { label: 'All Vendors', value: 'all' },
+          ...vendorList.map((vendor: { name: string; count: number }) => ({
+            label: `${vendor.name} (${vendor.count.toLocaleString()} products)`,
+            value: vendor.name,
+          })),
+        ]
+
+        // Create default vendor filter with dropdown and locked operator
+        const defaultFilter: FilterRule = {
+          id: 'default-vendor-filter',
+          column: 'vendor',
+          operator: '=',
+          value: 'all',
+          isDefault: true,
+          dropdownOptions: vendorOptions,
+          lockOperator: true,
+        }
+        setFilters([defaultFilter])
+      }
+    }
+    loadVendors()
+  }, [])
+
   useEffect(() => {
     fetchProducts()
-  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection])
+  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters])
+
+  // Convert FilterRules to DynamicFilters for the API
+  const convertToDynamicFilters = (filterRules: FilterRule[]): DynamicFilter[] => {
+    return filterRules
+      .filter((rule) => {
+        // Exclude vendor filter if "all" is selected
+        if (rule.column === 'vendor' && rule.value === 'all') {
+          return false
+        }
+        return true
+      })
+      .map((rule) => ({
+        field: rule.column,
+        operator: rule.operator,
+        value: rule.value,
+      }))
+  }
 
   const fetchProducts = async () => {
     setIsLoading(true)
     setError(null)
 
-    const filters: ProductFilters = {
+    const productFilters: ProductFilters = {
       search: searchTerm || undefined,
       sortBy: sortField,
       sortOrder: sortDirection,
       limit: pageSize,
       offset: (page - 1) * pageSize,
+      dynamicFilters: filters.length > 0 ? convertToDynamicFilters(filters) : undefined,
     }
 
     const result = activeTab === 'pinned'
-      ? await productsService.getPinnedProducts(filters)
-      : await productsService.getProducts(filters)
+      ? await productsService.getPinnedProducts(productFilters)
+      : await productsService.getProducts(productFilters)
 
     if (result.error) {
       setError(result.error)
@@ -124,6 +204,25 @@ export function ScraperAgentPage() {
           />
         </div>
 
+        {/* Filter Button */}
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm transition-colors ${
+            filters.filter((f) => !f.isDefault).length > 0
+              ? 'border-primary-500 bg-primary-50 text-primary-700'
+              : 'border-secondary-300 text-secondary-700 hover:bg-secondary-50'
+          }`}
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          <span>Filters</span>
+          {filters.filter((f) => !f.isDefault).length > 0 && (
+            <span className="bg-primary-500 text-white text-xs rounded-full px-2 py-0.5">
+              {filters.filter((f) => !f.isDefault).length}
+            </span>
+          )}
+          {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
         {/* Sort Dropdown */}
         <select
           value={`${sortField}-${sortDirection}`}
@@ -145,6 +244,34 @@ export function ScraperAgentPage() {
           <option value="price-desc">Price High-Low</option>
         </select>
       </div>
+
+      {/* Collapsible Filter Panel */}
+      {showFilters && (
+        <div className="bg-white border border-secondary-200 rounded-lg p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-secondary-900">Advanced Filters</h3>
+            {defaultVendor && (
+              <p className="text-xs text-yellow-600">
+                {defaultVendor === 'all' ? 'Showing all vendors' : `Filtered by vendor: ${defaultVendor}`}
+              </p>
+            )}
+          </div>
+          <AdvancedFilterBuilder
+            columns={FILTER_COLUMNS}
+            allColumns={ALL_COLUMNS}
+            filters={filters}
+            onFiltersChange={(newFilters) => {
+              setFilters(newFilters)
+              // Update defaultVendor state when vendor filter changes
+              const vendorFilter = newFilters.find((f) => f.column === 'vendor')
+              if (vendorFilter) {
+                setDefaultVendor(vendorFilter.value)
+              }
+              setPage(1) // Reset to first page when filters change
+            }}
+          />
+        </div>
+      )}
 
       {/* Results Summary */}
       <div className="flex items-center justify-between text-sm">
@@ -291,7 +418,7 @@ function ProductsList({ products, isLoading, showPinned = false }: ProductsListP
         {products.map((product) => (
           <div
             key={product.id}
-            onClick={() => navigate(`/scraper-agent/${product.id}`)}
+            onClick={() => navigate(`/scraper-agent/${product.id}`, { state: { from: 'scraper-agent' } })}
             className="block p-4 hover:bg-secondary-50 transition-colors cursor-pointer relative"
           >
             {/* Pin indicator for pinned products */}
