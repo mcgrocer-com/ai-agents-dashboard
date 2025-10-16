@@ -453,11 +453,41 @@ function ProductsList({ products, isLoading, showPinned = false }: ProductsListP
                   <h3 className="font-medium text-secondary-900 truncate">
                     {product.name || 'Unnamed Product'}
                   </h3>
-                  {product.updated_at && (
-                    <span className="text-xs text-secondary-500 flex-shrink-0">
-                      {formatRelativeTime(product.updated_at)}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {product.updated_at && (
+                      <span className="text-xs text-secondary-500">
+                        {formatRelativeTime(product.updated_at)}
+                      </span>
+                    )}
+                    {/* ERPNext Sync Status Badge */}
+                    {product.sync_status && (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                          product.sync_status === 'synced'
+                            ? 'bg-blue-100 text-blue-700'
+                            : product.sync_status === 'failed'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                        title={
+                          product.sync_status === 'synced'
+                            ? `Synced to ERPNext${product.item_code ? ` (${product.item_code})` : ''}`
+                            : product.sync_status === 'failed'
+                            ? `Sync failed${product.failed_sync_error_message ? `: ${product.failed_sync_error_message}` : ''}`
+                            : 'Not yet synced'
+                        }
+                      >
+                        {product.sync_status === 'synced' && <CloudUpload className="w-3 h-3" />}
+                        {product.sync_status === 'failed' && <AlertTriangle className="w-3 h-3" />}
+                        {product.sync_status === 'pending' && <Clock className="w-3 h-3" />}
+                        <span>
+                          {product.sync_status === 'synced' && 'Synced'}
+                          {product.sync_status === 'failed' && 'Failed'}
+                          {product.sync_status === 'pending' && 'Pending'}
+                        </span>
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <p className="text-sm text-secondary-600 line-clamp-2 mt-1">
                   {stripHtml(product.description)}
@@ -488,37 +518,6 @@ function ProductsList({ products, isLoading, showPinned = false }: ProductsListP
                         }`}
                       >
                         {product.stock_status}
-                      </span>
-                    </>
-                  )}
-                  {/* ERPNext Sync Status Badge */}
-                  {product.sync_status && (
-                    <>
-                      <span className="text-xs text-secondary-400">•</span>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
-                          product.sync_status === 'synced'
-                            ? 'bg-blue-100 text-blue-700'
-                            : product.sync_status === 'failed'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
-                        title={
-                          product.sync_status === 'synced'
-                            ? `Synced to ERPNext${product.item_code ? ` (${product.item_code})` : ''}`
-                            : product.sync_status === 'failed'
-                            ? `Sync failed${product.failed_sync_error_message ? `: ${product.failed_sync_error_message}` : ''}`
-                            : 'Not yet synced'
-                        }
-                      >
-                        {product.sync_status === 'synced' && <CloudUpload className="w-3 h-3" />}
-                        {product.sync_status === 'failed' && <AlertTriangle className="w-3 h-3" />}
-                        {product.sync_status === 'pending' && <Clock className="w-3 h-3" />}
-                        <span>
-                          {product.sync_status === 'synced' && 'Synced'}
-                          {product.sync_status === 'failed' && 'Sync Failed'}
-                          {product.sync_status === 'pending' && 'Pending'}
-                        </span>
                       </span>
                     </>
                   )}
