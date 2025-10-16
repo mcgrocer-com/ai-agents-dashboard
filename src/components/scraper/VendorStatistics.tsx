@@ -48,9 +48,15 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
     }
   }
 
-  // Don't render if vendor is "all" or not selected
+  // Show helper message when "all" vendors is selected
   if (!vendor || vendor === 'all') {
-    return null
+    return (
+      <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p className="text-sm text-blue-800">
+          💡 <strong>Tip:</strong> Click on the <strong>Filters</strong> button and select a specific vendor to see detailed statistics for that vendor.
+        </p>
+      </div>
+    )
   }
 
   // Loading skeleton
