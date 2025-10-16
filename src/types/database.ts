@@ -56,6 +56,7 @@ export interface ScrapedProduct {
   volumetric_weight: number | null
   pinned: boolean | null
   created_at: string | null
+  updated_at: string | null
 }
 
 export interface PendingProduct {

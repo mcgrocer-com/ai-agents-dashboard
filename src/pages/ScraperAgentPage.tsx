@@ -10,7 +10,8 @@ import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp } from 
 import { productsService } from '@/services'
 import { Pagination } from '@/components/ui/Pagination'
 import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/components/filters/AdvancedFilterBuilder'
-import type { ScrapedProduct, ProductFilters, DynamicFilter } from '@/types'
+import type { ScrapedProduct, ProductFilters } from '@/types'
+import type { DynamicFilter } from '@/types/database'
 
 type SortField = 'name' | 'price' | 'updated_at' | 'created_at'
 type SortDirection = 'asc' | 'desc'
@@ -53,7 +54,6 @@ export function ScraperAgentPage() {
   // Filter states
   const [filters, setFilters] = useState<FilterRule[]>([])
   const [showFilters, setShowFilters] = useState(false)
-  const [vendors, setVendors] = useState<Array<{ name: string; count: number }>>([])
   const [defaultVendor, setDefaultVendor] = useState<string>('')
 
   // Fetch vendors on mount and set default vendor filter
@@ -61,7 +61,6 @@ export function ScraperAgentPage() {
     const loadVendors = async () => {
       const { vendors: vendorList } = await productsService.getVendors()
       if (vendorList && vendorList.length > 0) {
-        setVendors(vendorList)
         setDefaultVendor('all')
 
         // Create dropdown options from vendors with "All Vendors" at top

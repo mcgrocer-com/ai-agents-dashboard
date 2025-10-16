@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pin, Package, Search, SlidersHorizontal } from 'lucide-react'
+import { Pin, Package, Search } from 'lucide-react'
 import { productsService } from '@/services'
 import { Pagination } from '@/components/ui/Pagination'
 import type { ScrapedProduct, ProductFilters } from '@/types'

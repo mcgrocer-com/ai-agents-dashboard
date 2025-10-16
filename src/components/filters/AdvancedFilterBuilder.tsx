@@ -28,7 +28,6 @@ interface AdvancedFilterBuilderProps {
   filters: FilterRule[]
   onFiltersChange: (filters: FilterRule[]) => void
   onApply?: () => void
-  defaultFilters?: FilterRule[]
   allColumns?: FilterColumn[]
 }
 
@@ -50,7 +49,6 @@ export function AdvancedFilterBuilder({
   columns,
   filters,
   onFiltersChange,
-  defaultFilters = [],
   allColumns,
 }: AdvancedFilterBuilderProps) {
   // Use allColumns for default filters if provided, otherwise use columns
