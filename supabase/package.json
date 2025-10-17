@@ -1,0 +1,13 @@
+{
+  "name": "supabase-seeding",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Supabase test data seeding scripts",
+  "scripts": {
+    "seed": "node seed-test-data.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.3",
+    "dotenv": "^16.3.1"
+  }
+}
