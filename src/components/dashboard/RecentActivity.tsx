@@ -22,7 +22,8 @@ export function RecentActivity() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabType>('processing')
   const [dateFilter, setDateFilter] = useState<DateFilterType>('today')
-  const [activities, setActivities] = useState<RecentActivityType[]>([])
+  const [processingActivities, setProcessingActivities] = useState<RecentActivityType[]>([])
+  const [completeActivities, setCompleteActivities] = useState<RecentActivityType[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [activityStats, setActivityStats] = useState<ActivityStats>({
     today: 0,
@@ -64,6 +65,154 @@ export function RecentActivity() {
     if (agent.includes('SEO')) return 'text-purple-600'
     return 'text-gray-600'
   }
+  const fetchCompleteActivities = async () => {
+    const { data, error } = await activityStatsService.getRecentProductsByVendor(
+      selectedVendor || null,
+      selectedAgents,
+      20
+    )
+
+    if (error) {
+      console.error('Error fetching activities:', error)
+      return
+    }
+
+    if (data) {
+      const freshActivities: RecentActivityType[] = []
+
+      data.forEach((item: any) => {
+        const productName = item.product_name || 'Product'
+        const vendor = item.vendor || ''
+        const imageUrl = item.main_image || ''
+
+        // Category agent activity
+        if (item.category_status && item.category_status !== 'pending') {
+          freshActivities.push({
+            id: `cat-${item.id}`,
+            productName,
+            vendor,
+            imageUrl,
+            agent: 'Category Mapper',
+            status: item.category_status as AgentStatus,
+            timestamp: item.updated_at ?? '',
+            productId: item.scraped_product_id || item.id,
+          })
+        }
+
+        // Weight & Dimension agent activity
+        if (
+          item.weight_and_dimension_status &&
+          item.weight_and_dimension_status !== 'pending'
+        ) {
+          freshActivities.push({
+            id: `weight-${item.id}`,
+            productName,
+            vendor,
+            imageUrl,
+            agent: 'Weight & Dimension',
+            status: item.weight_and_dimension_status as AgentStatus,
+            timestamp: item.updated_at ?? '',
+            productId: item.scraped_product_id || item.id,
+          })
+        }
+
+        // SEO agent activity
+        if (item.seo_status && item.seo_status !== 'pending') {
+          freshActivities.push({
+            id: `seo-${item.id}`,
+            productName,
+            vendor,
+            imageUrl,
+            agent: 'SEO Optimizer',
+            status: item.seo_status as AgentStatus,
+            timestamp: item.updated_at ?? '',
+            productId: item.scraped_product_id || item.id,
+          })
+        }
+      })
+
+      // Sort by timestamp
+      freshActivities.sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )
+
+      setCompleteActivities(freshActivities)
+    }
+  }
+
+  const fetchProcessingActivities = async () => {
+    // Processing tab - fetch processing activities using service
+    const { data, error } = await activityStatsService.getProcessingProducts(30)
+
+    if (error) {
+      console.error('Error fetching activities:', error)
+      return
+    }
+
+    if (data) {
+      const freshActivities: RecentActivityType[] = []
+
+      data.forEach((item: any) => {
+        // RPC returns flattened data with product_name, vendor, main_image directly
+        const productName = item.product_name || 'Product'
+        const vendor = item.vendor || ''
+        const imageUrl = item.main_image || ''
+
+        // Category agent activity
+        if (item.category_status && item.category_status !== 'pending') {
+          freshActivities.push({
+            id: `cat-${item.id}`,
+            productName,
+            vendor,
+            imageUrl,
+            agent: 'Category Mapper',
+            status: item.category_status as AgentStatus,
+            timestamp: item.updated_at ?? '',
+            productId: item.scraped_product_id || item.id,
+          })
+        }
+
+        // Weight & Dimension agent activity
+        if (
+          item.weight_and_dimension_status &&
+          item.weight_and_dimension_status !== 'pending'
+        ) {
+          freshActivities.push({
+            id: `weight-${item.id}`,
+            productName,
+            vendor,
+            imageUrl,
+            agent: 'Weight & Dimension',
+            status: item.weight_and_dimension_status as AgentStatus,
+            timestamp: item.updated_at ?? '',
+            productId: item.scraped_product_id || item.id,
+          })
+        }
+
+        // SEO agent activity
+        if (item.seo_status && item.seo_status !== 'pending') {
+          freshActivities.push({
+            id: `seo-${item.id}`,
+            productName,
+            vendor,
+            imageUrl,
+            agent: 'SEO Optimizer',
+            status: item.seo_status as AgentStatus,
+            timestamp: item.updated_at ?? '',
+            productId: item.scraped_product_id || item.id,
+          })
+        }
+      })
+
+      // Sort by timestamp
+      freshActivities.sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )
+
+      setProcessingActivities(freshActivities)
+    }
+
+  }
 
   // Function to fetch aggregated statistics
   const refreshStats = useCallback(async () => {
@@ -76,163 +225,25 @@ export function RecentActivity() {
 
   // Function to fetch and update activities
   const refreshActivities = useCallback(async () => {
-    setIsRefreshing(true)
+     
     try {
       // Fetch aggregated stats
       await refreshStats()
 
       // Fetch recent activities for display using RPC for reliable vendor and agent filtering
-      if (activeTab === 'complete') {
-        const { data, error } = await activityStatsService.getRecentProductsByVendor(
-          selectedVendor || null,
-          selectedAgents,
-          20
-        )
 
-        if (error) {
-          console.error('Error fetching activities:', error)
-          return
-        }
+      fetchCompleteActivities()
+      fetchProcessingActivities()
 
-        if (data) {
-          const freshActivities: RecentActivityType[] = []
 
-          data.forEach((item: any) => {
-            const productName = item.product_name || 'Product'
-            const vendor = item.vendor || ''
-            const imageUrl = item.main_image || ''
 
-            // Category agent activity
-            if (item.category_status && item.category_status !== 'pending') {
-              freshActivities.push({
-                id: `cat-${item.id}`,
-                productName,
-                vendor,
-                imageUrl,
-                agent: 'Category Mapper',
-                status: item.category_status as AgentStatus,
-                timestamp: item.updated_at ?? '',
-                productId: item.scraped_product_id || item.id,
-              })
-            }
-
-            // Weight & Dimension agent activity
-            if (
-              item.weight_and_dimension_status &&
-              item.weight_and_dimension_status !== 'pending'
-            ) {
-              freshActivities.push({
-                id: `weight-${item.id}`,
-                productName,
-                vendor,
-                imageUrl,
-                agent: 'Weight & Dimension',
-                status: item.weight_and_dimension_status as AgentStatus,
-                timestamp: item.updated_at ?? '',
-                productId: item.scraped_product_id || item.id,
-              })
-            }
-
-            // SEO agent activity
-            if (item.seo_status && item.seo_status !== 'pending') {
-              freshActivities.push({
-                id: `seo-${item.id}`,
-                productName,
-                vendor,
-                imageUrl,
-                agent: 'SEO Optimizer',
-                status: item.seo_status as AgentStatus,
-                timestamp: item.updated_at ?? '',
-                productId: item.scraped_product_id || item.id,
-              })
-            }
-          })
-
-          // Sort by timestamp
-          freshActivities.sort(
-            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          )
-
-          setActivities(freshActivities)
-        }
-      } else {
-        // Processing tab - fetch processing activities using service
-        const { data, error } = await activityStatsService.getProcessingProducts(30)
-
-        if (error) {
-          console.error('Error fetching activities:', error)
-          return
-        }
-
-        if (data) {
-          const freshActivities: RecentActivityType[] = []
-
-          data.forEach((item: any) => {
-            // RPC returns flattened data with product_name, vendor, main_image directly
-            const productName = item.product_name || 'Product'
-            const vendor = item.vendor || ''
-            const imageUrl = item.main_image || ''
-
-            // Category agent activity
-            if (item.category_status && item.category_status !== 'pending') {
-              freshActivities.push({
-                id: `cat-${item.id}`,
-                productName,
-                vendor,
-                imageUrl,
-                agent: 'Category Mapper',
-                status: item.category_status as AgentStatus,
-                timestamp: item.updated_at ?? '',
-                productId: item.scraped_product_id || item.id,
-              })
-            }
-
-            // Weight & Dimension agent activity
-            if (
-              item.weight_and_dimension_status &&
-              item.weight_and_dimension_status !== 'pending'
-            ) {
-              freshActivities.push({
-                id: `weight-${item.id}`,
-                productName,
-                vendor,
-                imageUrl,
-                agent: 'Weight & Dimension',
-                status: item.weight_and_dimension_status as AgentStatus,
-                timestamp: item.updated_at ?? '',
-                productId: item.scraped_product_id || item.id,
-              })
-            }
-
-            // SEO agent activity
-            if (item.seo_status && item.seo_status !== 'pending') {
-              freshActivities.push({
-                id: `seo-${item.id}`,
-                productName,
-                vendor,
-                imageUrl,
-                agent: 'SEO Optimizer',
-                status: item.seo_status as AgentStatus,
-                timestamp: item.updated_at ?? '',
-                productId: item.scraped_product_id || item.id,
-              })
-            }
-          })
-
-          // Sort by timestamp
-          freshActivities.sort(
-            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          )
-
-          setActivities(freshActivities)
-        }
-      }
     } catch (error) {
       console.error('Error refreshing activities:', error)
     } finally {
-      setIsRefreshing(false)
+      
     }
   }, [refreshStats, activeTab, selectedVendor, selectedAgents])
+
 
   // Enable realtime updates - triggers refreshActivities when database changes
   useRecentActivityRealtime(refreshActivities)
@@ -305,11 +316,11 @@ export function RecentActivity() {
   }
 
   // Filter and sort by tab
-  const allProcessingActivities = activities
+  const allProcessingActivities = processingActivities
     .filter((activity) => activity.status === 'processing')
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
-  const allCompleteActivities = activities
+  const allCompleteActivities = completeActivities
     .filter((activity) => activity.status === 'complete')
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
@@ -324,10 +335,10 @@ export function RecentActivity() {
   const completeLastMonthCount = activityStats.lastMonth
 
   // Now slice for display (limit to 20 items displayed)
-  const processingActivities = allProcessingActivities.slice(0, 20)
-  const completeActivities = filteredCompleteActivities.slice(0, 20)
+  const displayProcessingActivities = allProcessingActivities.slice(0, 20)
+  const displayCompleteActivities = filteredCompleteActivities.slice(0, 20)
 
-  const sortedActivities = activeTab === 'processing' ? processingActivities : completeActivities
+  const sortedActivities = activeTab === 'processing' ? displayProcessingActivities : displayCompleteActivities
 
   // Format count for display (show 20+ if over 20)
   const formatCount = (count: number) => (count > 20 ? '20+' : count.toString())
@@ -338,7 +349,7 @@ export function RecentActivity() {
           <Activity className="h-5 w-5" />
           Recent Activity
         </h2>
-        {activities.length > 0 && (
+        {completeActivities.length + processingActivities.length > 0 && (
           <span className="flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -353,21 +364,19 @@ export function RecentActivity() {
       <div className="flex gap-1 border-b border-gray-200 mb-4">
         <button
           onClick={() => setActiveTab('processing')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'processing'
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'processing'
               ? 'border-blue-500 text-blue-600'
               : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
+            }`}
         >
           Processing ({formatCount(processingCount)})
         </button>
         <button
           onClick={() => setActiveTab('complete')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'complete'
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'complete'
               ? 'border-green-500 text-green-600'
               : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
+            }`}
         >
           Complete
         </button>
@@ -444,31 +453,28 @@ export function RecentActivity() {
           <div className="flex gap-2">
             <button
               onClick={() => setDateFilter('today')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                dateFilter === 'today'
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dateFilter === 'today'
                   ? 'bg-green-100 text-green-700 border border-green-300'
                   : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
-              }`}
+                }`}
             >
               Today ({completeTodayCount})
             </button>
             <button
               onClick={() => setDateFilter('thisMonth')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                dateFilter === 'thisMonth'
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dateFilter === 'thisMonth'
                   ? 'bg-green-100 text-green-700 border border-green-300'
                   : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
-              }`}
+                }`}
             >
               This Month ({completeThisMonthCount})
             </button>
             <button
               onClick={() => setDateFilter('lastMonth')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                dateFilter === 'lastMonth'
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dateFilter === 'lastMonth'
                   ? 'bg-green-100 text-green-700 border border-green-300'
                   : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
-              }`}
+                }`}
             >
               Last Month ({completeLastMonthCount})
             </button>

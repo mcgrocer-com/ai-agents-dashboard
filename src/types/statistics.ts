@@ -14,3 +14,15 @@ export interface VendorStatistics {
   syncedToErpNext: number
   failedToSync: number
 }
+
+/**
+ * Agent-specific vendor statistics from pending_products table
+ * Shows statistics for a single agent type filtered by vendor
+ */
+export interface AgentVendorStatistics {
+  totalProducts: number
+  pending: number
+  processing: number
+  complete: number
+  failed: number
+}

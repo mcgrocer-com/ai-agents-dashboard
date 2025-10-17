@@ -23,7 +23,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
   const [pushSuccess, setPushSuccess] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!vendor || vendor === 'all') {
+    if (!vendor) {
       setStats(null)
       setIsLoading(false)
       return
@@ -84,17 +84,6 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
         setPushSuccess(null)
       }, 5000)
     }
-  }
-
-  // Show helper message when "all" vendors is selected
-  if (!vendor || vendor === 'all') {
-    return (
-      <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-800">
-          💡 <strong>Tip:</strong> Click on the <strong>Filters</strong> button and select a specific vendor to see detailed statistics for that vendor.
-        </p>
-      </div>
-    )
   }
 
   // Loading skeleton
@@ -186,15 +175,16 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
       <div className="mb-3 flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold text-secondary-900 capitalize">
-            {vendor} Statistics
+            {vendor === 'all' ? 'All Vendors' : vendor} Statistics
           </h2>
           <p className="text-sm text-secondary-600">
             Total Products in queue: {stats.totalProducts.toLocaleString()}
           </p>
         </div>
 
-        {/* Send to Queue Button with Tooltip */}
-        <div className="flex items-center gap-2">
+        {/* Send to Queue Button with Tooltip - Only show for specific vendors */}
+        {vendor !== 'all' && (
+          <div className="flex items-center gap-2">
           <div className="relative group">
             <button
               type="button"
@@ -231,6 +221,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
             )}
           </button>
         </div>
+        )}
       </div>
 
       {/* Success Message */}

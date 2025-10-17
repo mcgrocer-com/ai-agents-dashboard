@@ -190,8 +190,8 @@ export function ScraperAgentPage() {
         </nav>
       </div>
 
-      {/* Vendor Statistics - Shows when specific vendor is selected */}
-      {defaultVendor && defaultVendor !== 'all' && (
+      {/* Vendor Statistics - Shows for all vendors (displays helper) or specific vendor (displays stats) */}
+      {defaultVendor && (
         <VendorStatistics vendor={defaultVendor} />
       )}
 

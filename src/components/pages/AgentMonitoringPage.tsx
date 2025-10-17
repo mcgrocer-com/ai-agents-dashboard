@@ -10,14 +10,14 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAgentMetrics, usePendingForAgent, useVendors, useAgentRealtime } from '@/hooks'
 import { agentsService } from '@/services'
-import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Pagination } from '@/components/ui/Pagination'
 import { Dialog } from '@/components/ui/Dialog'
 import { Toast } from '@/components/ui/Toast'
 import { AgentProductCard } from '@/components/products/AgentProductCard'
+import { AgentVendorStatistics } from '@/components/agents/AgentVendorStatistics'
 import { AdvancedFilterBuilder, type FilterRule } from '@/components/filters/AdvancedFilterBuilder'
-import { TrendingUp, Activity, Package, Search, SlidersHorizontal, RefreshCw, type LucideIcon } from 'lucide-react'
+import { Package, Search, SlidersHorizontal, RefreshCw, type LucideIcon } from 'lucide-react'
 import type { AgentType } from '@/services/agents.service'
 
 export interface FilterColumn {
@@ -169,89 +169,8 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      {metricsLoading ? (
-        <ShimmerLoader type="agent-page" rows={6} />
-      ) : agent ? (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-secondary-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-secondary-600">Total Products</p>
-                  <p className="text-2xl font-bold text-secondary-900 mt-1">
-                    {agent.totalProducts.toLocaleString()}
-                  </p>
-                </div>
-                <IconComponent className={`h-8 w-8 ${config.iconColor.replace('text-', 'text-')}500`} />
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-secondary-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-secondary-600">Success Rate</p>
-                  <p className="text-2xl font-bold text-green-600 mt-1">
-                    {(
-                      (agent.complete / (agent.complete + agent.failed || 1)) *
-                      100
-                    ).toFixed(1)}
-                    %
-                  </p>
-                </div>
-                <TrendingUp className="h-8 w-8 text-green-500" />
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-secondary-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-secondary-600">Avg Confidence</p>
-                  <p className="text-2xl font-bold text-secondary-900 mt-1">
-                    {(agent.avgConfidence * 100).toFixed(0)}%
-                  </p>
-                </div>
-                <Activity className="h-8 w-8 text-purple-500" />
-              </div>
-            </div>
-          </div>
-
-          {/* Status Breakdown */}
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-secondary-200">
-            <h2 className="text-lg font-bold text-secondary-900 mb-4">Processing Status</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                <p className="text-sm text-yellow-700 font-medium">Pending</p>
-                <p className="text-3xl font-bold text-yellow-900 mt-2">
-                  {agent.pending.toLocaleString()}
-                </p>
-              </div>
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-700 font-medium">Processing</p>
-                <p className="text-3xl font-bold text-blue-900 mt-2">
-                  {agent.processing.toLocaleString()}
-                </p>
-              </div>
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-sm text-green-700 font-medium">Complete</p>
-                <p className="text-3xl font-bold text-green-900 mt-2">
-                  {agent.complete.toLocaleString()}
-                </p>
-              </div>
-              <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-                <p className="text-sm text-red-700 font-medium">Failed</p>
-                <p className="text-3xl font-bold text-red-900 mt-2">
-                  {agent.failed.toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="bg-white p-12 rounded-lg shadow-sm border border-secondary-200">
-          <p className="text-secondary-600 text-center">No {agentType} agent metrics available</p>
-        </div>
-      )}
+      {/* Agent Vendor Statistics - Shows vendor-specific agent metrics */}
+      <AgentVendorStatistics agentType={agentType} vendor={selectedVendor || 'all'} />
 
       {/* Products Section */}
       <div className="bg-white rounded-lg shadow-sm border border-secondary-200">

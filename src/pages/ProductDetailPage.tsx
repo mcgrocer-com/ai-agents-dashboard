@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { FileText, Tags, Package, Search, Code, ChevronRight, Home } from 'lucide-react'
-import { productsService, erpnextService } from '@/services'
+import { productsService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
 import { ProductTabs, type Tab } from '@/components/products/ProductTabs'
@@ -28,7 +28,6 @@ export function ProductDetailPage() {
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [sendingToErpnext, setSendingToErpnext] = useState(false)
   const [togglingPin, setTogglingPin] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
@@ -56,40 +55,6 @@ export function ProductDetailPage() {
   const handleRetry = () => {
     // Refresh the page to get updated data
     window.location.reload()
-  }
-
-  const handleSendToErpnext = async () => {
-    if (!product?.url) {
-      showToast('Product URL is required to send to ERPNext', 'error')
-      return
-    }
-
-    setSendingToErpnext(true)
-
-    try {
-      const { data, error: erpnextError } = await erpnextService.pushToErpnext(product.url)
-
-      if (erpnextError || !data) {
-        throw erpnextError || new Error('Failed to send to ERPNext')
-      }
-
-      if (data.success && data.summary.successful > 0) {
-        const result = data.results[0]
-        const itemCode = result.production?.item_code || result.staging?.item_code
-        showToast(`Successfully sent to ERPNext! Item Code: ${itemCode}`, 'success')
-
-        // Refresh product data to get updated erpnext_updated_at
-        setTimeout(() => window.location.reload(), 2000)
-      } else {
-        const result = data.results[0]
-        throw new Error(result.error || 'Failed to send to ERPNext')
-      }
-    } catch (err: any) {
-      console.error('Error sending to ERPNext:', err)
-      showToast(`Failed to send to ERPNext: ${err.message}`, 'error')
-    } finally {
-      setSendingToErpnext(false)
-    }
   }
 
   const handleTogglePin = async () => {
@@ -375,9 +340,8 @@ export function ProductDetailPage() {
         alternativeImages={alternativeImages}
         productUrl={product.url || undefined}
         erpnextUpdatedAt={product.erpnext_updated_at || undefined}
+        failedSyncAt={product.failed_sync_at || undefined}
         pinned={product.pinned || false}
-        onSendToErpnext={handleSendToErpnext}
-        sendingToErpnext={sendingToErpnext}
         onTogglePin={handleTogglePin}
         togglingPin={togglingPin}
         onEdit={handleEdit}

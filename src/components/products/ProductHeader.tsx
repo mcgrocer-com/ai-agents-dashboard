@@ -4,7 +4,7 @@
  * Displays product header with image, name, and basic information.
  */
 
-import { Package, ExternalLink, Send, Pin, Edit } from 'lucide-react'
+import { Package, ExternalLink, Pin, Edit, CheckCircle, XCircle } from 'lucide-react'
 import { formatCurrency, formatDateTime } from '@/lib/utils/format'
 
 interface ProductHeaderProps {
@@ -17,9 +17,8 @@ interface ProductHeaderProps {
   alternativeImages?: string[]
   productUrl?: string
   erpnextUpdatedAt?: string | null
+  failedSyncAt?: string | null
   pinned?: boolean
-  onSendToErpnext?: () => void
-  sendingToErpnext?: boolean
   onTogglePin?: () => void
   togglingPin?: boolean
   onEdit?: () => void
@@ -35,9 +34,8 @@ export function ProductHeader({
   alternativeImages = [],
   productUrl,
   erpnextUpdatedAt,
+  failedSyncAt,
   pinned = false,
-  onSendToErpnext,
-  sendingToErpnext = false,
   onTogglePin,
   togglingPin = false,
   onEdit,
@@ -114,29 +112,44 @@ export function ProductHeader({
               </button>
             )}
 
-            {/* Send to ERPNext Button */}
-            <button
-              onClick={onSendToErpnext}
-              disabled={sendingToErpnext}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {sendingToErpnext ? (
-                <>
-                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Sending...
-                </>
+            {/* ERPNext Sync Status Indicator */}
+            <div className="w-full">
+              {erpnextUpdatedAt && (!failedSyncAt || new Date(erpnextUpdatedAt) > new Date(failedSyncAt)) ? (
+                <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-green-900">Synced to ERPNext</p>
+                      <p className="text-xs text-green-700 truncate">
+                        {formatDateTime(erpnextUpdatedAt)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : failedSyncAt ? (
+                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-red-900">Sync Failed</p>
+                      <p className="text-xs text-red-700 truncate">
+                        {formatDateTime(failedSyncAt)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <>
-                  <Send className="h-4 w-4" />
-                  Send to ERPNext
-                </>
+                <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <div className="h-5 w-5 rounded-full border-2 border-gray-400 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-700">Not Synced</p>
+                      <p className="text-xs text-gray-600">Waiting for sync</p>
+                    </div>
+                  </div>
+                </div>
               )}
-            </button>
-            {erpnextUpdatedAt && (
-              <p className="text-xs text-gray-500 text-center">
-                Last sent: {formatDateTime(erpnextUpdatedAt)}
-              </p>
-            )}
+            </div>
           </div>
         </div>
 

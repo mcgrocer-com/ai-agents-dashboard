@@ -6,7 +6,7 @@ CREATE OR REPLACE FUNCTION get_processing_products_with_cleanup(
 )
 RETURNS TABLE (
   id UUID,
-  scraped_product_id UUID,
+  scraped_product_id TEXT,
   category_status TEXT,
   weight_and_dimension_status TEXT,
   seo_status TEXT,
@@ -26,31 +26,31 @@ BEGIN
   -- Step 1: Cleanup - Reset stale processing products back to pending
 
   -- Reset category_status
-  UPDATE pending_products
+  UPDATE pending_products pp
   SET category_status = 'pending'
-  WHERE category_status = 'processing'
-    AND updated_at < five_minutes_ago;
+  WHERE pp.category_status = 'processing'
+    AND pp.updated_at < five_minutes_ago;
 
   -- Reset weight_and_dimension_status
-  UPDATE pending_products
+  UPDATE pending_products pp
   SET weight_and_dimension_status = 'pending'
-  WHERE weight_and_dimension_status = 'processing'
-    AND updated_at < five_minutes_ago;
+  WHERE pp.weight_and_dimension_status = 'processing'
+    AND pp.updated_at < five_minutes_ago;
 
   -- Reset seo_status
-  UPDATE pending_products
+  UPDATE pending_products pp
   SET seo_status = 'pending'
-  WHERE seo_status = 'processing'
-    AND updated_at < five_minutes_ago;
+  WHERE pp.seo_status = 'processing'
+    AND pp.updated_at < five_minutes_ago;
 
   -- Step 2: Return current processing products
   RETURN QUERY
   SELECT
     pp.id,
     pp.scraped_product_id,
-    pp.category_status,
-    pp.weight_and_dimension_status,
-    pp.seo_status,
+    pp.category_status::TEXT,
+    pp.weight_and_dimension_status::TEXT,
+    pp.seo_status::TEXT,
     pp.updated_at,
     sp.name AS product_name,
     sp.vendor,

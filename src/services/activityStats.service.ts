@@ -123,7 +123,7 @@ class ActivityStatsService {
    */
   async getProcessingProducts(limit: number = 50) {
     try {
-      const { data, error } = await supabase.rpc('get_processing_products_with_cleanup', {
+      const { data, error } = await supabase.rpc('get_processing_products', {
         row_limit: limit,
       })
 

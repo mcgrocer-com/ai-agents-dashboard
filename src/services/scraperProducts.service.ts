@@ -6,7 +6,8 @@
 
 import { supabase } from '@/lib/supabase/client'
 import type { FilterRule } from '@/components/filters/AdvancedFilterBuilder'
-import type { VendorStatistics } from '@/types/statistics'
+import type { VendorStatistics, AgentVendorStatistics } from '@/types/statistics'
+import type { AgentType } from '@/services/agents.service'
 
 export interface ScraperProduct {
   id: string
@@ -227,7 +228,45 @@ class ScraperProductsService {
     }
   }
 
+  /**
+   * Get agent-specific vendor statistics from pending_products table
+   */
+  async getAgentVendorStatistics(agentType: AgentType, vendor: string): Promise<AgentVendorStatistics | null> {
+    try {
+      // Use RPC function for efficient server-side aggregation
+      const { data, error } = await supabase.rpc('get_agent_vendor_statistics', {
+        agent_type: agentType,
+        vendor_filter: vendor,
+      })
 
+      if (error) {
+        console.error('Error calling get_agent_vendor_statistics:', error)
+        return {
+          totalProducts: 0,
+          pending: 0,
+          processing: 0,
+          complete: 0,
+          failed: 0,
+        }
+      }
+
+      // The RPC function returns a JSON object with our statistics
+      if (data && typeof data === 'object') {
+        return {
+          totalProducts: data.totalProducts || 0,
+          pending: data.pending || 0,
+          processing: data.processing || 0,
+          complete: data.complete || 0,
+          failed: data.failed || 0,
+        }
+      }
+
+      return data as AgentVendorStatistics
+    } catch (error) {
+      console.error('Error fetching agent vendor statistics:', error)
+      return null
+    }
+  }
 }
 
 export const scraperProductsService = new ScraperProductsService()
