@@ -24,7 +24,6 @@ export function RecentActivity() {
   const [dateFilter, setDateFilter] = useState<DateFilterType>('today')
   const [processingActivities, setProcessingActivities] = useState<RecentActivityType[]>([])
   const [completeActivities, setCompleteActivities] = useState<RecentActivityType[]>([])
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [activityStats, setActivityStats] = useState<ActivityStats>({
     today: 0,
     thisMonth: 0,
@@ -483,33 +482,7 @@ export function RecentActivity() {
       )}
 
       <div className="space-y-4 flex-1 overflow-y-auto overflow-x-hidden pr-1">
-        {isRefreshing ? (
-          // Shimmer loading skeleton
-          Array.from({ length: 5 }).map((_, index) => (
-            <div
-              key={`skeleton-${index}`}
-              className="flex items-start gap-3 pb-3 border-b animate-pulse"
-            >
-              {/* Image skeleton */}
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 rounded bg-gray-200"></div>
-              </div>
-
-              {/* Content skeleton */}
-              <div className="flex-1 min-w-0 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-24 bg-gray-200 rounded"></div>
-                  <div className="h-5 w-16 bg-gray-200 rounded-full"></div>
-                </div>
-                <div className="h-4 w-3/4 bg-gray-200 rounded"></div>
-                <div className="flex items-center gap-2">
-                  <div className="h-3 w-16 bg-gray-200 rounded"></div>
-                  <div className="h-3 w-24 bg-gray-200 rounded"></div>
-                </div>
-              </div>
-            </div>
-          ))
-        ) : sortedActivities.length === 0 ? (
+        {sortedActivities.length === 0 ? (
           <div className="text-sm text-gray-500 text-center py-8 flex items-center justify-center h-full">
             No {activeTab} activity
           </div>

@@ -73,7 +73,7 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   const [pageSize, setPageSize] = useState(20)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
-  const { metrics, isLoading: metricsLoading } = useAgentMetrics()
+  const { metrics } = useAgentMetrics()
   const { vendors } = useVendors()
 
   const agent = metrics?.find((m) => m.agentType === agentType)
