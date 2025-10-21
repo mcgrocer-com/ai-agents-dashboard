@@ -37,7 +37,6 @@ const seoAgentConfig: AgentConfig = {
   filterColumns: [
     { label: 'SEO Title', value: 'seo_title', type: 'text' },
     { label: 'Vendor', value: 'vendor', type: 'text' },
-    { label: 'Confidence', value: 'seo_confidence', type: 'number' },
     { label: 'Cost', value: 'seo_cost', type: 'number' },
     { label: 'Item Code', value: 'item_code', type: 'text' },
   ],

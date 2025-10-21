@@ -213,7 +213,55 @@ export async function pushMultipleToErpnext(urls: string[]): Promise<{
   }
 }
 
+/**
+ * Push products to ERPNext by product URLs
+ */
+export async function pushProductsByUrls(productUrls: string[]): Promise<{
+  data: {
+    success: boolean
+    results: Array<{
+      productId: string
+      url: string
+      status: 'success' | 'failed'
+      itemCode?: string
+      error?: string
+    }>
+    summary: {
+      total: number
+      successful: number
+      failed: number
+    }
+  } | null
+  error: Error | null
+}> {
+  try {
+    if (!Array.isArray(productUrls) || productUrls.length === 0) {
+      throw new Error('productUrls array is required and cannot be empty')
+    }
+
+    const { data, error } = await supabase.functions.invoke('push-products-to-erpnext', {
+      body: { productUrls }
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return {
+      data,
+      error: null
+    }
+  } catch (error) {
+    console.error('Error pushing products by URLs:', error)
+    return {
+      data: null,
+      error: error instanceof Error ? error : new Error('Unknown error')
+    }
+  }
+}
+
 export const erpnextService = {
   pushToErpnext,
   pushMultipleToErpnext,
+  pushProductsByUrls,
 }

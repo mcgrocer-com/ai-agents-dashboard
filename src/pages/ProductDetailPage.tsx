@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { FileText, Tags, Package, Search, Code, ChevronRight, Home } from 'lucide-react'
-import { productsService } from '@/services'
+import { productsService, erpnextService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
 import { ProductTabs, type Tab } from '@/components/products/ProductTabs'
@@ -31,6 +31,7 @@ export function ProductDetailPage() {
   const [togglingPin, setTogglingPin] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
+  const [pushing, setPushing] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -118,6 +119,71 @@ export function ProductDetailPage() {
     }
   }
 
+  const handlePushToErpnext = async () => {
+    if (!product?.url) return
+
+    // Validation checks
+    const validationErrors: string[] = []
+
+    // Check category and breadcrumbs
+    if (!product.category_mapped || product.category_mapped.trim() === '') {
+      validationErrors.push('Category is required')
+    }
+    if (!product.breadcrumbs || (Array.isArray(product.breadcrumbs) && product.breadcrumbs.length === 0)) {
+      validationErrors.push('Breadcrumbs are required')
+    }
+
+    // Check weight and dimensions
+    if (!product.weight_value || product.weight_value === 0) {
+      validationErrors.push('Weight is required')
+    }
+    if (!product.height_value || product.height_value === 0) {
+      validationErrors.push('Height is required')
+    }
+    if (!product.width_value || product.width_value === 0) {
+      validationErrors.push('Width is required')
+    }
+    if (!product.length_value || product.length_value === 0) {
+      validationErrors.push('Length is required')
+    }
+
+    // If there are validation errors, show them and return
+    if (validationErrors.length > 0) {
+      const errorMessage = validationErrors.length === 1
+        ? validationErrors[0]
+        : `Missing required data:\n${validationErrors.map(err => `• ${err}`).join('\n')}`
+
+      showToast(errorMessage, 'error')
+      return
+    }
+
+    setPushing(true)
+    console.log('Pushing to ERPNext...', product.url)
+
+    try {
+      const { data, error } = await erpnextService.pushProductsByUrls([product.url])
+
+      if (error || !data) {
+        throw error || new Error('Failed to push product to ERPNext')
+      }
+
+      const result = data.results[0]
+
+      if (result.status === 'success') {
+        showToast('Product successfully pushed to ERPNext', 'success')
+        // Refresh product data to show updated sync status
+        window.location.reload()
+      } else {
+        throw new Error(result.error || 'Failed to push product to ERPNext')
+      }
+    } catch (err: any) {
+      console.error('Error pushing to ERPNext:', err)
+      showToast(`Failed to push to ERPNext: ${err.message}`, 'error')
+    } finally {
+      setPushing(false)
+    }
+  }
+
   if (loading) {
     return <ShimmerLoader type="product-detail" />
   }
@@ -144,7 +210,9 @@ export function ProductDetailPage() {
       icon: <FileText className="h-4 w-4" />,
       content: (
         <OverviewTab
-          description={product.description || product.ai_description || undefined}
+          description={product.description || undefined}
+          aiTitle={product.ai_title || undefined}
+          aiDescription={product.ai_description || undefined}
           createdAt={product.created_at || undefined}
           updatedAt={product.timestamp || undefined}
         />
@@ -213,9 +281,10 @@ export function ProductDetailPage() {
           status={product.seo_status || 'pending'}
           optimizedTitle={product.optimized_title}
           optimizedDescription={product.optimized_description}
+          aiTitle={product.ai_title}
+          aiDescription={product.ai_description}
           keywordsUsed={product.keywords_used}
           reasoning={product.seo_reasoning}
-          confidence={product.seo_confidence}
           toolsUsed={product.seo_tools_used}
           feedback={product.seo_feedback}
           updatedAt={product.updated_at}
@@ -339,12 +408,15 @@ export function ProductDetailPage() {
         imageUrl={product.main_image || undefined}
         alternativeImages={alternativeImages}
         productUrl={product.url || undefined}
+        productId={product.id || undefined}
         erpnextUpdatedAt={product.erpnext_updated_at || undefined}
         failedSyncAt={product.failed_sync_at || undefined}
         pinned={product.pinned || false}
         onTogglePin={handleTogglePin}
         togglingPin={togglingPin}
         onEdit={handleEdit}
+        onPushToErpnext={handlePushToErpnext}
+        pushing={pushing}
       />
 
       {/* Agent Status Overview Cards */}

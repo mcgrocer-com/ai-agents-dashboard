@@ -14,8 +14,54 @@ interface RawDataTabProps {
 export function RawDataTab({ data }: RawDataTabProps) {
   const [copied, setCopied] = useState(false)
 
+  // Extract only the original product data fields
+  const getProductData = (data: any) => {
+    if (!data) return {}
+
+    // Only include the original product fields
+    const allowedFields = [
+      'name',
+      'price',
+      'original_price', // Maps to selling_price
+      'product_id',
+      'description',
+      'stock_status',
+      'url',
+      'category',
+      'vendor',
+      'images',
+      'main_image',
+      'timestamp',
+      'height',
+      'weight',
+      'width',
+      'volumetric_weight',
+      'length',
+      'breadcrumbs', // Maps to breadcrumb
+    ]
+
+    // Create a new object with only allowed fields
+    const productData: any = {}
+    allowedFields.forEach((key) => {
+      if (data[key] !== undefined && data[key] !== null) {
+        // Map field names to match ERPNext format
+        if (key === 'original_price') {
+          productData['selling_price'] = data[key]
+        } else if (key === 'breadcrumbs') {
+          productData['breadcrumb'] = data[key]
+        } else {
+          productData[key] = data[key]
+        }
+      }
+    })
+
+    return productData
+  }
+
+  const productData = getProductData(data)
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+    navigator.clipboard.writeText(JSON.stringify(productData, null, 2))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -48,7 +94,7 @@ export function RawDataTab({ data }: RawDataTabProps) {
 
       <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto max-w-full">
         <pre className="text-sm text-gray-100 font-mono whitespace-pre-wrap break-words min-w-0">
-          {JSON.stringify(data, null, 2)}
+          {JSON.stringify(productData, null, 2)}
         </pre>
       </div>
     </div>

@@ -123,3 +123,20 @@ export function formatFileSize(bytes: number | null | undefined): string {
 
   return `${size.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
 }
+
+/**
+ * Convert hex ID to UUID format
+ * @example hexToUuid('60e3749bf835a19240320da9c3c96c28') => '60e3749b-f835-a192-4032-0da9c3c96c28'
+ */
+export function hexToUuid(hex: string): string {
+  if (!hex) return hex;
+
+  // Remove any existing hyphens
+  const cleanHex = hex.replace(/-/g, '');
+
+  // If not 32 characters, return as-is (not a valid hex UUID)
+  if (cleanHex.length !== 32) return hex;
+
+  // Insert hyphens at positions 8, 12, 16, and 20
+  return `${cleanHex.slice(0, 8)}-${cleanHex.slice(8, 12)}-${cleanHex.slice(12, 16)}-${cleanHex.slice(16, 20)}-${cleanHex.slice(20)}`;
+}

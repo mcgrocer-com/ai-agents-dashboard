@@ -67,7 +67,7 @@ export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick
       case 'weight_dimension':
         return pendingData.weight_confidence
       case 'seo':
-        return pendingData.seo_confidence
+        return null // SEO agent doesn't display confidence
       default:
         return null
     }

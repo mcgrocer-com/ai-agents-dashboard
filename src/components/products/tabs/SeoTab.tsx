@@ -13,9 +13,10 @@ interface SeoTabProps {
   seoResult?: any
   optimizedTitle?: string | null
   optimizedDescription?: string | null
+  aiTitle?: string | null
+  aiDescription?: string | null
   keywordsUsed?: string[] | null
   reasoning?: string | null
-  confidence?: number | null
   processingCost?: number | null
   toolsUsed?: Record<string, any> | null
   errorMessage?: string | null
@@ -28,9 +29,10 @@ export function SeoTab({
   seoResult,
   optimizedTitle,
   optimizedDescription,
+  aiTitle,
+  aiDescription,
   keywordsUsed,
   reasoning,
-  confidence,
   toolsUsed,
   errorMessage,
   feedback,
@@ -170,6 +172,51 @@ export function SeoTab({
         </div>
       )}
 
+      {/* AI Title */}
+      {aiTitle && (
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <FileText className="h-5 w-5 text-emerald-500" />
+            AI Generated Title
+          </h3>
+          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg p-4">
+            <p className="text-gray-900 font-medium">{aiTitle}</p>
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-emerald-200">
+              <p className="text-xs text-gray-600">
+                Length: <span className="font-semibold">{aiTitle.length}</span> characters
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Description */}
+      {aiDescription && (
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">
+            AI Generated Description
+          </h3>
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4">
+            <div
+              className="text-gray-900 prose prose-sm max-w-none
+                [&_h4]:text-base [&_h4]:font-semibold [&_h4]:text-gray-900 [&_h4]:mb-2 [&_h4]:mt-4
+                [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-3
+                [&_ul]:list-disc [&_ul]:ml-4 [&_ul]:mb-3
+                [&_ol]:list-decimal [&_ol]:ml-4 [&_ol]:mb-3
+                [&_li]:text-sm [&_li]:mb-1
+                [&_strong]:font-semibold [&_strong]:text-gray-900
+                [&_em]:italic"
+              dangerouslySetInnerHTML={{ __html: aiDescription }}
+            />
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-amber-200">
+              <p className="text-xs text-gray-600">
+                Length: <span className="font-semibold">{aiDescription.length}</span> characters
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Keywords */}
       {keywords && keywords.length > 0 && (
         <div>
@@ -250,30 +297,6 @@ export function SeoTab({
           </h3>
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
             <p className="text-gray-800 whitespace-pre-wrap">{seoReasoning}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Confidence Score */}
-      {confidence !== null && confidence !== undefined && (
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">
-            Confidence Score
-          </h3>
-          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-gradient-to-r from-indigo-500 to-blue-500 h-3 rounded-full transition-all"
-                    style={{ width: `${confidence * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-              <span className="text-lg font-bold text-gray-900">
-                {(confidence * 100).toFixed(1)}%
-              </span>
-            </div>
           </div>
         </div>
       )}

@@ -4,7 +4,7 @@
  * Displays product header with image, name, and basic information.
  */
 
-import { Package, ExternalLink, Pin, Edit, CheckCircle, XCircle } from 'lucide-react'
+import { Package, ExternalLink, Pin, Edit, CheckCircle, XCircle, Upload } from 'lucide-react'
 import { formatCurrency, formatDateTime } from '@/lib/utils/format'
 
 interface ProductHeaderProps {
@@ -16,12 +16,15 @@ interface ProductHeaderProps {
   imageUrl?: string
   alternativeImages?: string[]
   productUrl?: string
+  productId?: string
   erpnextUpdatedAt?: string | null
   failedSyncAt?: string | null
   pinned?: boolean
   onTogglePin?: () => void
   togglingPin?: boolean
   onEdit?: () => void
+  onPushToErpnext?: () => void
+  pushing?: boolean
 }
 
 export function ProductHeader({
@@ -33,12 +36,15 @@ export function ProductHeader({
   imageUrl,
   alternativeImages = [],
   productUrl,
+  productId,
   erpnextUpdatedAt,
   failedSyncAt,
   pinned = false,
   onTogglePin,
   togglingPin = false,
   onEdit,
+  onPushToErpnext,
+  pushing = false,
 }: ProductHeaderProps) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
@@ -109,6 +115,28 @@ export function ProductHeader({
               >
                 <Edit className="h-4 w-4" />
                 Edit Product
+              </button>
+            )}
+
+            {/* Push to ERPNext Button */}
+            {onPushToErpnext && productId && (
+              <button
+                onClick={onPushToErpnext}
+                disabled={pushing}
+                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Manually push this product to ERPNext"
+              >
+                {pushing ? (
+                  <>
+                    <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Pushing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Push to ERPNext
+                  </>
+                )}
               </button>
             )}
 
