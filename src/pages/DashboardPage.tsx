@@ -10,6 +10,7 @@ import { LiveMetrics } from '@/components/dashboard/LiveMetrics'
 import { AgentStatusCard } from '@/components/dashboard/AgentStatusCard'
 import { ProcessingQueue } from '@/components/dashboard/ProcessingQueue'
 import { RecentActivity } from '@/components/dashboard/RecentActivity'
+import { JobQueueManager } from '@/components/dashboard/JobQueueManager'
 import { Tag, Scale, FileText } from 'lucide-react'
 
 export function DashboardPage() {
@@ -25,12 +26,15 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-2">
-          Overview of AI workflow processing
-        </p>
+      {/* Header with Manage Tasks Button */}
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-2">
+            Overview of AI workflow processing
+          </p>
+        </div>
+        <JobQueueManager />
       </div>
 
       {/* Live Metrics Cards - No loading spinner, uses shimmer in component */}
