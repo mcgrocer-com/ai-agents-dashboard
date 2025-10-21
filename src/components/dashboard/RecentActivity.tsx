@@ -84,50 +84,22 @@ export function RecentActivity() {
         const vendor = item.vendor || ''
         const imageUrl = item.main_image || ''
 
-        // Category agent activity
-        if (item.category_status && item.category_status !== 'pending') {
-          freshActivities.push({
-            id: `cat-${item.id}`,
-            productName,
-            vendor,
-            imageUrl,
-            agent: 'Category Mapper',
-            status: item.category_status as AgentStatus,
-            timestamp: item.updated_at ?? '',
-            productId: item.scraped_product_id || item.id,
-          })
-        }
-
-        // Weight & Dimension agent activity
-        if (
-          item.weight_and_dimension_status &&
-          item.weight_and_dimension_status !== 'pending'
-        ) {
-          freshActivities.push({
-            id: `weight-${item.id}`,
-            productName,
-            vendor,
-            imageUrl,
-            agent: 'Weight & Dimension',
-            status: item.weight_and_dimension_status as AgentStatus,
-            timestamp: item.updated_at ?? '',
-            productId: item.scraped_product_id || item.id,
-          })
-        }
-
-        // SEO agent activity
-        if (item.seo_status && item.seo_status !== 'pending') {
-          freshActivities.push({
-            id: `seo-${item.id}`,
-            productName,
-            vendor,
-            imageUrl,
-            agent: 'SEO Optimizer',
-            status: item.seo_status as AgentStatus,
-            timestamp: item.updated_at ?? '',
-            productId: item.scraped_product_id || item.id,
-          })
-        }
+        // Create one activity item per product with all agent statuses
+        // The RPC function already filters for products where ALL selected agents are complete
+        freshActivities.push({
+          id: `product-${item.id}`,
+          productName,
+          vendor,
+          imageUrl,
+          agent: 'All Agents',
+          status: 'complete' as AgentStatus, // All selected agents are complete (filtered by RPC)
+          timestamp: item.updated_at ?? '',
+          productId: item.scraped_product_id || item.id,
+          // Add all agent statuses for display
+          categoryStatus: item.category_status as AgentStatus,
+          weightStatus: item.weight_and_dimension_status as AgentStatus,
+          seoStatus: item.seo_status as AgentStatus,
+        })
       })
 
       // Sort by timestamp
@@ -517,27 +489,83 @@ export function RecentActivity() {
 
               {/* Product Details */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-sm font-medium ${getAgentColor(activity.agent)}`}>
-                    {activity.agent}
-                  </span>
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                      activity.status
-                    )}`}
-                  >
-                    {activity.status}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-900 font-medium truncate">
-                  {activity.productName || `Product ${activity.productId}`}
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-gray-500 capitalize">{activity.vendor}</span>
-                  <span className="text-xs text-gray-400">
-                    {formatRelativeTime(activity.timestamp)}
-                  </span>
-                </div>
+                {activeTab === 'complete' ? (
+                  // Complete tab: Show all agent statuses
+                  <>
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      {/* Category Agent Status */}
+                      {activity.categoryStatus && activity.categoryStatus !== 'pending' && (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                            activity.categoryStatus
+                          )}`}
+                          title={`Category: ${activity.categoryStatus}`}
+                        >
+                          <span className="text-blue-600 mr-1">C</span>
+                          {activity.categoryStatus}
+                        </span>
+                      )}
+                      {/* Weight & Dimension Agent Status */}
+                      {activity.weightStatus && activity.weightStatus !== 'pending' && (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                            activity.weightStatus
+                          )}`}
+                          title={`Weight & Dimension: ${activity.weightStatus}`}
+                        >
+                          <span className="text-green-600 mr-1">W</span>
+                          {activity.weightStatus}
+                        </span>
+                      )}
+                      {/* SEO Agent Status */}
+                      {activity.seoStatus && activity.seoStatus !== 'pending' && (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                            activity.seoStatus
+                          )}`}
+                          title={`SEO: ${activity.seoStatus}`}
+                        >
+                          <span className="text-purple-600 mr-1">S</span>
+                          {activity.seoStatus}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-900 font-medium truncate">
+                      {activity.productName || `Product ${activity.productId}`}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-gray-500 capitalize">{activity.vendor}</span>
+                      <span className="text-xs text-gray-400">
+                        {formatRelativeTime(activity.timestamp)}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  // Processing tab: Show single agent status
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-sm font-medium ${getAgentColor(activity.agent)}`}>
+                        {activity.agent}
+                      </span>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                          activity.status
+                        )}`}
+                      >
+                        {activity.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-900 font-medium truncate">
+                      {activity.productName || `Product ${activity.productId}`}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-gray-500 capitalize">{activity.vendor}</span>
+                      <span className="text-xs text-gray-400">
+                        {formatRelativeTime(activity.timestamp)}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ))

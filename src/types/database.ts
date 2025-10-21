@@ -311,6 +311,10 @@ export interface RecentActivity {
   status: AgentStatus
   timestamp: string
   productId: string
+  // Agent statuses for complete tab items
+  categoryStatus?: AgentStatus
+  weightStatus?: AgentStatus
+  seoStatus?: AgentStatus
 }
 
 // ============================================================================
