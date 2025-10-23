@@ -16,7 +16,7 @@ import type { RecentActivity as RecentActivityType, AgentStatus } from '@/types'
 import type { AgentFilter, ActivityStats } from '@/services/activityStats.service'
 
 type TabType = 'processing' | 'complete'
-type DateFilterType = 'today' | 'thisMonth' | 'lastMonth'
+type DateFilterType = 'today' | 'thisWeek' | 'thisMonth' | 'lastMonth'
 
 export function RecentActivity() {
   const navigate = useNavigate()
@@ -26,6 +26,7 @@ export function RecentActivity() {
   const [completeActivities, setCompleteActivities] = useState<RecentActivityType[]>([])
   const [activityStats, setActivityStats] = useState<ActivityStats>({
     today: 0,
+    thisWeek: 0,
     thisMonth: 0,
     lastMonth: 0,
   })
@@ -255,6 +256,16 @@ export function RecentActivity() {
     )
   }
 
+  const isThisWeek = (date: Date) => {
+    const today = new Date()
+    // Get the start of this week (Sunday)
+    const startOfWeek = new Date(today)
+    startOfWeek.setUTCDate(today.getUTCDate() - today.getUTCDay())
+    startOfWeek.setUTCHours(0, 0, 0, 0)
+
+    return date >= startOfWeek
+  }
+
   const isThisMonth = (date: Date) => {
     const today = new Date()
     return (
@@ -277,6 +288,8 @@ export function RecentActivity() {
     switch (dateFilter) {
       case 'today':
         return isToday(activityDate)
+      case 'thisWeek':
+        return isThisWeek(activityDate)
       case 'thisMonth':
         return isThisMonth(activityDate)
       case 'lastMonth':
@@ -302,6 +315,7 @@ export function RecentActivity() {
   // Get counts - use aggregated stats for complete, activities.length for processing
   const processingCount = allProcessingActivities.length
   const completeTodayCount = activityStats.today
+  const completeThisWeekCount = activityStats.thisWeek
   const completeThisMonthCount = activityStats.thisMonth
   const completeLastMonthCount = activityStats.lastMonth
 
@@ -430,6 +444,15 @@ export function RecentActivity() {
                 }`}
             >
               Today ({completeTodayCount})
+            </button>
+            <button
+              onClick={() => setDateFilter('thisWeek')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${dateFilter === 'thisWeek'
+                  ? 'bg-green-100 text-green-700 border border-green-300'
+                  : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
+                }`}
+            >
+              This Week ({completeThisWeekCount})
             </button>
             <button
               onClick={() => setDateFilter('thisMonth')}

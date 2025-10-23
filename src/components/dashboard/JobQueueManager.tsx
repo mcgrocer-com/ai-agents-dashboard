@@ -48,7 +48,7 @@ interface JobFormData {
 
 const AGENT_OPTIONS = [
   { value: 'category', label: 'Category Mapper' },
-  { value: 'weight_dimension', label: 'Weight & Dimension' },
+  { value: 'weight-dimension', label: 'Weight & Dimension' },
   { value: 'seo', label: 'SEO Optimizer' },
 ]
 

@@ -8,6 +8,7 @@ export type AgentFilter = 'category' | 'weight_dimension' | 'seo'
 
 export interface ActivityStats {
   today: number
+  thisWeek: number
   thisMonth: number
   lastMonth: number
 }
@@ -32,23 +33,24 @@ class ActivityStatsService {
 
       if (error) {
         console.error('Error fetching activity stats:', error)
-        return { today: 0, thisMonth: 0, lastMonth: 0 }
+        return { today: 0, thisWeek: 0, thisMonth: 0, lastMonth: 0 }
       }
 
       if (!data || data.length === 0) {
-        return { today: 0, thisMonth: 0, lastMonth: 0 }
+        return { today: 0, thisWeek: 0, thisMonth: 0, lastMonth: 0 }
       }
 
       // Parse the RPC response
       const stats = data[0]
       return {
         today: stats.today_count || 0,
+        thisWeek: stats.this_week_count || 0,
         thisMonth: stats.this_month_count || 0,
         lastMonth: stats.last_month_count || 0,
       }
     } catch (err) {
       console.error('Exception fetching activity stats:', err)
-      return { today: 0, thisMonth: 0, lastMonth: 0 }
+      return { today: 0, thisWeek: 0, thisMonth: 0, lastMonth: 0 }
     }
   }
 

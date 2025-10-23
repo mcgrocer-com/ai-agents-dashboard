@@ -481,7 +481,7 @@ class AgentsService {
       // Build query
       let query = supabase
         .from('pending_products')
-        .update(updates)
+        .update(updates, { count: 'exact' })
         .eq(statusField, 'failed')
 
       // Filter by vendor if specified
