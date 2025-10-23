@@ -20,6 +20,8 @@ import {
   Bot,
   Package,
   Zap,
+  Square,
+  Loader2,
 } from 'lucide-react'
 import { Dialog } from '@/components/ui/Dialog'
 import { Toast } from '@/components/ui/Toast'
@@ -33,7 +35,8 @@ interface JobQueue {
   batch_size: number
   max_batches: number | null
   max_concurrent: number
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  request: 'start' | 'stop' | null
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   created_at: string
   started_at: string | null
   completed_at: string | null
@@ -75,6 +78,7 @@ const STATUS_COLORS = {
   running: { bg: 'bg-blue-100', text: 'text-blue-800', icon: Play },
   completed: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle },
   failed: { bg: 'bg-red-100', text: 'text-red-800', icon: XCircle },
+  cancelled: { bg: 'bg-gray-100', text: 'text-gray-800', icon: XCircle },
 }
 
 export function JobQueueManager() {
@@ -125,6 +129,7 @@ export function JobQueueManager() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'job_queue' },
         () => {
+          console.log('Job queue updated via real-time')
           fetchJobs()
         }
       )
@@ -134,6 +139,13 @@ export function JobQueueManager() {
       subscription.unsubscribe()
     }
   }, [])
+
+  // Refetch jobs when dialog opens
+  useEffect(() => {
+    if (showMainDialog) {
+      fetchJobs()
+    }
+  }, [showMainDialog])
 
   // Add job
   const handleAddJob = async (formData: JobFormData) => {
@@ -198,6 +210,67 @@ export function JobQueueManager() {
     } catch (error) {
       console.error('Error deleting job:', error)
       setToast({ message: 'Failed to delete job', type: 'error' })
+    }
+  }
+
+  // Start job
+  const handleStartJob = async (id: string) => {
+    try {
+      // Find the job being started
+      const jobToStart = jobs.find((j) => j.id === id)
+      if (!jobToStart) {
+        setToast({ message: 'Job not found', type: 'error' })
+        return
+      }
+
+      // Calculate total concurrent across all running jobs
+      const runningJobsConcurrency = jobs
+        .filter((j) => j.status === 'running')
+        .reduce((sum, j) => sum + j.max_concurrent, 0)
+
+      // Check if starting this job would exceed the limit
+      const totalConcurrency = runningJobsConcurrency + jobToStart.max_concurrent
+      if (totalConcurrency > 30) {
+        setToast({
+          message: `Cannot start job. Maximum concurrent limit exceeded (${totalConcurrency}/30). Current running jobs use ${runningJobsConcurrency} concurrent slots.`,
+          type: 'error',
+        })
+        return
+      }
+
+      const { error } = await supabase
+        .from('job_queue')
+        .update({ request: 'start' })
+        .eq('id', id)
+
+      if (error) throw error
+      setToast({ message: 'Job start requested', type: 'success' })
+      await fetchJobs() // Refresh to show spinner immediately
+    } catch (error) {
+      console.error('Error starting job:', error)
+      setToast({ message: 'Failed to start job', type: 'error' })
+    }
+  }
+
+  // Stop job
+  const handleStopJob = async (id: string, isRunning: boolean) => {
+    try {
+      const { error} = await supabase
+        .from('job_queue')
+        .update({ request: 'stop' })
+        .eq('id', id)
+
+      if (error) throw error
+
+      const message = isRunning
+        ? 'Job stop requested - will be acknowledged after current batch'
+        : 'Job stop requested'
+
+      setToast({ message, type: 'success' })
+      await fetchJobs() // Refresh to show spinner immediately
+    } catch (error) {
+      console.error('Error stopping job:', error)
+      setToast({ message: 'Failed to stop job', type: 'error' })
     }
   }
 
@@ -302,6 +375,8 @@ export function JobQueueManager() {
                               setShowEditDialog(true)
                             }}
                             onDelete={() => handleDeleteJob(job.id)}
+                            onStart={() => handleStartJob(job.id)}
+                            onStop={() => handleStopJob(job.id, job.status === 'running')}
                           />
                         ))}
                       </div>
@@ -329,6 +404,8 @@ export function JobQueueManager() {
                               setShowEditDialog(true)
                             }}
                             onDelete={() => handleDeleteJob(job.id)}
+                            onStart={() => handleStartJob(job.id)}
+                            onStop={() => handleStopJob(job.id, job.status === 'running')}
                           />
                         ))}
                       </div>
@@ -390,6 +467,8 @@ interface JobItemProps {
   isLast: boolean
   onEdit: () => void
   onDelete: () => void
+  onStart: () => void
+  onStop: () => void
 }
 
 function JobItem({
@@ -398,9 +477,22 @@ function JobItem({
   isLast,
   onEdit,
   onDelete,
+  onStart,
+  onStop,
 }: JobItemProps) {
   const statusConfig = STATUS_COLORS[job.status]
   const StatusIcon = statusConfig.icon
+
+  // Determine if we should show play or stop button and spinner
+  const showPlayButton = job.status === 'pending' || job.status === 'cancelled'
+  const showStopButton = job.status === 'running'
+
+  // Show spinner when:
+  // 1. request is "start" AND status is not "running" (waiting for server to start)
+  // 2. request is "stop" AND status is "running" (waiting for server to cancel)
+  const isPendingRequest =
+    (job.request === 'start' && job.status !== 'running') ||
+    (job.request === 'stop' && job.status === 'running')
 
   return (
     <div className="relative flex items-start gap-3 mb-4 last:mb-0">
@@ -409,12 +501,14 @@ function JobItem({
           job.status === 'running' ? 'border-blue-500' :
           job.status === 'pending' ? 'border-yellow-500' :
           job.status === 'completed' ? 'border-green-500' :
+          job.status === 'cancelled' ? 'border-gray-500' :
           'border-red-500'
         }`}>
         <StatusIcon className={`h-3 w-3 ${
           job.status === 'running' ? 'text-blue-600' :
           job.status === 'pending' ? 'text-yellow-600' :
           job.status === 'completed' ? 'text-green-600' :
+          job.status === 'cancelled' ? 'text-gray-600' :
           'text-red-600'
         }`} />
       </div>
@@ -432,6 +526,7 @@ function JobItem({
                 job.status === 'running' ? 'bg-blue-100 text-blue-700' :
                 job.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                 job.status === 'completed' ? 'bg-green-100 text-green-700' :
+                job.status === 'cancelled' ? 'bg-gray-100 text-gray-700' :
                 'bg-red-100 text-red-700'
               }`}
             >
@@ -441,26 +536,69 @@ function JobItem({
 
           {/* Action buttons */}
           <div className="flex items-center gap-1">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onEdit()
-              }}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
-              title="Edit job"
-            >
-              <Pencil className="h-4 w-4 text-blue-600" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete()
-              }}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
-              title="Delete job"
-            >
-              <Trash2 className="h-4 w-4 text-red-600" />
-            </button>
+          
+
+            {/* Edit and Delete buttons - only show when job is not running */}
+            {job.status !== 'running' && (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEdit()
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  title="Edit job"
+                >
+                  <Pencil className="h-4 w-4 text-blue-600" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete()
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  title="Delete job"
+                >
+                  <Trash2 className="h-4 w-4 text-red-600" />
+                </button>
+              </>
+            )}
+
+              {/* Play/Stop Button */}
+            {showPlayButton && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onStart()
+                }}
+                disabled={isPendingRequest}
+                className="p-1.5 bg-green-600 hover:bg-green-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isPendingRequest ? 'Waiting for acknowledgment...' : 'Start job'}
+              >
+                {isPendingRequest ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+              </button>
+            )}
+            {showStopButton && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onStop()
+                }}
+                disabled={isPendingRequest}
+                className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isPendingRequest ? 'Waiting for acknowledgment...' : 'Stop job'}
+              >
+                {isPendingRequest ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Square className="h-3.5 w-3.5" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
