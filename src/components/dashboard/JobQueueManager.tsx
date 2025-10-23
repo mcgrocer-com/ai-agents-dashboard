@@ -238,9 +238,15 @@ export function JobQueueManager() {
         return
       }
 
+      // If job is cancelled or failed, reset status to pending before setting request
+      const updateData: { request: string; status?: string } = { request: 'start' }
+      if (jobToStart.status === 'cancelled' || jobToStart.status === 'failed') {
+        updateData.status = 'pending'
+      }
+
       const { error } = await supabase
         .from('job_queue')
-        .update({ request: 'start' })
+        .update(updateData)
         .eq('id', id)
 
       if (error) throw error
@@ -278,7 +284,9 @@ export function JobQueueManager() {
   // Get jobs by status
   const runningJobs = jobs.filter((j) => j.status === 'running')
   const pendingJobs = jobs.filter((j) => j.status === 'pending')
-  const completedJobs = jobs.filter((j) => j.status === 'completed' || j.status === 'cancelled' || j.status === 'failed')
+  const completedJobs = jobs.filter((j) => j.status === 'completed')
+  const cancelledJobs = jobs.filter((j) => j.status === 'cancelled')
+  const failedJobs = jobs.filter((j) => j.status === 'failed')
 
   return (
     <>
@@ -365,12 +373,10 @@ export function JobQueueManager() {
                       </div>
                       {/* Items list */}
                       <div>
-                        {runningJobs.map((job, index) => (
+                        {runningJobs.map((job) => (
                           <JobItem
                             key={job.id}
                             job={job}
-                            isFirst={index === 0}
-                            isLast={index === runningJobs.length - 1 && pendingJobs.length === 0 && completedJobs.length === 0}
                             onEdit={() => {
                               setEditingJob(job)
                               setShowEditDialog(true)
@@ -394,12 +400,10 @@ export function JobQueueManager() {
                       </div>
                       {/* Items list */}
                       <div>
-                        {pendingJobs.map((job, index) => (
+                        {pendingJobs.map((job) => (
                           <JobItem
                             key={job.id}
                             job={job}
-                            isFirst={runningJobs.length === 0 && index === 0}
-                            isLast={index === pendingJobs.length - 1 && completedJobs.length === 0}
                             onEdit={() => {
                               setEditingJob(job)
                               setShowEditDialog(true)
@@ -415,7 +419,7 @@ export function JobQueueManager() {
 
                   {/* Completed Tasks Section */}
                   {completedJobs.length > 0 && (
-                    <div className="relative">
+                    <div className="relative mb-4">
                       {/* Header */}
                       <div className="flex items-center gap-2 mb-3 pl-1">
                         <CheckCircle className="h-4 w-4 text-green-600 relative z-10 bg-white invisible" />
@@ -423,12 +427,64 @@ export function JobQueueManager() {
                       </div>
                       {/* Items list */}
                       <div>
-                        {completedJobs.map((job, index) => (
+                        {completedJobs.map((job) => (
                           <JobItem
                             key={job.id}
                             job={job}
-                            isFirst={runningJobs.length === 0 && pendingJobs.length === 0 && index === 0}
-                            isLast={index === completedJobs.length - 1}
+                            onEdit={() => {
+                              setEditingJob(job)
+                              setShowEditDialog(true)
+                            }}
+                            onDelete={() => handleDeleteJob(job.id)}
+                            onStart={() => handleStartJob(job.id)}
+                            onStop={() => handleStopJob(job.id, job.status === 'running')}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cancelled Tasks Section */}
+                  {cancelledJobs.length > 0 && (
+                    <div className="relative mb-4">
+                      {/* Header */}
+                      <div className="flex items-center gap-2 mb-3 pl-1">
+                        <XCircle className="h-4 w-4 text-gray-600 relative z-10 bg-white invisible" />
+                        <h3 className="text-sm font-semibold text-gray-700 ms-2">Cancelled Tasks</h3>
+                      </div>
+                      {/* Items list */}
+                      <div>
+                        {cancelledJobs.map((job) => (
+                          <JobItem
+                            key={job.id}
+                            job={job}
+                            onEdit={() => {
+                              setEditingJob(job)
+                              setShowEditDialog(true)
+                            }}
+                            onDelete={() => handleDeleteJob(job.id)}
+                            onStart={() => handleStartJob(job.id)}
+                            onStop={() => handleStopJob(job.id, job.status === 'running')}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Failed Tasks Section */}
+                  {failedJobs.length > 0 && (
+                    <div className="relative">
+                      {/* Header */}
+                      <div className="flex items-center gap-2 mb-3 pl-1">
+                        <XCircle className="h-4 w-4 text-red-600 relative z-10 bg-white invisible" />
+                        <h3 className="text-sm font-semibold text-gray-700 ms-2">Failed Tasks</h3>
+                      </div>
+                      {/* Items list */}
+                      <div>
+                        {failedJobs.map((job) => (
+                          <JobItem
+                            key={job.id}
+                            job={job}
                             onEdit={() => {
                               setEditingJob(job)
                               setShowEditDialog(true)
@@ -493,8 +549,6 @@ export function JobQueueManager() {
 
 interface JobItemProps {
   job: JobQueue
-  isFirst: boolean
-  isLast: boolean
   onEdit: () => void
   onDelete: () => void
   onStart: () => void
@@ -503,8 +557,6 @@ interface JobItemProps {
 
 function JobItem({
   job,
-  isFirst,
-  isLast,
   onEdit,
   onDelete,
   onStart,
@@ -791,41 +843,63 @@ function JobFormDialog({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Agent Types *
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Select Agent Types *
           </label>
           {validationError && (
-            <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+            <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-600">{validationError}</p>
             </div>
           )}
-          <div className="space-y-2">
-            {AGENT_OPTIONS.map((option) => (
-              <label key={option.value} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.agent_types.includes(option.value)}
-                  onChange={(e) => {
-                    setValidationError(null) // Clear error when user selects
-                    if (e.target.checked) {
+          <div className="grid grid-cols-3 gap-3">
+            {AGENT_OPTIONS.map((option) => {
+              const isSelected = formData.agent_types.includes(option.value)
+              const colorClasses = AGENT_COLORS[option.value] || 'bg-gray-100 text-gray-700'
+
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    setValidationError(null)
+                    if (isSelected) {
                       setFormData({
                         ...formData,
-                        agent_types: [...formData.agent_types, option.value],
+                        agent_types: formData.agent_types.filter((t) => t !== option.value),
                       })
                     } else {
                       setFormData({
                         ...formData,
-                        agent_types: formData.agent_types.filter(
-                          (t) => t !== option.value
-                        ),
+                        agent_types: [...formData.agent_types, option.value],
                       })
                     }
                   }}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">{option.label}</span>
-              </label>
-            ))}
+                  className={`relative flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all h-[110px] ${
+                    isSelected
+                      ? `${colorClasses} border-current shadow-sm`
+                      : 'bg-white border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center mb-2 ${
+                    isSelected
+                      ? 'border-current bg-white'
+                      : 'border-gray-300'
+                  }`}>
+                    {isSelected && (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                  </div>
+                  <span className="text-sm font-medium text-center">
+                    {option.label}
+                  </span>
+                  {isSelected && (
+                    <span className="text-xs font-medium opacity-75 mt-1">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
 
