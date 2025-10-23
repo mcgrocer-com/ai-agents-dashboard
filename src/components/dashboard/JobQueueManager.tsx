@@ -16,6 +16,10 @@ import {
   XCircle,
   Clock,
   ListTodo,
+  Flag,
+  Bot,
+  Package,
+  Zap,
 } from 'lucide-react'
 import { Dialog } from '@/components/ui/Dialog'
 import { Toast } from '@/components/ui/Toast'
@@ -28,6 +32,7 @@ interface JobQueue {
   agent_types: string[]
   batch_size: number
   max_batches: number | null
+  max_concurrent: number
   status: 'pending' | 'running' | 'completed' | 'failed'
   created_at: string
   started_at: string | null
@@ -44,6 +49,7 @@ interface JobFormData {
   agent_types: string[]
   batch_size: number
   max_batches: number | null
+  max_concurrent: number
 }
 
 const AGENT_OPTIONS = [
@@ -56,6 +62,12 @@ const AGENT_LABELS: Record<string, string> = {
   category: 'category',
   weight_dimension: 'weight and dimension',
   seo: 'SEO',
+}
+
+const AGENT_COLORS: Record<string, string> = {
+  category: 'bg-blue-100 text-blue-700',
+  'weight-dimension': 'bg-green-100 text-green-700',
+  seo: 'bg-purple-100 text-purple-700',
 }
 
 const STATUS_COLORS = {
@@ -131,6 +143,7 @@ export function JobQueueManager() {
         agent_types: formData.agent_types,
         batch_size: formData.batch_size,
         max_batches: formData.max_batches,
+        max_concurrent: formData.max_concurrent,
         status: 'pending',
         products_processed: 0,
         products_successful: 0,
@@ -159,6 +172,7 @@ export function JobQueueManager() {
           agent_types: formData.agent_types,
           batch_size: formData.batch_size,
           max_batches: formData.max_batches,
+          max_concurrent: formData.max_concurrent,
         })
         .eq('id', editingJob.id)
 
@@ -261,52 +275,66 @@ export function JobQueueManager() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-4 max-h-[500px] overflow-y-auto">
-                {/* Running Tasks Section */}
-                {runningJobs.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                      <Play className="h-4 w-4 text-blue-600" />
-                      Running Tasks
-                    </h3>
-                    <div className="space-y-2">
-                      {runningJobs.map((job) => (
-                        <JobItem
-                          key={job.id}
-                          job={job}
-                          onEdit={() => {
-                            setEditingJob(job)
-                            setShowEditDialog(true)
-                          }}
-                          onDelete={() => handleDeleteJob(job.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+              <div className="max-h-[500px] overflow-y-auto">
+                {/* Timeline Container with ONE continuous vertical line */}
+                <div className="relative pl-2">
+                  {/* SINGLE continuous vertical line for entire timeline */}
+                  <div className="absolute left-5 top-2 bottom-0 w-px bg-gray-200" />
 
-                {/* Pending/Other Tasks Section */}
-                {reorderableJobs.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-yellow-600" />
-                      Pending Tasks
-                    </h3>
-                    <div className="space-y-2">
-                      {reorderableJobs.map((job) => (
-                        <JobItem
-                          key={job.id}
-                          job={job}
-                          onEdit={() => {
-                            setEditingJob(job)
-                            setShowEditDialog(true)
-                          }}
-                          onDelete={() => handleDeleteJob(job.id)}
-                        />
-                      ))}
+                  {/* Running Tasks Section */}
+                  {runningJobs.length > 0 && (
+                    <div className="relative mb-4">
+                      {/* Header */}
+                      <div className="flex items-center gap-2 mb-3 pl-2.5">
+                        <Flag className="h-4 w-4 text-gray-300 relative z-10 bg-white" />
+                        <h3 className="text-sm font-semibold text-gray-700 ms-1">Running Tasks</h3>
+                      </div>
+                      {/* Items list */}
+                      <div>
+                        {runningJobs.map((job, index) => (
+                          <JobItem
+                            key={job.id}
+                            job={job}
+                            isFirst={index === 0}
+                            isLast={index === runningJobs.length - 1 && reorderableJobs.length === 0}
+                            onEdit={() => {
+                              setEditingJob(job)
+                              setShowEditDialog(true)
+                            }}
+                            onDelete={() => handleDeleteJob(job.id)}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {/* Pending/Other Tasks Section */}
+                  {reorderableJobs.length > 0 && (
+                    <div className="relative">
+                      {/* Header */}
+                      <div className="flex items-center gap-2 mb-3 pl-1">
+                        <Clock className="h-4 w-4 text-yellow-600 relative z-10 bg-white invisible" />
+                        <h3 className="text-sm font-semibold text-gray-700 ms-2">Pending Tasks</h3>
+                      </div>
+                      {/* Items list */}
+                      <div>
+                        {reorderableJobs.map((job, index) => (
+                          <JobItem
+                            key={job.id}
+                            job={job}
+                            isFirst={runningJobs.length === 0 && index === 0}
+                            isLast={index === reorderableJobs.length - 1}
+                            onEdit={() => {
+                              setEditingJob(job)
+                              setShowEditDialog(true)
+                            }}
+                            onDelete={() => handleDeleteJob(job.id)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
                 </div>
@@ -334,6 +362,7 @@ export function JobQueueManager() {
             agent_types: editingJob.agent_types,
             batch_size: editingJob.batch_size,
             max_batches: editingJob.max_batches,
+            max_concurrent: editingJob.max_concurrent,
           }}
           onSubmit={handleUpdateJob}
           onClose={() => {
@@ -357,12 +386,16 @@ export function JobQueueManager() {
 
 interface JobItemProps {
   job: JobQueue
+  isFirst: boolean
+  isLast: boolean
   onEdit: () => void
   onDelete: () => void
 }
 
 function JobItem({
   job,
+  isFirst,
+  isLast,
   onEdit,
   onDelete,
 }: JobItemProps) {
@@ -370,73 +403,120 @@ function JobItem({
   const StatusIcon = statusConfig.icon
 
   return (
-    <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
+    <div className="relative flex items-start gap-3 mb-4 last:mb-0">
+      {/* Status Icon - overlaps the vertical line */}
+      <div className={`relative z-10 flex items-center justify-center w-6 h-6 rounded-full border-2 flex-shrink-0 bg-white ${
+          job.status === 'running' ? 'border-blue-500' :
+          job.status === 'pending' ? 'border-yellow-500' :
+          job.status === 'completed' ? 'border-green-500' :
+          'border-red-500'
+        }`}>
+        <StatusIcon className={`h-3 w-3 ${
+          job.status === 'running' ? 'text-blue-600' :
+          job.status === 'pending' ? 'text-yellow-600' :
+          job.status === 'completed' ? 'text-green-600' :
+          'text-red-600'
+        }`} />
+      </div>
 
-      {/* Job info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-900">
-            {job.vendor || 'All Vendors'}
-          </span>
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}
-          >
-            <StatusIcon className="h-3 w-3" />
-            {job.status}
-          </span>
+      {/* Job Card */}
+      <div className="flex-1 bg-white border border-gray-200 rounded-md p-3">
+        {/* Header Row */}
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-900">
+              {job.vendor || 'All Vendors'}
+            </span>
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                job.status === 'running' ? 'bg-blue-100 text-blue-700' :
+                job.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                job.status === 'completed' ? 'bg-green-100 text-green-700' :
+                'bg-red-100 text-red-700'
+              }`}
+            >
+              {job.status}
+            </span>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit()
+              }}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
+              title="Edit job"
+            >
+              <Pencil className="h-4 w-4 text-blue-600" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
+              title="Delete job"
+            >
+              <Trash2 className="h-4 w-4 text-red-600" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-xs text-gray-600">
-          <span>Agents: {job.agent_types.join(', ')}</span>
-          <span>•</span>
-          <span>Batch: {job.batch_size}</span>
+
+        {/* Details Row */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-gray-600">
+          <div className="flex items-center gap-1.5">
+            <Bot className="h-3 w-3 text-gray-500" />
+            <span className="text-gray-500">Agents:</span>
+            <div className="flex flex-wrap gap-1">
+              {job.agent_types.map((agent) => (
+                <span
+                  key={agent}
+                  className={`px-2 py-0.5 rounded text-xs font-medium ${AGENT_COLORS[agent] || 'bg-gray-100 text-gray-700'}`}
+                >
+                  {agent}
+                </span>
+              ))}
+            </div>
+          </div>
+          <span className="text-gray-400">•</span>
+          <span className="flex items-center gap-1">
+            <Package className="h-3 w-3 text-gray-500" />
+            Batch: {job.batch_size}
+          </span>
           {job.max_batches && (
             <>
-              <span>•</span>
-              <span>Max: {job.max_batches}</span>
+              <span className="text-gray-400">•</span>
+              <span className="flex items-center gap-1">
+                <Package className="h-3 w-3 text-gray-500" />
+                Max: {job.max_batches}
+              </span>
             </>
           )}
+          <span className="text-gray-400">•</span>
+          <span className="flex items-center gap-1">
+            <Zap className="h-3 w-3 text-gray-500" />
+            Concurrency: {job.max_concurrent}
+          </span>
         </div>
+
+        {/* Progress Row */}
         {job.products_processed > 0 && (
-          <div className="flex items-center gap-2 mt-1 text-xs">
+          <div className="flex items-center gap-3 mt-2 pt-2 border-t border-gray-100 text-xs">
             <span className="text-gray-600">
-              Processed: {formatNumber(job.products_processed)}
+              {formatNumber(job.products_processed)} processed
             </span>
-            <span className="text-green-600">
+            <span className="text-green-600 font-medium">
               ✓ {formatNumber(job.products_successful)}
             </span>
             {job.products_failed > 0 && (
-              <span className="text-red-600">
+              <span className="text-red-600 font-medium">
                 ✗ {formatNumber(job.products_failed)}
               </span>
             )}
           </div>
         )}
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex items-center gap-1">
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onEdit()
-          }}
-          disabled={job.status === 'running'}
-          className="p-2 hover:bg-blue-50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Edit job"
-        >
-          <Pencil className="h-4 w-4 text-blue-600" />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          disabled={job.status === 'running'}
-          className="p-2 hover:bg-red-50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Delete job"
-        >
-          <Trash2 className="h-4 w-4 text-red-600" />
-        </button>
       </div>
     </div>
   )
@@ -461,6 +541,7 @@ function JobFormDialog({
       agent_types: [],
       batch_size: 10,
       max_batches: null,
+      max_concurrent: 10,
     }
   )
   const [vendors, setVendors] = useState<{ name: string; count: number }[]>([])
@@ -507,7 +588,9 @@ function JobFormDialog({
       ? `up to ${formData.max_batches * formData.batch_size} products`
       : 'all available products'
 
-    return `Deploy ${agentNames} agent${formData.agent_types.length > 1 ? 's' : ''} to process ${batchText} ${vendorText}`
+    const concurrencyText = `with ${formData.max_concurrent} batch${formData.max_concurrent > 1 ? 'es' : ''} running concurrently`
+
+    return `Deploy ${agentNames} agent${formData.agent_types.length > 1 ? 's' : ''} to process ${batchText} ${vendorText}, ${concurrencyText}`
   }
 
   return (
@@ -616,6 +699,29 @@ function JobFormDialog({
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Leave empty for unlimited"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Max Concurrent *
+          </label>
+          <input
+            type="number"
+            value={formData.max_concurrent}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                max_concurrent: parseInt(e.target.value) || 10,
+              })
+            }
+            min="1"
+            max="30"
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Maximum concurrent tasks (1-30, default: 10)
+          </p>
         </div>
 
         {/* Job Summary Footer */}

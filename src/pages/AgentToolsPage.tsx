@@ -4,135 +4,144 @@
  * Displays and manages external tools used by AI agents.
  * Shows health status, usage statistics, and configuration for:
  * - Serper API (web search)
- * - Google Vision/Gemini API (image analysis, AI models)
+ * - OpenAI Vision API (image analysis)
+ * - Category Agent (Gemini AI)
+ * - Weight & Dimension Agent (Gemini AI)
+ * - SEO Agent (Gemini AI)
  * - Supabase (database and storage)
+ *
+ * Status is stored in database and automatically loaded.
+ * Users can force a health check by clicking "Check All Tools".
  */
 
 import { useState, useEffect } from 'react'
-import { Search, Eye, Database, CheckCircle, XCircle, AlertCircle, RefreshCw, ExternalLink } from 'lucide-react'
+import { Search, Database, CheckCircle, XCircle, AlertCircle, RefreshCw, ExternalLink, Sparkles, Weight, ScanSearch, Brain } from 'lucide-react'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Toast } from '@/components/ui/Toast'
+import { apiHealthService, type AgentToolStatus } from '@/services'
 
-interface ToolStatus {
-  name: string
-  status: 'healthy' | 'degraded' | 'down' | 'checking'
-  apiKey: string
-  masked: string
-  icon: any
-  color: string
-  description: string
-  usageInfo?: string
-  docsUrl: string
+// Map key types to their UI configuration
+const toolConfigs: Record<string, { icon: any; color: string; description: string; docsUrl: string }> = {
+  'serper-key': {
+    icon: Search,
+    color: 'blue',
+    description: 'Web search and SERP data for product research and competitive analysis',
+    docsUrl: 'https://serper.dev/docs',
+  },
+  'openai-vision': {
+    icon: Brain,
+    color: 'teal',
+    description: 'OpenAI GPT-4 Vision for advanced image understanding and analysis',
+    docsUrl: 'https://platform.openai.com/docs/guides/vision',
+  },
+  'category-key': {
+    icon: Sparkles,
+    color: 'indigo',
+    description: 'Gemini AI for product categorization and taxonomy mapping',
+    docsUrl: 'https://ai.google.dev/gemini-api/docs',
+  },
+  'weight-and-dimension-key': {
+    icon: Weight,
+    color: 'emerald',
+    description: 'Gemini AI for extracting product weight and dimension specifications',
+    docsUrl: 'https://ai.google.dev/gemini-api/docs',
+  },
+  'seo-agent-key': {
+    icon: ScanSearch,
+    color: 'violet',
+    description: 'Gemini AI for generating optimized product titles and descriptions',
+    docsUrl: 'https://ai.google.dev/gemini-api/docs',
+  },
+  'supabase-key': {
+    icon: Database,
+    color: 'green',
+    description: 'Database, authentication, and storage backend for all agent data',
+    docsUrl: 'https://supabase.com/docs',
+  },
 }
 
 export function AgentToolsPage() {
-  const [tools, setTools] = useState<ToolStatus[]>([
-    {
-      name: 'Serper API',
-      status: 'checking',
-      apiKey: '',
-      masked: '',
-      icon: Search,
-      color: 'blue',
-      description: 'Web search and SERP data for product research and competitive analysis',
-      docsUrl: 'https://serper.dev/docs',
-    },
-    {
-      name: 'Google Vision / Gemini',
-      status: 'checking',
-      apiKey: '',
-      masked: '',
-      icon: Eye,
-      color: 'purple',
-      description: 'AI vision models for image analysis and Gemini LLM for text generation',
-      docsUrl: 'https://ai.google.dev/gemini-api/docs',
-    },
-    {
-      name: 'Supabase',
-      status: 'checking',
-      apiKey: '',
-      masked: '',
-      icon: Database,
-      color: 'green',
-      description: 'Database, authentication, and storage backend for all agent data',
-      docsUrl: 'https://supabase.com/docs',
-    },
-  ])
-  const [loading, setLoading] = useState(true)
+  const [tools, setTools] = useState<AgentToolStatus[]>([])
+  const [loading, setLoading] = useState(false)
+  const [initialLoad, setInitialLoad] = useState(true)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
-  useEffect(() => {
-    checkToolsHealth()
-  }, [])
-
-  const maskApiKey = (key: string): string => {
-    if (!key || key.length < 8) return '••••••••'
-    return `${key.substring(0, 4)}••••${key.substring(key.length - 4)}`
+  // Load tools status from database
+  const loadToolsStatus = async () => {
+    try {
+      console.log('Loading tools status from database...')
+      const toolsData = await apiHealthService.getAllToolsStatus()
+      console.log('Tools data received:', toolsData)
+      setTools(toolsData)
+    } catch (error: any) {
+      console.error('Error loading tools status:', error)
+      setToast({ message: `Failed to load tools status: ${error.message}`, type: 'error' })
+    } finally {
+      setInitialLoad(false)
+    }
   }
 
-  const checkToolsHealth = async () => {
+  // Force check all tools (calls Edge Function which updates database)
+  const checkAllTools = async () => {
     setLoading(true)
 
     try {
-      // Simulate checking tools - in production, these would be actual API calls
-      // For now, we'll use mock data to demonstrate the UI
+      setToast({ message: 'Checking all tools...', type: 'info' })
 
-      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simulate API delay
+      console.log('Calling checkAllKeys...')
+      // Call Edge Function to check all keys (this updates the database)
+      const results = await apiHealthService.checkAllKeys()
+      console.log('Check results:', results)
 
-      setTools((prevTools) =>
-        prevTools.map((tool) => {
-          let status: 'healthy' | 'degraded' | 'down' = 'healthy'
-          let apiKey = ''
-          let usageInfo = ''
+      // Wait a moment for database to be fully updated
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
-          switch (tool.name) {
-            case 'Serper API':
-              // Mock: Serper API key from mcgrocer/.env
-              apiKey = '9f0a01e261b57a2578329a7a5c084d8670fb603b'
-              status = 'healthy'
-              usageInfo = 'API key configured and operational'
-              break
-            case 'Google Vision / Gemini':
-              // Mock: Gemini API key from mcgrocer/.env
-              apiKey = 'AIzaSyC8QNmL7caYFP-dDbxae4ckjLcYVRCAh-s'
-              status = 'healthy'
-              usageInfo = 'API key configured and operational'
-              break
-            case 'Supabase':
-              // Mock: Supabase service key from mcgrocer/.env
-              apiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4a2pibHJsb2dqdW15YmNlb3prIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODcyMjI4OSwiZXhwIjoyMDc0Mjk4Mjg5fQ.KnAuVoFtiHcvgkVDmE7SmVGr9_78CiQuC1B1cnid2uc'
-              status = 'healthy'
-              usageInfo = 'Connected and operational'
-              break
-          }
+      // Reload from database to get updated statuses
+      console.log('Reloading tools status...')
+      await loadToolsStatus()
 
-          return {
-            ...tool,
-            status,
-            apiKey,
-            masked: maskApiKey(apiKey),
-            usageInfo,
-          }
-        })
-      )
-
-      setToast({ message: 'Tool status updated successfully', type: 'success' })
+      setToast({ message: 'All tools checked successfully', type: 'success' })
     } catch (error: any) {
-      console.error('Error checking tools health:', error)
+      console.error('Error checking tools:', error)
       setToast({ message: `Failed to check tools: ${error.message}`, type: 'error' })
-
-      // Set all tools to degraded status
-      setTools((prevTools) =>
-        prevTools.map((tool) => ({
-          ...tool,
-          status: 'degraded',
-          masked: '••••••••',
-        }))
-      )
     } finally {
       setLoading(false)
     }
   }
+
+  // Check a single tool
+  const checkSingleTool = async (keyType: string) => {
+    try {
+      // Optimistically set to checking
+      setTools((prevTools) =>
+        prevTools.map((tool) =>
+          tool.key_type === keyType
+            ? { ...tool, status: 'checking' as const }
+            : tool
+        )
+      )
+
+      setToast({ message: `Checking ${keyType}...`, type: 'info' })
+
+      // Call Edge Function to check this key (this updates the database)
+      await apiHealthService.checkKeyHealth(keyType as any)
+
+      // Reload from database to get updated status
+      await loadToolsStatus()
+
+      setToast({ message: `${keyType} check completed`, type: 'success' })
+    } catch (error: any) {
+      console.error(`Error checking ${keyType}:`, error)
+      setToast({ message: `Failed to check ${keyType}: ${error.message}`, type: 'error' })
+      // Reload to reset to actual status
+      await loadToolsStatus()
+    }
+  }
+
+  // Load tools on mount
+  useEffect(() => {
+    loadToolsStatus()
+  }, [])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -185,11 +194,29 @@ export function AgentToolsPage() {
         icon: 'text-blue-600',
         button: 'bg-blue-600 hover:bg-blue-700',
       },
-      purple: {
-        bg: 'bg-purple-50',
-        border: 'border-purple-200',
-        icon: 'text-purple-600',
-        button: 'bg-purple-600 hover:bg-purple-700',
+      teal: {
+        bg: 'bg-teal-50',
+        border: 'border-teal-200',
+        icon: 'text-teal-600',
+        button: 'bg-teal-600 hover:bg-teal-700',
+      },
+      indigo: {
+        bg: 'bg-indigo-50',
+        border: 'border-indigo-200',
+        icon: 'text-indigo-600',
+        button: 'bg-indigo-600 hover:bg-indigo-700',
+      },
+      emerald: {
+        bg: 'bg-emerald-50',
+        border: 'border-emerald-200',
+        icon: 'text-emerald-600',
+        button: 'bg-emerald-600 hover:bg-emerald-700',
+      },
+      violet: {
+        bg: 'bg-violet-50',
+        border: 'border-violet-200',
+        icon: 'text-violet-600',
+        button: 'bg-violet-600 hover:bg-violet-700',
       },
       green: {
         bg: 'bg-green-50',
@@ -199,6 +226,34 @@ export function AgentToolsPage() {
       },
     }
     return colors[color] || colors.blue
+  }
+
+  const formatResponseTime = (ms?: number | null) => {
+    if (!ms || ms === 0) return 'N/A'
+    if (ms < 1000) return `${ms}ms`
+    return `${(ms / 1000).toFixed(2)}s`
+  }
+
+  const formatLastChecked = (timestamp?: string | null) => {
+    if (!timestamp) return 'Never'
+    const date = new Date(timestamp)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    return date.toLocaleDateString()
+  }
+
+  if (initialLoad) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <LoadingSpinner />
+      </div>
+    )
   }
 
   return (
@@ -212,24 +267,43 @@ export function AgentToolsPage() {
           </p>
         </div>
         <button
-          onClick={checkToolsHealth}
+          onClick={checkAllTools}
           disabled={loading}
           className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Status</span>
+          <span>Check All Tools</span>
         </button>
       </div>
 
       {/* Tools Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {tools.map((tool) => {
-          const colors = getColorClasses(tool.color)
-          const Icon = tool.icon
+      {tools.length === 0 ? (
+        <div className="text-center py-12 bg-white border border-gray-200 rounded-lg">
+          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No tools found</h3>
+          <p className="text-gray-600 mb-4">
+            No agent tools are configured in the database.
+          </p>
+          <button
+            onClick={checkAllTools}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            <span>Check All Tools</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {tools.map((tool) => {
+            const config = toolConfigs[tool.key_type]
+            if (!config) return null
 
-          return (
+            const colors = getColorClasses(config.color)
+            const Icon = config.icon
+
+            return (
             <div
-              key={tool.name}
+              key={tool.key_type}
               className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow"
             >
               {/* Card Header */}
@@ -240,7 +314,7 @@ export function AgentToolsPage() {
                       <Icon className={`h-6 w-6 ${colors.icon}`} />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">{tool.name}</h3>
+                      <h3 className="font-semibold text-gray-900">{tool.key_name}</h3>
                       <div className="flex items-center gap-2 mt-1">
                         {getStatusIcon(tool.status)}
                         <span className="text-sm font-medium">
@@ -255,45 +329,76 @@ export function AgentToolsPage() {
               {/* Card Body */}
               <div className="p-4 space-y-4">
                 {/* Description */}
-                <p className="text-sm text-gray-600">{tool.description}</p>
+                <p className="text-sm text-gray-600">{config.description}</p>
 
-                {/* API Key */}
+                {/* Status Message */}
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    API Key
+                    Status
                   </label>
-                  <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded font-mono text-sm text-gray-700">
-                    {tool.masked || '••••••••'}
+                  <div className={`px-3 py-2 border rounded text-sm ${getStatusColor(tool.status)}`}>
+                    {tool.message || 'Waiting to check...'}
                   </div>
                 </div>
 
-                {/* Usage Info */}
-                {tool.usageInfo && (
+                {/* Metrics */}
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">
-                      Status
+                      Response Time
                     </label>
-                    <div className={`px-3 py-2 border rounded text-sm ${getStatusColor(tool.status)}`}>
-                      {tool.usageInfo}
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm font-mono text-gray-700">
+                      {formatResponseTime(tool.response_time)}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Last Checked
+                    </label>
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
+                      {formatLastChecked(tool.last_checked)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Error Message */}
+                {tool.error_message && (
+                  <div>
+                    <label className="block text-xs font-medium text-red-600 mb-1">
+                      Error Details
+                    </label>
+                    <div className="px-3 py-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 font-mono break-all">
+                      {tool.error_message}
                     </div>
                   </div>
                 )}
 
-                {/* Documentation Link */}
-                <a
-                  href={tool.docsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex items-center justify-center gap-2 px-4 py-2 ${colors.button} text-white rounded-lg transition-colors text-sm font-medium`}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  <span>View Documentation</span>
-                </a>
+                {/* Actions */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => checkSingleTool(tool.key_type)}
+                    disabled={tool.status === 'checking'}
+                    className={`flex items-center justify-center gap-2 px-3 py-2 ${colors.button} text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50`}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${tool.status === 'checking' ? 'animate-spin' : ''}`} />
+                    <span>Test</span>
+                  </button>
+                  <a
+                    href={config.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Docs</span>
+                  </a>
+                </div>
               </div>
             </div>
           )
         })}
-      </div>
+        </div>
+      )}
 
       {/* Toast Notifications */}
       {toast && (
@@ -306,4 +411,3 @@ export function AgentToolsPage() {
     </div>
   )
 }
-
