@@ -275,9 +275,10 @@ export function JobQueueManager() {
   }
 
 
-  // Get running and reorderable (non-running) jobs
+  // Get jobs by status
   const runningJobs = jobs.filter((j) => j.status === 'running')
-  const reorderableJobs = jobs.filter((j) => j.status !== 'running')
+  const pendingJobs = jobs.filter((j) => j.status === 'pending')
+  const completedJobs = jobs.filter((j) => j.status === 'completed' || j.status === 'cancelled' || j.status === 'failed')
 
   return (
     <>
@@ -369,7 +370,7 @@ export function JobQueueManager() {
                             key={job.id}
                             job={job}
                             isFirst={index === 0}
-                            isLast={index === runningJobs.length - 1 && reorderableJobs.length === 0}
+                            isLast={index === runningJobs.length - 1 && pendingJobs.length === 0 && completedJobs.length === 0}
                             onEdit={() => {
                               setEditingJob(job)
                               setShowEditDialog(true)
@@ -383,9 +384,9 @@ export function JobQueueManager() {
                     </div>
                   )}
 
-                  {/* Pending/Other Tasks Section */}
-                  {reorderableJobs.length > 0 && (
-                    <div className="relative">
+                  {/* Pending Tasks Section */}
+                  {pendingJobs.length > 0 && (
+                    <div className="relative mb-4">
                       {/* Header */}
                       <div className="flex items-center gap-2 mb-3 pl-1">
                         <Clock className="h-4 w-4 text-yellow-600 relative z-10 bg-white invisible" />
@@ -393,12 +394,41 @@ export function JobQueueManager() {
                       </div>
                       {/* Items list */}
                       <div>
-                        {reorderableJobs.map((job, index) => (
+                        {pendingJobs.map((job, index) => (
                           <JobItem
                             key={job.id}
                             job={job}
                             isFirst={runningJobs.length === 0 && index === 0}
-                            isLast={index === reorderableJobs.length - 1}
+                            isLast={index === pendingJobs.length - 1 && completedJobs.length === 0}
+                            onEdit={() => {
+                              setEditingJob(job)
+                              setShowEditDialog(true)
+                            }}
+                            onDelete={() => handleDeleteJob(job.id)}
+                            onStart={() => handleStartJob(job.id)}
+                            onStop={() => handleStopJob(job.id, job.status === 'running')}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Completed Tasks Section */}
+                  {completedJobs.length > 0 && (
+                    <div className="relative">
+                      {/* Header */}
+                      <div className="flex items-center gap-2 mb-3 pl-1">
+                        <CheckCircle className="h-4 w-4 text-green-600 relative z-10 bg-white invisible" />
+                        <h3 className="text-sm font-semibold text-gray-700 ms-2">Completed Tasks</h3>
+                      </div>
+                      {/* Items list */}
+                      <div>
+                        {completedJobs.map((job, index) => (
+                          <JobItem
+                            key={job.id}
+                            job={job}
+                            isFirst={runningJobs.length === 0 && pendingJobs.length === 0 && index === 0}
+                            isLast={index === completedJobs.length - 1}
                             onEdit={() => {
                               setEditingJob(job)
                               setShowEditDialog(true)
@@ -538,30 +568,32 @@ function JobItem({
           <div className="flex items-center gap-1">
           
 
-            {/* Edit and Delete buttons - only show when job is not running */}
-            {job.status !== 'running' && (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onEdit()
-                  }}
-                  className="p-1 hover:bg-gray-100 rounded transition-colors"
-                  title="Edit job"
-                >
-                  <Pencil className="h-4 w-4 text-blue-600" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onDelete()
-                  }}
-                  className="p-1 hover:bg-gray-100 rounded transition-colors"
-                  title="Delete job"
-                >
-                  <Trash2 className="h-4 w-4 text-red-600" />
-                </button>
-              </>
+            {/* Edit button - only show for pending jobs */}
+            {job.status === 'pending' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEdit()
+                }}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                title="Edit job"
+              >
+                <Pencil className="h-4 w-4 text-blue-600" />
+              </button>
+            )}
+
+            {/* Delete button - show for pending and completed jobs */}
+            {(job.status === 'pending' || job.status === 'completed' || job.status === 'cancelled' || job.status === 'failed') && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete()
+                }}
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
+                title="Delete job"
+              >
+                <Trash2 className="h-4 w-4 text-red-600" />
+              </button>
             )}
 
               {/* Play/Stop Button */}
