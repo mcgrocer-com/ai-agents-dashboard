@@ -503,7 +503,9 @@ function ProductsList({ products, isLoading, agentType, agentConfig, navigate }:
             iconColor: agentConfig.iconColor,
             primaryColor: agentConfig.primaryColor,
           }}
-          onClick={() => agentProduct.productData?.id && navigate(`/scraper-agent/${agentProduct.productData.id}`, { state: { from: 'agent-monitoring' } })}
+          onClick={() => agentProduct.productData?.id && navigate(`/scraper-agent/${agentProduct.productData.id}`, {
+            state: { from: `agents/${agentType === 'weight_dimension' ? 'weight' : agentType}` }
+          })}
         />
       ))}
     </div>

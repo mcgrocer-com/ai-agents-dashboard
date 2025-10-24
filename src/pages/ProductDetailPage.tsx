@@ -361,12 +361,19 @@ export function ProductDetailPage() {
 
   // Determine navigation source from location state or default to scraper agent
   const fromPage = (location.state as any)?.from || 'scraper-agent'
+
   const getPageLabel = (page: string) => {
     switch (page) {
       case 'dashboard':
         return 'Dashboard'
       case 'scraper-agent':
         return 'Scraper Agent'
+      case 'agents/category':
+        return 'Category Agent'
+      case 'agents/weight':
+        return 'Weight Agent'
+      case 'agents/seo':
+        return 'SEO Agent'
       case 'agent-monitoring':
         return 'Agent Monitoring'
       default:

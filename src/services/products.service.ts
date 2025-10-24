@@ -20,6 +20,7 @@ class ProductsService {
   async getProducts(filters: ProductFilters = {}) {
     try {
       // Join with pending_products to get sync status
+      // Use 'planned' count for better performance with large datasets (estimates count from query planner)
       let query = supabase
         .from('scraped_products')
         .select(`
@@ -30,7 +31,7 @@ class ProductsService {
             failed_sync_error_message,
             item_code
           )
-        `, { count: 'exact' })
+        `, { count: 'planned' })
 
       // Apply search filter
       if (filters.search) {
@@ -460,6 +461,7 @@ class ProductsService {
    */
   async getPinnedProducts(filters: ProductFilters = {}) {
     try {
+      // Use 'planned' count for better performance
       let query = supabase
         .from('scraped_products')
         .select(`
@@ -470,7 +472,7 @@ class ProductsService {
             failed_sync_error_message,
             item_code
           )
-        `, { count: 'exact' })
+        `, { count: 'planned' })
         .eq('pinned', true)
 
       // Apply search filter

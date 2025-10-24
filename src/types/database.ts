@@ -123,6 +123,9 @@ export interface PendingProduct {
   seo_tools_used: Record<string, any> | null
 
   item_code: string | null
+  erpnext_updated_at: string | null
+  failed_sync_at: string | null
+  failed_sync_error_message: string | null
   created_at: string | null
   updated_at: string | null
 }

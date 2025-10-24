@@ -6,9 +6,10 @@
  */
 
 import { useEffect, useState } from 'react'
-import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info } from 'lucide-react'
+import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw } from 'lucide-react'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
+import { useToast } from '@/hooks/useToast'
 import type { VendorStatistics as VendorStats } from '@/types/statistics'
 
 interface VendorStatisticsProps {
@@ -16,11 +17,12 @@ interface VendorStatisticsProps {
 }
 
 export function VendorStatistics({ vendor }: VendorStatisticsProps) {
+  const { showToast } = useToast()
   const [stats, setStats] = useState<VendorStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isPushing, setIsPushing] = useState(false)
-  const [pushSuccess, setPushSuccess] = useState<string | null>(null)
+  const [isResyncing, setIsResyncing] = useState(false)
 
   useEffect(() => {
     if (!vendor) {
@@ -55,7 +57,6 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
     if (!vendor || vendor === 'all') return
 
     setIsPushing(true)
-    setPushSuccess(null)
     setError(null)
 
     try {
@@ -66,23 +67,49 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
       if (funcError) throw funcError
 
       if (data.success) {
-        setPushSuccess(`Successfully queued ${data.stats?.successfully_inserted || 0} products for processing`)
+        showToast(`Successfully queued ${data.stats?.successfully_inserted || 0} products for processing`, 'success')
         // Refresh statistics after successful push
         setTimeout(() => {
           fetchStatistics()
         }, 1000)
       } else {
-        setError(data.error || 'Failed to push products to queue')
+        showToast(data.error || 'Failed to push products to queue', 'error')
       }
     } catch (err) {
       console.error('Error pushing to pending:', err)
-      setError('An error occurred while pushing products to queue')
+      showToast('An error occurred while pushing products to queue', 'error')
     } finally {
       setIsPushing(false)
-      // Clear success message after 5 seconds
-      setTimeout(() => {
-        setPushSuccess(null)
-      }, 5000)
+    }
+  }
+
+  const handleResyncToErpNext = async () => {
+    if (!vendor || vendor === 'all') return
+
+    setIsResyncing(true)
+    setError(null)
+
+    try {
+      const { data, error: funcError } = await supabase.functions.invoke('resync-vendor-to-erpnext', {
+        body: { vendor }
+      })
+
+      if (funcError) throw funcError
+
+      if (data.success) {
+        showToast(`Successfully reset ${data.stats?.successfully_reset || 0} products for ERPNext resync`, 'success')
+        // Refresh statistics after successful resync
+        setTimeout(() => {
+          fetchStatistics()
+        }, 1000)
+      } else {
+        showToast(data.error || 'Failed to reset products for ERPNext resync', 'error')
+      }
+    } catch (err) {
+      console.error('Error resyncing to ERPNext:', err)
+      showToast('An error occurred while resyncing products to ERPNext', 'error')
+    } finally {
+      setIsResyncing(false)
     }
   }
 
@@ -182,26 +209,31 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
           </p>
         </div>
 
-        {/* Send to Queue Button with Tooltip - Only show for specific vendors */}
+        {/* Send to Queue and Resync Buttons - Only show for specific vendors */}
         {vendor !== 'all' && (
           <div className="flex items-center gap-2">
-          <div className="relative group">
-            <button
-              type="button"
-              className="text-xs text-gray-600 hover:text-gray-800"
-              aria-label="Information about Send to Queue"
-            >
-              <Info className="w-4 h-4" />
-            </button>
-            {/* Tooltip */}
-            <div className="absolute right-0 top-full mt-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 shadow-lg">
-              <div className="absolute -top-1 right-4 w-2 h-2 bg-gray-900 transform rotate-45"></div>
-              <p className="font-medium mb-1">Send to Queue</p>
-              <p className="text-gray-300">
-                Push products from this vendor to the pending queue for AI agent processing (category, weight/dimension, and SEO optimization).
-              </p>
-            </div>
-          </div>
+
+            
+          <button
+            onClick={handleResyncToErpNext}
+            disabled={isResyncing}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isResyncing ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Resyncing...</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                <span>Resync to ERPNext</span>
+              </>
+            )}
+          </button>
+
+         
+
 
           <button
             onClick={handlePushToPending}
@@ -220,16 +252,42 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
               </>
             )}
           </button>
+
+           <div className="relative group">
+            
+            <button
+              type="button"
+              className="text-xs text-gray-600 hover:text-gray-800"
+              aria-label="Information about Actions"
+            >
+              <Info className="w-4 h-4" />
+            </button>
+
+            
+            {/* Tooltip */}
+            <div className="absolute right-0 top-full mt-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 shadow-lg">
+              <div className="absolute -top-1 right-4 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+              <p className="font-medium mb-2">Available Actions</p>
+              <div className="space-y-2">
+                <div>
+                  <p className="font-medium text-gray-200">Send to Queue</p>
+                  <p className="text-gray-300">
+                    Push products from this vendor to the pending queue for AI agent processing (category, weight/dimension, and SEO optimization).
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium text-gray-200">Resync to ERPNext</p>
+                  <p className="text-gray-300">
+                    Reset sync status for all products from this vendor, forcing them to be re-synced to ERPNext in the next sync cycle.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         )}
       </div>
 
-      {/* Success Message */}
-      {pushSuccess && (
-        <div className="mb-3 bg-green-50 border border-green-200 rounded-lg p-3">
-          <p className="text-sm text-green-800">{pushSuccess}</p>
-        </div>
-      )}
 
       {/* Statistics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

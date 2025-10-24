@@ -58,19 +58,30 @@ class AgentsService {
 
   /**
    * Retry agent processing for a specific product
+   * Resets the agent status to 'pending' and optionally adds feedback
    */
   async retryAgent(params: RetryAgentParams) {
     try {
-      const { data, error } = await supabase.functions.invoke(
-        'retry-agent-processing',
-        {
-          body: {
-            productId: params.productId,
-            agentType: params.agentType,
-            feedback: params.feedback,
-          },
-        }
-      )
+      const statusField = this.getStatusField(params.agentType)
+      const feedbackField = this.getFeedbackField(params.agentType)
+
+      const updates: any = {
+        [statusField]: 'pending',
+        updated_at: new Date().toISOString(),
+        erpnext_updated_at: null, // Reset ERPNext sync status to allow re-sync after processing
+      }
+
+      // Add feedback if provided
+      if (params.feedback) {
+        updates[feedbackField] = params.feedback
+      }
+
+      const { data, error } = await supabase
+        .from('pending_products')
+        .update(updates)
+        .eq('scraped_product_id', params.productId)
+        .select()
+        .single()
 
       if (error) throw error
 

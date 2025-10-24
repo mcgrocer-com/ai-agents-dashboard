@@ -40,17 +40,27 @@ export function RawDataTab({ data }: RawDataTabProps) {
       'breadcrumbs', // Maps to breadcrumb
     ]
 
+    // Dimension fields that should be formatted to 3 decimals
+    const dimensionFields = ['height', 'width', 'length', 'volumetric_weight']
+
     // Create a new object with only allowed fields
     const productData: any = {}
     allowedFields.forEach((key) => {
       if (data[key] !== undefined && data[key] !== null) {
+        let value = data[key]
+
+        // Format dimension fields to 3 decimal places
+        if (dimensionFields.includes(key) && typeof value === 'number') {
+          value = parseFloat(value.toFixed(3))
+        }
+
         // Map field names to match ERPNext format
         if (key === 'original_price') {
-          productData['selling_price'] = data[key]
+          productData['selling_price'] = value
         } else if (key === 'breadcrumbs') {
-          productData['breadcrumb'] = data[key]
+          productData['breadcrumb'] = value
         } else {
-          productData[key] = data[key]
+          productData[key] = value
         }
       }
     })
