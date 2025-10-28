@@ -10,6 +10,8 @@ interface OverviewTabProps {
   description?: string
   aiTitle?: string
   aiDescription?: string
+  metaTitle?: string
+  metaDescription?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -18,6 +20,8 @@ export function OverviewTab({
   description,
   aiTitle,
   aiDescription,
+  metaTitle,
+  metaDescription,
   createdAt,
   updatedAt,
 }: OverviewTabProps) {
@@ -70,6 +74,46 @@ export function OverviewTab({
               <p className="text-xs text-gray-600">
                 Length: <span className="font-semibold">{aiDescription.length}</span> characters
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Meta Title */}
+      {metaTitle && (
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Meta Title</h3>
+          <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-gray-900 font-medium">{metaTitle}</p>
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-blue-200">
+              <p className="text-xs text-gray-600">
+                Length: <span className="font-semibold">{metaTitle.length}</span> characters
+              </p>
+              {metaTitle.length >= 50 && metaTitle.length <= 60 && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Optimal Length
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Meta Description */}
+      {metaDescription && (
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Meta Description</h3>
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4">
+            <p className="text-gray-900">{metaDescription}</p>
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-purple-200">
+              <p className="text-xs text-gray-600">
+                Length: <span className="font-semibold">{metaDescription.length}</span> characters
+              </p>
+              {metaDescription.length >= 150 && metaDescription.length <= 160 && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Optimal Length
+                </span>
+              )}
             </div>
           </div>
         </div>

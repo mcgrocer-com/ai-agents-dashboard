@@ -38,6 +38,8 @@ export function RawDataTab({ data }: RawDataTabProps) {
       'volumetric_weight',
       'length',
       'breadcrumbs', // Maps to breadcrumb
+      'ai_title', // SEO optimized title (meta title)
+      'ai_description', // SEO optimized description (meta description)
     ]
 
     // Dimension fields that should be formatted to 3 decimals
@@ -59,6 +61,14 @@ export function RawDataTab({ data }: RawDataTabProps) {
           productData['selling_price'] = value
         } else if (key === 'breadcrumbs') {
           productData['breadcrumb'] = value
+        } else if (key === 'ai_title') {
+          // Include both ai_title and meta_title
+          productData['ai_title'] = value
+          productData['meta_title'] = value
+        } else if (key === 'ai_description') {
+          // Include both ai_description and meta_description
+          productData['ai_description'] = value
+          productData['meta_description'] = value
         } else {
           productData[key] = value
         }

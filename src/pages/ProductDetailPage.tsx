@@ -213,6 +213,8 @@ export function ProductDetailPage() {
           description={product.description || undefined}
           aiTitle={product.ai_title || undefined}
           aiDescription={product.ai_description || undefined}
+          metaTitle={product.ai_title || undefined}
+          metaDescription={product.ai_description || undefined}
           createdAt={product.created_at || undefined}
           updatedAt={product.timestamp || undefined}
         />
