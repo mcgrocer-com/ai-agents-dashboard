@@ -40,6 +40,8 @@ export function RawDataTab({ data }: RawDataTabProps) {
       'breadcrumbs', // Maps to breadcrumb
       'ai_title', // SEO optimized title (meta title)
       'ai_description', // SEO optimized description (meta description)
+      'meta_title', // Maps to ai_title
+      'meta_description', // Maps to ai_description
     ]
 
     // Dimension fields that should be formatted to 3 decimals
