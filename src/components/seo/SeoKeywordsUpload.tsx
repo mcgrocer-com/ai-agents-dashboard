@@ -50,8 +50,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
 
-  // Import-related state
-  const [importFile, setImportFile] = useState<File | null>(null)
+  // Import-related state 
   const [importPreview, setImportPreview] = useState<ImportKeyword[]>([])
   const [importing, setImporting] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
@@ -217,8 +216,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
       setKeywords([''])
       setCategory('')
       setSearchTerm('')
-      setActiveTab('add')
-      setImportFile(null)
+      setActiveTab('add') 
       setImportPreview([])
       setParseError(null)
       onClose()
@@ -357,8 +355,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-
-    setImportFile(file)
+ 
     setParseError(null)
     setImportPreview([])
 
@@ -388,8 +385,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
         type: 'success'
       })
     } catch (error: any) {
-      setParseError(error.message)
-      setImportFile(null)
+      setParseError(error.message) 
       setToast({ message: `Failed to parse file: ${error.message}`, type: 'error' })
     }
   }
@@ -442,8 +438,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
         type: 'success'
       })
 
-      // Reset import state
-      setImportFile(null)
+      // Reset import state 
       setImportPreview([])
       setParseError(null)
 
