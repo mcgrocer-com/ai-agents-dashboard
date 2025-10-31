@@ -24,7 +24,7 @@ const ALL_COLUMNS: FilterColumn[] = [
   { label: 'Name', value: 'name', type: 'text' },
   { label: 'Product ID', value: 'product_id', type: 'text' },
   { label: 'Price', value: 'price', type: 'number' },
-  { label: 'Selling Price', value: 'selling_price', type: 'number' },
+  { label: 'Original Price', value: 'original_price', type: 'number' },
   { label: 'Stock Status', value: 'stock_status', type: 'text' },
   { label: 'Category', value: 'category', type: 'text' },
   { label: 'Description', value: 'description', type: 'text' },

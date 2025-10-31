@@ -172,7 +172,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
       total: stats.totalProducts,
       icon: CloudUpload,
       color: 'blue' as const,
-      description: 'Successfully synced products',
+      description: `Yesterday: ${stats.syncedYesterday} | This week: ${stats.syncedThisWeek}`,
     },
     {
       title: 'Failed to Sync',

@@ -54,11 +54,14 @@ export function AdvancedFilterBuilder({
   // Use allColumns for default filters if provided, otherwise use columns
   const defaultFilterColumns = allColumns || columns
   const addFilter = () => {
+    const firstColumn = columns[0]
+    const defaultValue = firstColumn?.type === 'number' ? '0' : ''
+
     const newFilter: FilterRule = {
       id: `filter-${Date.now()}-${Math.random()}`,
-      column: columns[0]?.value || '',
+      column: firstColumn?.value || '',
       operator: '=',
-      value: '',
+      value: defaultValue,
       isDefault: false,
     }
     onFiltersChange([...filters, newFilter])
@@ -70,7 +73,22 @@ export function AdvancedFilterBuilder({
 
   const updateFilter = (id: string, field: keyof FilterRule, value: string) => {
     onFiltersChange(
-      filters.map((f) => (f.id === id ? { ...f, [field]: value } : f))
+      filters.map((f) => {
+        if (f.id !== id) return f
+
+        // If changing column, update value to appropriate default if needed
+        if (field === 'column') {
+          const newColumn = columns.find((c) => c.value === value)
+          const currentValue = f.value
+
+          // If switching to a number column and current value is empty, set to '0'
+          if (newColumn?.type === 'number' && currentValue === '') {
+            return { ...f, [field]: value, value: '0' }
+          }
+        }
+
+        return { ...f, [field]: value }
+      })
     )
   }
 

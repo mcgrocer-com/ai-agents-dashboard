@@ -207,6 +207,8 @@ class ScraperProductsService {
           withAllData: 0,
           syncedToErpNext: 0,
           failedToSync: 0,
+          syncedYesterday: 0,
+          syncedThisWeek: 0,
         }
       }
 
@@ -218,6 +220,8 @@ class ScraperProductsService {
           withAllData: data.withAllData || 0,
           syncedToErpNext: data.syncedToErpNext || 0,
           failedToSync: data.failedToSync || 0,
+          syncedYesterday: data.syncedYesterday || 0,
+          syncedThisWeek: data.syncedThisWeek || 0,
         }
       }
 

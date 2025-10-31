@@ -13,6 +13,8 @@ export interface VendorStatistics {
   withAllData: number
   syncedToErpNext: number
   failedToSync: number
+  syncedYesterday: number
+  syncedThisWeek: number
 }
 
 /**
