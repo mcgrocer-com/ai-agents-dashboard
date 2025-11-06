@@ -23,7 +23,6 @@ interface CopyrightTabProps {
   nonCopyrightDesc?: string | null
   confidence?: number | null
   reasoning?: string | null
-  processingCost?: number | null
   toolsUsed?: Record<string, any> | null
   errorMessage?: string | null
   feedback?: string | null
@@ -36,7 +35,6 @@ export function CopyrightTab({
   nonCopyrightDesc,
   confidence,
   reasoning,
-  processingCost,
   toolsUsed,
   errorMessage,
   feedback,

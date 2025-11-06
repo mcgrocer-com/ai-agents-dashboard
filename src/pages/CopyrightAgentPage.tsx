@@ -35,19 +35,19 @@ export function CopyrightAgentPage() {
     // Filters
     filterColumns: [
       {
-        field: 'copyright_confidence',
+        value: 'copyright_confidence',
         label: 'Confidence',
         type: 'number',
       },
       {
-        field: 'vendor',
+        value: 'vendor',
         label: 'Vendor',
-        type: 'string',
+        type: 'text',
       },
       {
-        field: 'item_code',
+        value: 'item_code',
         label: 'Item Code',
-        type: 'string',
+        type: 'text',
       },
     ],
     defaultStatus: 'complete',

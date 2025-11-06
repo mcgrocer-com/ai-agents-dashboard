@@ -25,6 +25,7 @@ const agentNames: Record<AgentType, string> = {
   weight_dimension: 'Weight & Dimension',
   seo: 'SEO Optimizer',
   scraper: 'Scraper',
+  copyright: 'Copyright Agent',
 }
 
 const agentColors: Record<AgentType, string> = {
@@ -32,6 +33,7 @@ const agentColors: Record<AgentType, string> = {
   weight_dimension: 'purple',
   seo: 'indigo',
   scraper: 'green',
+  copyright: 'orange',
 }
 
 export function AgentGuidelinesDialog({

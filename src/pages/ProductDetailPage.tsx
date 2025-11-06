@@ -305,7 +305,6 @@ export function ProductDetailPage() {
           nonCopyrightDesc={product.non_copyright_desc}
           confidence={product.copyright_confidence}
           reasoning={product.copyright_reasoning}
-          processingCost={product.copyright_cost}
           toolsUsed={product.copyright_tools_used}
           feedback={product.copyright_feedback}
           updatedAt={product.updated_at}
