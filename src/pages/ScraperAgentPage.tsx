@@ -11,6 +11,7 @@ import { productsService } from '@/services'
 import { Pagination } from '@/components/ui/Pagination'
 import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/components/filters/AdvancedFilterBuilder'
 import { VendorStatistics } from '@/components/scraper/VendorStatistics'
+import { ProductActionsMenu } from '@/components/scraper/ProductActionsMenu'
 import type { ScrapedProduct, ProductFilters } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
@@ -302,7 +303,12 @@ export function ScraperAgentPage() {
           <p className="text-red-800">Error loading products: {error.message}</p>
         </div>
       ) : (
-        <ProductsList products={products} isLoading={isLoading} showPinned={activeTab === 'pinned'} />
+        <ProductsList
+          products={products}
+          isLoading={isLoading}
+          showPinned={activeTab === 'pinned'}
+          onRefresh={fetchProducts}
+        />
       )}
 
       {/* Pagination */}
@@ -326,9 +332,10 @@ interface ProductsListProps {
   products: ScrapedProduct[]
   isLoading: boolean
   showPinned?: boolean
+  onRefresh?: () => void
 }
 
-function ProductsList({ products, isLoading, showPinned = false }: ProductsListProps) {
+function ProductsList({ products, isLoading, showPinned = false, onRefresh }: ProductsListProps) {
   const navigate = useNavigate()
 
   if (isLoading) {
@@ -487,6 +494,12 @@ function ProductsList({ products, isLoading, showPinned = false }: ProductsListP
                         </span>
                       </span>
                     )}
+                    {/* Product Actions Menu */}
+                    <ProductActionsMenu
+                      productId={product.id}
+                      productName={product.name || 'Unnamed Product'}
+                      onActionComplete={onRefresh}
+                    />
                   </div>
                 </div>
                 <p className="text-sm text-secondary-600 line-clamp-2 mt-1">

@@ -134,7 +134,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
     setError(null)
 
     try {
-      const { data, error: funcError } = await supabase.functions.invoke('reset-vendor-copyright', {
+      const { data, error: funcError } = await supabase.functions.invoke('add-product-copyright', {
         body: { vendor }
       })
 

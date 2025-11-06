@@ -9,11 +9,15 @@
  * - Agent-specific details
  */
 
-import { Package, type LucideIcon } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Package, MoreVertical, Trash2, type LucideIcon } from 'lucide-react'
 import type { AgentProduct, AgentStatus } from '@/types'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import type { AgentType } from '@/services/agents.service'
 import { formatCurrency } from '@/lib/utils/format'
+import { supabase } from '@/lib/supabase/client'
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
+import { Toast } from '@/components/ui/Toast'
 
 interface AgentProductCardProps {
   agentProduct: AgentProduct
@@ -28,6 +32,56 @@ interface AgentProductCardProps {
 
 export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick }: AgentProductCardProps) {
   const { pendingData, productData } = agentProduct
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false)
+  const [isRemoving, setIsRemoving] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false)
+      }
+    }
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isMenuOpen])
+
+  const handleRemoveFromQueue = async () => {
+    setIsRemoving(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('remove-product-from-copyright', {
+        body: { productId: pendingData.id }
+      })
+
+      if (error) throw error
+
+      if (data.success) {
+        setToast({
+          message: `Product "${productData?.name || pendingData.item_code || 'Unnamed Product'}" removed from copyright queue`,
+          type: 'success'
+        })
+        // Refresh the page after a short delay to show the toast
+        setTimeout(() => {
+          window.location.reload()
+        }, 1500)
+      } else {
+        setToast({ message: data.error || 'Failed to remove product from queue', type: 'error' })
+      }
+    } catch (err) {
+      console.error('Error removing product from copyright queue:', err)
+      setToast({ message: 'An error occurred while removing product from queue', type: 'error' })
+    } finally {
+      setIsRemoving(false)
+      setShowRemoveConfirm(false)
+      setIsMenuOpen(false)
+    }
+  }
 
   // Helper function to format relative time
   const formatRelativeTime = (timestamp: string | null) => {
@@ -55,6 +109,8 @@ export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick
         return pendingData.weight_and_dimension_status
       case 'seo':
         return pendingData.seo_status
+      case 'copyright':
+        return pendingData.copyright_status || 'pending'
       default:
         return 'pending'
     }
@@ -68,6 +124,8 @@ export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick
         return pendingData.weight_confidence
       case 'seo':
         return null // SEO agent doesn't display confidence
+      case 'copyright':
+        return pendingData.copyright_confidence
       default:
         return null
     }
@@ -125,11 +183,49 @@ export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick
             <h3 className="font-semibold text-secondary-900 truncate text-base">
               {productData?.name || pendingData.item_code || 'Unnamed Product'}
             </h3>
-            {pendingData.updated_at && (
-              <span className="text-xs text-secondary-500 flex-shrink-0 font-medium">
-                {formatRelativeTime(pendingData.updated_at)}
-              </span>
-            )}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {pendingData.updated_at && (
+                <span className="text-xs text-secondary-500 font-medium">
+                  {formatRelativeTime(pendingData.updated_at)}
+                </span>
+              )}
+              {/* Actions Menu - Only for Copyright Agent */}
+              {agentType === 'copyright' && (
+                <div className="relative" ref={menuRef}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsMenuOpen(!isMenuOpen)
+                    }}
+                    className="p-1 hover:bg-gray-200 rounded transition-colors"
+                    aria-label="Product actions"
+                  >
+                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {isMenuOpen && (
+                    <div
+                      className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="py-1">
+                        <button
+                          onClick={() => {
+                            setIsMenuOpen(false)
+                            setShowRemoveConfirm(true)
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                          <span>Remove from Queue</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Vendor and Item Code */}
@@ -189,6 +285,32 @@ export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick
           />
         </div>
       </div>
+
+      {/* Remove from Queue Confirmation Dialog */}
+      {agentType === 'copyright' && (
+        <>
+          <ConfirmationDialog
+            open={showRemoveConfirm}
+            onClose={() => setShowRemoveConfirm(false)}
+            onConfirm={handleRemoveFromQueue}
+            title="Remove from Copyright Queue"
+            message={`Are you sure you want to remove "${productData?.name || pendingData.item_code || 'this product'}" from the copyright queue?\n\nThis will set its copyright_status to NULL, removing it from the queue. You can add it back later if needed.`}
+            confirmText="Remove"
+            cancelText="Cancel"
+            variant="danger"
+            loading={isRemoving}
+          />
+
+          {/* Toast Notification */}
+          {toast && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={() => setToast(null)}
+            />
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -256,6 +378,19 @@ function AgentSpecificDetails({ agentType, pendingData, icon: Icon, iconColor }:
     )
   }
 
+  const renderCopyrightDetails = () => {
+    const nonCopyrightImages = pendingData.non_copyright_images
+    if (!nonCopyrightImages || nonCopyrightImages.length === 0) return null
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <Icon className={`w-4 h-4 ${iconColor}`} />
+        <span className="text-secondary-700 font-medium">
+          {nonCopyrightImages.length} non-copyright image{nonCopyrightImages.length !== 1 ? 's' : ''} found
+        </span>
+      </div>
+    )
+  }
+
   switch (agentType) {
     case 'category':
       return renderCategoryDetails()
@@ -263,6 +398,8 @@ function AgentSpecificDetails({ agentType, pendingData, icon: Icon, iconColor }:
       return renderWeightDetails()
     case 'seo':
       return renderSeoDetails()
+    case 'copyright':
+      return renderCopyrightDetails()
     default:
       return null
   }

@@ -14,10 +14,12 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Pagination } from '@/components/ui/Pagination'
 import { Dialog } from '@/components/ui/Dialog'
 import { Toast } from '@/components/ui/Toast'
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { AgentProductCard } from '@/components/products/AgentProductCard'
 import { AgentVendorStatistics } from '@/components/agents/AgentVendorStatistics'
 import { AdvancedFilterBuilder, type FilterRule } from '@/components/filters/AdvancedFilterBuilder'
-import { Package, Search, SlidersHorizontal, RefreshCw, type LucideIcon } from 'lucide-react'
+import { Package, Search, SlidersHorizontal, RefreshCw, Trash2, type LucideIcon } from 'lucide-react'
+import { supabase } from '@/lib/supabase/client'
 import type { AgentType } from '@/services/agents.service'
 
 export interface FilterColumn {
@@ -72,6 +74,8 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
+  const [showClearQueueConfirm, setShowClearQueueConfirm] = useState(false)
+  const [isClearing, setIsClearing] = useState(false)
 
   const { metrics } = useAgentMetrics()
   const { vendors } = useVendors()
@@ -150,6 +154,33 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     }
   }
 
+  const handleClearQueue = async () => {
+    setIsClearing(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('clear-copyright-queue', {
+        body: {}
+      })
+
+      if (error) throw error
+
+      if (data.success) {
+        setToast({
+          message: `Successfully cleared ${data.stats?.cleared_count || 0} product(s) from copyright queue`,
+          type: 'success'
+        })
+        refresh()
+      } else {
+        setToast({ message: data.error || 'Failed to clear queue', type: 'error' })
+      }
+    } catch (err) {
+      console.error('Error clearing copyright queue:', err)
+      setToast({ message: 'An error occurred while clearing the queue', type: 'error' })
+    } finally {
+      setIsClearing(false)
+      setShowClearQueueConfirm(false)
+    }
+  }
+
   const IconComponent = config.icon
 
   return (
@@ -182,16 +213,28 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
                 {count.toLocaleString()} products found
               </p>
             </div>
-            {agent && agent.failed > 0 && (
-              <button
-                onClick={handleOpenRetryDialog}
-                disabled={retrying}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
-              >
-                <RefreshCw className={`h-4 w-4 ${retrying ? 'animate-spin' : ''}`} />
-                <span>Retry Failed ({agent.failed})</span>
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {agentType === 'copyright' && agent && agent.pending > 0 && (
+                <button
+                  onClick={() => setShowClearQueueConfirm(true)}
+                  disabled={isClearing}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                >
+                  <Trash2 className={`h-4 w-4 ${isClearing ? 'animate-pulse' : ''}`} />
+                  <span>Clear Queue ({agent.pending})</span>
+                </button>
+              )}
+              {agent && agent.failed > 0 && (
+                <button
+                  onClick={handleOpenRetryDialog}
+                  disabled={retrying}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                >
+                  <RefreshCw className={`h-4 w-4 ${retrying ? 'animate-spin' : ''}`} />
+                  <span>Retry Failed ({agent.failed})</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -408,6 +451,19 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
           </ul>
         </div>
       </div>
+
+      {/* Clear Queue Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showClearQueueConfirm}
+        onClose={() => setShowClearQueueConfirm(false)}
+        onConfirm={handleClearQueue}
+        title="Clear Copyright Queue"
+        message="Are you sure you want to clear all pending products from the copyright queue?\n\nThis will set their copyright_status to NULL, removing them from the queue. This action cannot be undone."
+        confirmText="Clear Queue"
+        cancelText="Cancel"
+        variant="danger"
+        loading={isClearing}
+      />
 
       {/* Toast Notification */}
       {toast && (
