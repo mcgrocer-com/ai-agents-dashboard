@@ -7,7 +7,7 @@
 import { supabase } from '@/lib/supabase/client'
 import type { AgentMetrics, AgentStatus, AgentProduct, PendingProduct, ScrapedProduct } from '@/types'
 
-export type AgentType = 'category' | 'weight_dimension' | 'seo' | 'scraper'
+export type AgentType = 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright'
 
 export interface TriggerAgentParams {
   agentType: AgentType
@@ -195,9 +195,11 @@ class AgentsService {
           category_status: item.category_status,
           weight_and_dimension_status: item.weight_and_dimension_status,
           seo_status: item.seo_status,
+          copyright_status: item.copyright_status,
           category_feedback: item.category_feedback,
           weight_dimension_feedback: item.weight_dimension_feedback,
           seo_feedback: item.seo_feedback,
+          copyright_feedback: item.copyright_feedback,
           category: item.category,
           category_confidence: item.category_confidence,
           category_cost: item.category_cost,
@@ -231,7 +233,16 @@ class AgentsService {
           seo_reasoning: item.seo_reasoning,
           seo_confidence: item.seo_confidence,
           seo_tools_used: item.seo_tools_used,
+          non_copyright_images: item.non_copyright_images,
+          non_copyright_desc: item.non_copyright_desc,
+          copyright_confidence: item.copyright_confidence,
+          copyright_cost: item.copyright_cost,
+          copyright_reasoning: item.copyright_reasoning,
+          copyright_tools_used: item.copyright_tools_used,
           item_code: item.item_code,
+          erpnext_updated_at: item.erpnext_updated_at,
+          failed_sync_at: item.failed_sync_at,
+          failed_sync_error_message: item.failed_sync_error_message,
           created_at: item.created_at,
           updated_at: item.updated_at, // This is pending_products.updated_at
         } as PendingProduct,
@@ -306,9 +317,11 @@ class AgentsService {
           category_status: item.category_status,
           weight_and_dimension_status: item.weight_and_dimension_status,
           seo_status: item.seo_status,
+          copyright_status: item.copyright_status,
           category_feedback: item.category_feedback,
           weight_dimension_feedback: item.weight_dimension_feedback,
           seo_feedback: item.seo_feedback,
+          copyright_feedback: item.copyright_feedback,
           category: item.category,
           category_confidence: item.category_confidence,
           category_cost: item.category_cost,
@@ -342,7 +355,16 @@ class AgentsService {
           seo_reasoning: item.seo_reasoning,
           seo_confidence: item.seo_confidence,
           seo_tools_used: item.seo_tools_used,
+          non_copyright_images: item.non_copyright_images,
+          non_copyright_desc: item.non_copyright_desc,
+          copyright_confidence: item.copyright_confidence,
+          copyright_cost: item.copyright_cost,
+          copyright_reasoning: item.copyright_reasoning,
+          copyright_tools_used: item.copyright_tools_used,
           item_code: item.item_code,
+          erpnext_updated_at: item.erpnext_updated_at,
+          failed_sync_at: item.failed_sync_at,
+          failed_sync_error_message: item.failed_sync_error_message,
           created_at: item.created_at,
           updated_at: item.updated_at, // This is pending_products.updated_at
         } as PendingProduct,
@@ -446,6 +468,7 @@ class AgentsService {
       weight_dimension: 'weight_and_dimension_status',
       seo: 'seo_status',
       scraper: 'status', // Special case
+      copyright: 'copyright_status',
     }
     return fieldMap[agentType]
   }
@@ -459,6 +482,7 @@ class AgentsService {
       weight_dimension: 'weight_dimension_feedback',
       seo: 'seo_feedback',
       scraper: 'failed_sync_error_message', // For scraper, we use the error message field
+      copyright: 'copyright_feedback',
     }
     return fieldMap[agentType]
   }

@@ -6,10 +6,11 @@
  */
 
 import { useEffect, useState } from 'react'
-import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw } from 'lucide-react'
+import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw, RotateCcw } from 'lucide-react'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/useToast'
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import type { VendorStatistics as VendorStats } from '@/types/statistics'
 
 interface VendorStatisticsProps {
@@ -23,6 +24,10 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
   const [error, setError] = useState<string | null>(null)
   const [isPushing, setIsPushing] = useState(false)
   const [isResyncing, setIsResyncing] = useState(false)
+  const [isSendingToCopyright, setIsSendingToCopyright] = useState(false)
+  const [showCopyrightConfirm, setShowCopyrightConfirm] = useState(false)
+  const [showResyncConfirm, setShowResyncConfirm] = useState(false)
+  const [showPushToQueueConfirm, setShowPushToQueueConfirm] = useState(false)
 
   useEffect(() => {
     if (!vendor) {
@@ -53,9 +58,12 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
     }
   }
 
-  const handlePushToPending = async () => {
+  const handlePushToPending = () => {
     if (!vendor || vendor === 'all') return
+    setShowPushToQueueConfirm(true)
+  }
 
+  const confirmPushToPending = async () => {
     setIsPushing(true)
     setError(null)
 
@@ -83,9 +91,12 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
     }
   }
 
-  const handleResyncToErpNext = async () => {
+  const handleResyncToErpNext = () => {
     if (!vendor || vendor === 'all') return
+    setShowResyncConfirm(true)
+  }
 
+  const confirmResyncToErpNext = async () => {
     setIsResyncing(true)
     setError(null)
 
@@ -110,6 +121,39 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
       showToast('An error occurred while resyncing products to ERPNext', 'error')
     } finally {
       setIsResyncing(false)
+    }
+  }
+
+  const handleSendToCopyright = () => {
+    if (!vendor || vendor === 'all') return
+    setShowCopyrightConfirm(true)
+  }
+
+  const confirmSendToCopyright = async () => {
+    setIsSendingToCopyright(true)
+    setError(null)
+
+    try {
+      const { data, error: funcError } = await supabase.functions.invoke('reset-vendor-copyright', {
+        body: { vendor }
+      })
+
+      if (funcError) throw funcError
+
+      if (data.success) {
+        showToast(`Successfully sent ${data.stats?.updated_count || 0} products to Copyright Agent`, 'success')
+        // Refresh statistics after successful reset
+        setTimeout(() => {
+          fetchStatistics()
+        }, 1000)
+      } else {
+        showToast(data.error || 'Failed to send products to Copyright Agent', 'error')
+      }
+    } catch (err) {
+      console.error('Error sending to Copyright Agent:', err)
+      showToast('An error occurred while sending products to Copyright Agent', 'error')
+    } finally {
+      setIsSendingToCopyright(false)
     }
   }
 
@@ -232,8 +276,23 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
             )}
           </button>
 
-         
-
+          <button
+            onClick={handleSendToCopyright}
+            disabled={isSendingToCopyright}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSendingToCopyright ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Sending...</span>
+              </>
+            ) : (
+              <>
+                <RotateCcw className="w-4 h-4" />
+                <span>Send to Copyright Agent</span>
+              </>
+            )}
+          </button>
 
           <button
             onClick={handlePushToPending}
@@ -281,6 +340,12 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
                     Reset sync status for all products from this vendor, forcing them to be re-synced to ERPNext in the next sync cycle.
                   </p>
                 </div>
+                <div>
+                  <p className="font-medium text-gray-200">Send to Copyright Agent</p>
+                  <p className="text-gray-300">
+                    Send all products from this vendor to the Copyright Agent for processing. This will reset their copyright status to pending and queue them for copyright detection.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -316,6 +381,45 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
           </div>
         ))}
       </div>
+
+      {/* Resync to ERPNext Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showResyncConfirm}
+        onClose={() => setShowResyncConfirm(false)}
+        onConfirm={confirmResyncToErpNext}
+        title="Resync to ERPNext"
+        message={`Are you sure you want to resync all ${vendor} products to ERPNext?\n\nThis will reset their sync status and force them to be re-synced in the next sync cycle.`}
+        confirmText="Resync"
+        cancelText="Cancel"
+        variant="info"
+        loading={isResyncing}
+      />
+
+      {/* Copyright Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showCopyrightConfirm}
+        onClose={() => setShowCopyrightConfirm(false)}
+        onConfirm={confirmSendToCopyright}
+        title="Send to Copyright Agent"
+        message={`Are you sure you want to send all ${vendor} products to the Copyright Agent?\n\nThis will reset their copyright status to pending and queue them for processing.`}
+        confirmText="Send to Agent"
+        cancelText="Cancel"
+        variant="warning"
+        loading={isSendingToCopyright}
+      />
+
+      {/* Push to Queue Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showPushToQueueConfirm}
+        onClose={() => setShowPushToQueueConfirm(false)}
+        onConfirm={confirmPushToPending}
+        title="Send to Processing Queue"
+        message={`Are you sure you want to send all ${vendor} products to the processing queue?\n\nThis will queue them for AI agent processing (category, weight/dimension, and SEO optimization).`}
+        confirmText="Send to Queue"
+        cancelText="Cancel"
+        variant="info"
+        loading={isPushing}
+      />
     </div>
   )
 }

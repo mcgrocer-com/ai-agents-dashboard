@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { FileText, Tags, Package, Search, Code, ChevronRight, Home } from 'lucide-react'
+import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield } from 'lucide-react'
 import { productsService, erpnextService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
@@ -15,6 +15,7 @@ import { OverviewTab } from '@/components/products/tabs/OverviewTab'
 import { CategoryTab } from '@/components/products/tabs/CategoryTab'
 import { WeightDimensionTab } from '@/components/products/tabs/WeightDimensionTab'
 import { SeoTab } from '@/components/products/tabs/SeoTab'
+import { CopyrightTab } from '@/components/products/tabs/CopyrightTab'
 import { RawDataTab } from '@/components/products/tabs/RawDataTab'
 import { RetryButton } from '@/components/ui/RetryButton'
 import { useToast } from '@/hooks/useToast'
@@ -294,6 +295,24 @@ export function ProductDetailPage() {
       ),
     },
     {
+      id: 'copyright',
+      label: 'Copyright Detection',
+      icon: <Shield className="h-4 w-4" />,
+      content: (
+        <CopyrightTab
+          status={product.copyright_status || null}
+          nonCopyrightImages={product.non_copyright_images}
+          nonCopyrightDesc={product.non_copyright_desc}
+          confidence={product.copyright_confidence}
+          reasoning={product.copyright_reasoning}
+          processingCost={product.copyright_cost}
+          toolsUsed={product.copyright_tools_used}
+          feedback={product.copyright_feedback}
+          updatedAt={product.updated_at}
+        />
+      ),
+    },
+    {
       id: 'raw-data',
       label: 'Raw Data',
       icon: <Code className="h-4 w-4" />,
@@ -305,6 +324,7 @@ export function ProductDetailPage() {
   const categoryStatus = product.category_status || 'pending'
   const weightStatus = product.weight_and_dimension_status || 'pending'
   const seoStatus = product.seo_status || 'pending'
+  const copyrightStatus = product.copyright_status || null
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -429,7 +449,7 @@ export function ProductDetailPage() {
       />
 
       {/* Agent Status Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Category Agent */}
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex items-start justify-between mb-3 min-h-[60px]">
@@ -507,6 +527,35 @@ export function ProductDetailPage() {
               productId={product.id}
               agentType="seo"
               agentName="SEO Agent"
+              onRetry={handleRetry}
+              className="w-full justify-center"
+            />
+          </div>
+        </div>
+
+        {/* Copyright Agent */}
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex items-start justify-between mb-3 min-h-[60px]">
+            <div className="flex-1">
+              <p className="text-xs text-gray-500 uppercase mb-2">Copyright Detection</p>
+              <p className={`text-sm font-semibold ${getStatusColor(copyrightStatus || 'pending')}`}>
+                {getStatusText(copyrightStatus || 'pending')}
+              </p>
+              {product.non_copyright_images && product.non_copyright_images.length > 0 ? (
+                <p className="text-xs text-gray-600 mt-1">
+                  {product.non_copyright_images.length} safe {product.non_copyright_images.length === 1 ? 'image' : 'images'}
+                </p>
+              ) : (
+                <p className="text-xs text-gray-600 mt-1 invisible">placeholder</p>
+              )}
+            </div>
+            <Shield className={`h-6 w-6 ${getStatusColor(copyrightStatus || 'pending')}`} />
+          </div>
+          <div className={copyrightStatus === 'pending' || copyrightStatus === 'processing' || !copyrightStatus ? 'opacity-50 pointer-events-none' : ''}>
+            <RetryButton
+              productId={product.id}
+              agentType="copyright"
+              agentName="Copyright Agent"
               onRetry={handleRetry}
               className="w-full justify-center"
             />

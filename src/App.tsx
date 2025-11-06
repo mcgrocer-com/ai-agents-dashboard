@@ -19,6 +19,7 @@ import {
   CategoryAgentPage,
   WeightAgentPage,
   SeoAgentPage,
+  CopyrightAgentPage,
   AgentToolsPage,
   AdminPage,
 } from '@/pages'
@@ -43,6 +44,7 @@ function App() {
             <Route path="/agents/category" element={<CategoryAgentPage />} />
             <Route path="/agents/weight" element={<WeightAgentPage />} />
             <Route path="/agents/seo" element={<SeoAgentPage />} />
+            <Route path="/agents/copyright" element={<CopyrightAgentPage />} />
             <Route path="/agent-tools" element={<AgentToolsPage />} />
             <Route path="/admin" element={<AdminPage />} />
           </Route>

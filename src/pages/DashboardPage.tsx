@@ -11,7 +11,7 @@ import { AgentStatusCard } from '@/components/dashboard/AgentStatusCard'
 import { ProcessingQueue } from '@/components/dashboard/ProcessingQueue'
 import { RecentActivity } from '@/components/dashboard/RecentActivity'
 import { JobQueueManager } from '@/components/dashboard/JobQueueManager'
-import { Tag, Scale, FileText } from 'lucide-react'
+import { Tag, Scale, FileText, Shield } from 'lucide-react'
 
 export function DashboardPage() {
   // Enable realtime updates for entire dashboard
@@ -23,6 +23,17 @@ export function DashboardPage() {
   const categoryAgent = agentMetrics?.find((a) => a.agentType === 'category')
   const weightAgent = agentMetrics?.find((a) => a.agentType === 'weight_dimension')
   const seoAgent = agentMetrics?.find((a) => a.agentType === 'seo')
+  const copyrightAgent = agentMetrics?.find((a) => a.agentType === 'copyright') || {
+    agentType: 'copyright' as const,
+    totalProducts: 0,
+    pending: 0,
+    processing: 0,
+    complete: 0,
+    failed: 0,
+    avgConfidence: 0,
+    totalCost: 0,
+    lastRun: null,
+  }
 
   return (
     <div className="space-y-6">
@@ -41,11 +52,11 @@ export function DashboardPage() {
       <LiveMetrics />
 
       {/* Agent Status Cards - Show shimmer while loading */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
         {!categoryAgent || !weightAgent || !seoAgent ? (
           // Shimmer loading skeleton
           <>
-            {[...Array(3)].map((_, i) => (
+            {[...Array(4)].map((_, i) => (
               <div
                 key={i}
                 className="bg-white border border-gray-200 rounded-lg p-6 animate-pulse"
@@ -91,6 +102,12 @@ export function DashboardPage() {
               color="purple"
               name="SEO Optimizer"
             />
+            <AgentStatusCard
+              agent={copyrightAgent}
+              icon={Shield}
+              color="orange"
+              name="Copyright Detector"
+            />
           </>
         )}
       </div>
@@ -126,6 +143,7 @@ export function DashboardPage() {
               categoryAgent={categoryAgent}
               weightAgent={weightAgent}
               seoAgent={seoAgent}
+              copyrightAgent={copyrightAgent}
             />
             <RecentActivity />
           </>

@@ -13,12 +13,14 @@ interface ProcessingQueueProps {
   categoryAgent: AgentMetrics
   weightAgent: AgentMetrics
   seoAgent: AgentMetrics
+  copyrightAgent?: AgentMetrics | undefined
 }
 
 export function ProcessingQueue({
   categoryAgent,
   weightAgent,
   seoAgent,
+  copyrightAgent,
 }: ProcessingQueueProps) {
   const queues = [
     {
@@ -42,6 +44,17 @@ export function ProcessingQueue({
       color: 'purple',
       href: '/agents/seo',
     },
+    ...(copyrightAgent
+      ? [
+          {
+            name: 'Copyright Detection',
+            pending: copyrightAgent.pending,
+            complete: copyrightAgent.complete,
+            color: 'orange',
+            href: '/agents/copyright',
+          },
+        ]
+      : []),
   ]
 
   const totalPending = queues.reduce((sum, q) => sum + (q.pending || 0), 0)
@@ -82,7 +95,7 @@ export function ProcessingQueue({
           </div>
         </div>
       ) : (
-        <div className="space-y-4 flex-1 overflow-y-auto">
+        <div className="grid grid-cols-2 gap-4 flex-1 overflow-y-auto content-start">
           {queues.map((queue) => (
             <QueueItem key={queue.name} {...queue} />
           ))}
@@ -114,6 +127,7 @@ function QueueItem({
     blue: 'bg-blue-500',
     green: 'bg-green-500',
     purple: 'bg-purple-500',
+    orange: 'bg-orange-500',
   }
 
   return (

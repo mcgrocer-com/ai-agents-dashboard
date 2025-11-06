@@ -63,6 +63,7 @@ export function RecentActivity() {
     if (agent.includes('Category')) return 'text-blue-600'
     if (agent.includes('Weight') || agent.includes('Dimension')) return 'text-green-600'
     if (agent.includes('SEO')) return 'text-purple-600'
+    if (agent.includes('Copyright')) return 'text-orange-600'
     return 'text-gray-600'
   }
   const fetchCompleteActivities = async () => {
@@ -100,6 +101,7 @@ export function RecentActivity() {
           categoryStatus: item.category_status as AgentStatus,
           weightStatus: item.weight_and_dimension_status as AgentStatus,
           seoStatus: item.seo_status as AgentStatus,
+          copyrightStatus: item.copyright_status as AgentStatus,
         })
       })
 
@@ -170,6 +172,20 @@ export function RecentActivity() {
             imageUrl,
             agent: 'SEO Optimizer',
             status: item.seo_status as AgentStatus,
+            timestamp: item.updated_at ?? '',
+            productId: item.scraped_product_id || item.id,
+          })
+        }
+
+        // Copyright agent activity
+        if (item.copyright_status && item.copyright_status !== 'pending') {
+          freshActivities.push({
+            id: `copyright-${item.id}`,
+            productName,
+            vendor,
+            imageUrl,
+            agent: 'Copyright Detection',
+            status: item.copyright_status as AgentStatus,
             timestamp: item.updated_at ?? '',
             productId: item.scraped_product_id || item.id,
           })
@@ -417,6 +433,21 @@ export function RecentActivity() {
               />
               <span className="text-xs text-purple-600 font-medium">SEO</span>
             </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedAgents.includes('copyright')}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedAgents([...selectedAgents, 'copyright'])
+                  } else {
+                    setSelectedAgents(selectedAgents.filter((a) => a !== 'copyright'))
+                  }
+                }}
+                className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+              />
+              <span className="text-xs text-orange-600 font-medium">Copyright</span>
+            </label>
 
             {/* Vendor dropdown */}
             <div className="flex items-center gap-2 ml-4">
@@ -550,6 +581,18 @@ export function RecentActivity() {
                         >
                           <span className="text-purple-600 mr-1">S</span>
                           {activity.seoStatus}
+                        </span>
+                      )}
+                      {/* Copyright Agent Status */}
+                      {activity.copyrightStatus && activity.copyrightStatus !== 'pending' && (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                            activity.copyrightStatus
+                          )}`}
+                          title={`Copyright: ${activity.copyrightStatus}`}
+                        >
+                          <span className="text-orange-600 mr-1">CR</span>
+                          {activity.copyrightStatus}
                         </span>
                       )}
                     </div>

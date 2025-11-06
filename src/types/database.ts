@@ -75,11 +75,13 @@ export interface PendingProduct {
   category_status: AgentStatus
   weight_and_dimension_status: AgentStatus
   seo_status: AgentStatus
+  copyright_status: AgentStatus | null
 
   // Feedback fields for retry guidance
   category_feedback: string | null
   weight_dimension_feedback: string | null
   seo_feedback: string | null
+  copyright_feedback: string | null
 
   // Category agent results
   category: string | null
@@ -121,6 +123,14 @@ export interface PendingProduct {
   seo_reasoning: string | null
   seo_confidence: number | null
   seo_tools_used: Record<string, any> | null
+
+  // Copyright agent results
+  non_copyright_images: string[] | null
+  non_copyright_desc: string | null
+  copyright_confidence: number | null
+  copyright_cost: number | null
+  copyright_reasoning: string | null
+  copyright_tools_used: Record<string, any> | null
 
   item_code: string | null
   erpnext_updated_at: string | null
@@ -212,7 +222,7 @@ export interface Category {
 
 export interface AgentResource {
   id: string
-  agent_type: 'category' | 'weight_dimension' | 'seo' | 'scraper'
+  agent_type: 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright'
   resource_type: 'prompt' | 'guideline' | 'context' | 'template'
   title: string
   content: string
@@ -287,7 +297,7 @@ export interface DashboardMetrics {
 }
 
 export interface AgentMetrics {
-  agentType: 'category' | 'weight_dimension' | 'seo'
+  agentType: 'category' | 'weight_dimension' | 'seo' | 'copyright'
   totalProducts: number
   pending: number
   processing: number
@@ -318,6 +328,7 @@ export interface RecentActivity {
   categoryStatus?: AgentStatus
   weightStatus?: AgentStatus
   seoStatus?: AgentStatus
+  copyrightStatus?: AgentStatus
 }
 
 // ============================================================================

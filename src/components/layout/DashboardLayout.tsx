@@ -14,6 +14,7 @@ import {
   Tag,
   Scale,
   Search,
+  Shield,
   Wrench,
   LogOut,
   ChevronLeft,
@@ -32,11 +33,19 @@ export function DashboardLayout() {
   }
 
   const navItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Scraper Agent', path: '/scraper-agent', icon: Package },
-    { name: 'Category Agent', path: '/agents/category', icon: Tag },
-    { name: 'Weight Agent', path: '/agents/weight', icon: Scale },
-    { name: 'SEO Agent', path: '/agents/seo', icon: Search },
+    { name: 'Home', path: '/dashboard', icon: LayoutDashboard },
+    
+  ]
+
+  const agentItems = [
+    { name: 'Scraper', path: '/scraper-agent', icon: Package },
+    { name: 'Category', path: '/agents/category', icon: Tag },
+    { name: 'Weight', path: '/agents/weight', icon: Scale },
+    { name: 'SEO', path: '/agents/seo', icon: Search },
+    { name: 'Copyright', path: '/agents/copyright', icon: Shield },
+  ]
+
+  const toolItems = [
     { name: 'Agent Tools', path: '/agent-tools', icon: Wrench },
   ]
 
@@ -76,8 +85,66 @@ export function DashboardLayout() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-2">
+          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+            {/* Main Navigation Items */}
             {navItems.map((item) => {
+              const active = isActive(item.path)
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    active
+                      ? 'bg-primary-100 text-primary-700 font-semibold'
+                      : 'text-secondary-700 hover:bg-primary-50 hover:text-primary-600'
+                  } ${isCollapsed ? 'justify-center' : ''}`}
+                  title={isCollapsed ? item.name : ''}
+                >
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {!isCollapsed && <span className="font-medium">{item.name}</span>}
+                </Link>
+              )
+            })}
+
+            {/* Divider */}
+            <div className="pt-4 pb-4">
+              <div className="border-t border-secondary-200" />
+            </div>
+
+            {/* Agents Section */}
+            {!isCollapsed && (
+              <div className="pb-2">
+                <h3 className="px-4 text-xs font-semibold text-secondary-500 uppercase tracking-wider">
+                  Agents
+                </h3>
+              </div>
+            )}
+            {agentItems.map((item) => {
+              const active = isActive(item.path)
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    active
+                      ? 'bg-primary-100 text-primary-700 font-semibold'
+                      : 'text-secondary-700 hover:bg-primary-50 hover:text-primary-600'
+                  } ${isCollapsed ? 'justify-center' : ''}`}
+                  title={isCollapsed ? item.name : ''}
+                >
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {!isCollapsed && <span className="font-medium">{item.name}</span>}
+                </Link>
+              )
+            })}
+
+            {/* Divider */}
+            <div className="pt-4 pb-4">
+              <div className="border-t border-secondary-200" />
+            </div>
+
+            {/* Tools Section */}
+            {toolItems.map((item) => {
               const active = isActive(item.path)
               return (
                 <Link

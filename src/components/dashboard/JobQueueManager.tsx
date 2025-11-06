@@ -59,18 +59,21 @@ const AGENT_OPTIONS = [
   { value: 'category', label: 'Category Mapper' },
   { value: 'weight-dimension', label: 'Weight & Dimension' },
   { value: 'seo', label: 'SEO Optimizer' },
+  { value: 'copyright', label: 'Copyright Detector' },
 ]
 
 const AGENT_LABELS: Record<string, string> = {
   category: 'category',
   weight_dimension: 'weight and dimension',
   seo: 'SEO',
+  copyright: 'copyright',
 }
 
 const AGENT_COLORS: Record<string, string> = {
   category: 'bg-blue-100 text-blue-700',
   'weight-dimension': 'bg-green-100 text-green-700',
   seo: 'bg-purple-100 text-purple-700',
+  copyright: 'bg-orange-100 text-orange-700',
 }
 
 const STATUS_COLORS = {
