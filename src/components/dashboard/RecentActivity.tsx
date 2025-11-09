@@ -94,7 +94,7 @@ export function RecentActivity() {
           vendor,
           imageUrl,
           agent: 'All Agents',
-          status: 'complete' as AgentStatus, // All selected agents are complete (filtered by RPC)
+          status: 'complete' as AgentStatus, // ...All selected agents are complete (filtered by RPC)
           timestamp: item.updated_at ?? '',
           productId: item.scraped_product_id || item.id,
           // Add all agent statuses for display
