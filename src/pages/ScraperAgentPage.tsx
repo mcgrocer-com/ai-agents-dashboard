@@ -4,14 +4,16 @@
  * Displays Scraper Products with tabs for All Products and Pinned Products.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock } from 'lucide-react'
+import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send } from 'lucide-react'
 import { productsService } from '@/services'
+import { supabase } from '@/lib/supabase/client'
 import { Pagination } from '@/components/ui/Pagination'
 import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/components/filters/AdvancedFilterBuilder'
 import { VendorStatistics } from '@/components/scraper/VendorStatistics'
 import { ProductActionsMenu } from '@/components/scraper/ProductActionsMenu'
+import { useToast } from '@/hooks/useToast'
 import type { ScrapedProduct, ProductFilters } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
@@ -41,7 +43,38 @@ const ALL_COLUMNS: FilterColumn[] = [
 // Filter columns for user-added filters (Vendor is handled by default filter)
 const FILTER_COLUMNS: FilterColumn[] = ALL_COLUMNS.filter((col) => col.value !== 'vendor')
 
+// Utility functions moved outside components for better performance
+const stripHtml = (html: string | null): string => {
+  if (!html) return ''
+  // Use a more efficient method with regex instead of DOM manipulation
+  return html
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/&nbsp;/g, ' ') // Replace &nbsp;
+    .replace(/&amp;/g, '&') // Replace &amp;
+    .replace(/&lt;/g, '<') // Replace &lt;
+    .replace(/&gt;/g, '>') // Replace &gt;
+    .replace(/&quot;/g, '"') // Replace &quot;
+    .trim()
+}
+
+const formatRelativeTime = (timestamp: string | null): string => {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString()
+}
+
 export function ScraperAgentPage() {
+  const { showToast } = useToast()
   const [activeTab, setActiveTab] = useState<TabType>('all')
   const [products, setProducts] = useState<ScrapedProduct[]>([])
   const [count, setCount] = useState(0)
@@ -57,6 +90,11 @@ export function ScraperAgentPage() {
   const [filters, setFilters] = useState<FilterRule[]>([])
   const [showFilters, setShowFilters] = useState(false)
   const [defaultVendor, setDefaultVendor] = useState<string>('')
+
+  // Selection states
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
+  const [isSendingBulk, setIsSendingBulk] = useState(false)
 
   // Fetch vendors on mount and set default vendor filter
   useEffect(() => {
@@ -111,7 +149,7 @@ export function ScraperAgentPage() {
       }))
   }
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
@@ -131,23 +169,141 @@ export function ScraperAgentPage() {
     if (result.error) {
       setError(result.error)
     } else {
-      setProducts(result.products)
+      // Process products to truncate descriptions
+      const processedProducts = result.products.map(product => ({
+        ...product,
+        description: product.description
+          ? stripHtml(product.description.substring(0, 200)) + (product.description.length > 200 ? '...' : '')
+          : ''
+      }))
+      setProducts(processedProducts)
       setCount(result.count)
     }
 
     setIsLoading(false)
-  }
+  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters])
 
-  const handleSearch = (value: string) => {
+  const handleSearch = useCallback((value: string) => {
     setSearchTerm(value)
     setPage(1)
-  }
+  }, [])
 
-  const handleTabChange = (tab: TabType) => {
+  const handleTabChange = useCallback((tab: TabType) => {
     setActiveTab(tab)
     setPage(1)
     setSearchTerm('')
-  }
+    // Clear selection when changing tabs
+    setSelectedProductIds(new Set())
+    setSelectionMode(false)
+  }, [])
+
+  // Selection handlers
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionMode((prev) => !prev)
+    setSelectedProductIds(new Set())
+  }, [])
+
+  const toggleProductSelection = useCallback((productId: string) => {
+    setSelectedProductIds((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(productId)) {
+        newSet.delete(productId)
+      } else {
+        newSet.add(productId)
+      }
+      return newSet
+    })
+  }, [])
+
+  // Check if all products on current page are selected
+  const areAllCurrentPageSelected = useMemo(() => {
+    if (products.length === 0) return false
+    return products.every((p) => selectedProductIds.has(p.id))
+  }, [products, selectedProductIds])
+
+  // Memoize count of selected products on current page
+  const selectedOnPageCount = useMemo(() => {
+    return products.filter(p => selectedProductIds.has(p.id)).length
+  }, [products, selectedProductIds])
+
+  const selectAllProducts = useCallback(() => {
+    setSelectedProductIds((prev) => {
+      const newSet = new Set(prev)
+      if (areAllCurrentPageSelected) {
+        // Deselect all products on current page
+        products.forEach((p) => newSet.delete(p.id))
+      } else {
+        // Select all products on current page
+        products.forEach((p) => newSet.add(p.id))
+      }
+      return newSet
+    })
+  }, [products, areAllCurrentPageSelected])
+
+  const clearSelection = useCallback(() => {
+    setSelectedProductIds(new Set())
+    setSelectionMode(false)
+  }, [])
+
+  // Bulk action to send products to copyright agent
+  const handleBulkSendToCopyright = useCallback(async () => {
+    if (selectedProductIds.size === 0) {
+      showToast('No products selected', 'error')
+      return
+    }
+
+    setIsSendingBulk(true)
+    const productIdsArray = Array.from(selectedProductIds)
+    let successCount = 0
+    let failCount = 0
+
+    try {
+      // Send each product to copyright agent
+      for (const productId of productIdsArray) {
+        try {
+          const { data, error } = await supabase.functions.invoke('add-product-copyright', {
+            body: { productId }
+          })
+
+          if (error) throw error
+
+          if (data.success) {
+            successCount++
+          } else {
+            failCount++
+            console.error(`Failed to send product ${productId}:`, data.error)
+          }
+        } catch (err) {
+          failCount++
+          console.error(`Error sending product ${productId} to Copyright Agent:`, err)
+        }
+      }
+
+      // Show result toast
+      if (successCount > 0 && failCount === 0) {
+        showToast(
+          `Successfully sent ${successCount} ${successCount === 1 ? 'product' : 'products'} to Copyright Agent`,
+          'success'
+        )
+      } else if (successCount > 0 && failCount > 0) {
+        showToast(
+          `Sent ${successCount} ${successCount === 1 ? 'product' : 'products'}, ${failCount} failed`,
+          'info'
+        )
+      } else {
+        showToast('Failed to send products to Copyright Agent', 'error')
+      }
+
+      // Clear selection and refresh
+      clearSelection()
+      await fetchProducts()
+    } catch (err) {
+      console.error('Error in bulk send to copyright:', err)
+      showToast('An error occurred while sending products', 'error')
+    } finally {
+      setIsSendingBulk(false)
+    }
+  }, [selectedProductIds, showToast, clearSelection, fetchProducts])
 
   return (
     <div className="space-y-4">
@@ -164,7 +320,7 @@ export function ScraperAgentPage() {
         <nav className="-mb-px flex gap-6">
           <button
             onClick={() => handleTabChange('all')}
-            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'all'
                 ? 'border-primary-500 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -177,7 +333,7 @@ export function ScraperAgentPage() {
           </button>
           <button
             onClick={() => handleTabChange('pinned')}
-            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'pinned'
                 ? 'border-primary-500 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -198,6 +354,43 @@ export function ScraperAgentPage() {
 
       {/* Search and Controls Bar */}
       <div className="flex gap-3 items-center">
+        {/* Selection Mode Toggle */}
+        <button
+          onClick={toggleSelectionMode}
+          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${
+            selectionMode
+              ? 'border-primary-500 bg-primary-50 text-primary-700'
+              : 'border-secondary-300 text-secondary-700 hover:bg-secondary-50'
+          }`}
+          title="Toggle selection mode"
+        >
+          {selectionMode ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+          <span>Select</span>
+          {selectionMode && selectedProductIds.size > 0 && (
+            <span className="bg-primary-500 text-white text-xs rounded-full px-2 py-0.5">
+              {selectedProductIds.size}
+            </span>
+          )}
+        </button>
+
+        {/* Select All Checkbox - Only shown when in selection mode */}
+        {selectionMode && (
+          <button
+            onClick={selectAllProducts}
+            className="flex items-center gap-2 px-4 py-2 border border-secondary-300 rounded-lg text-sm text-secondary-700 hover:bg-secondary-50"
+            title={areAllCurrentPageSelected ? "Deselect all on this page" : "Select all on this page"}
+          >
+            {areAllCurrentPageSelected ? (
+              <CheckSquare className="w-4 h-4 text-primary-600" />
+            ) : (
+              <Square className="w-4 h-4" />
+            )}
+            <span>
+              {areAllCurrentPageSelected ? 'Deselect Page' : 'Select Page'}
+            </span>
+          </button>
+        )}
+
         {/* Search Input */}
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary-400" />
@@ -213,7 +406,7 @@ export function ScraperAgentPage() {
         {/* Filter Button */}
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm transition-colors ${
+          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${
             filters.filter((f) => !f.isDefault).length > 0
               ? 'border-primary-500 bg-primary-50 text-primary-700'
               : 'border-secondary-300 text-secondary-700 hover:bg-secondary-50'
@@ -279,11 +472,52 @@ export function ScraperAgentPage() {
         </div>
       )}
 
+      {/* Bulk Actions Bar - Shows when items are selected */}
+      {selectionMode && selectedProductIds.size > 0 && (
+        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CheckSquare className="w-5 h-5 text-primary-600" />
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-primary-900">
+                {selectedProductIds.size} {selectedProductIds.size === 1 ? 'product' : 'products'} selected
+              </span>
+              <span className="text-xs text-primary-700">
+                {selectedOnPageCount} on this page
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBulkSendToCopyright}
+              disabled={isSendingBulk}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send className="w-4 h-4" />
+              <span>{isSendingBulk ? 'Sending...' : 'Send to Copyright Agent'}</span>
+            </button>
+            <button
+              onClick={clearSelection}
+              className="flex items-center gap-2 px-4 py-2 border border-secondary-300 bg-white text-secondary-700 rounded-lg text-sm font-medium hover:bg-secondary-50"
+            >
+              <XCircle className="w-4 h-4" />
+              <span>Clear All</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Results Summary */}
       <div className="flex items-center justify-between text-sm">
-        <p className="text-secondary-600">
-          Showing {products.length} of {count.toLocaleString()} {activeTab === 'pinned' ? 'pinned ' : ''}products
-        </p>
+        <div className="flex items-center gap-4">
+          <p className="text-secondary-600">
+            Showing {products.length} of {count.toLocaleString()} {activeTab === 'pinned' ? 'pinned ' : ''}products
+          </p>
+          {selectionMode && selectedProductIds.size > 0 && (
+            <p className="text-primary-600 font-medium">
+              • {selectedProductIds.size} selected across all pages
+            </p>
+          )}
+        </div>
         {searchTerm && (
           <button
             onClick={() => {
@@ -308,6 +542,9 @@ export function ScraperAgentPage() {
           isLoading={isLoading}
           showPinned={activeTab === 'pinned'}
           onRefresh={fetchProducts}
+          selectionMode={selectionMode}
+          selectedProductIds={selectedProductIds}
+          onToggleSelection={toggleProductSelection}
         />
       )}
 
@@ -326,18 +563,190 @@ export function ScraperAgentPage() {
 }
 
 /**
- * Products List Component
+ * Product Card Component - Memoized for better performance
+ */
+interface ProductCardProps {
+  product: ScrapedProduct
+  showPinned: boolean
+  onRefresh?: () => void
+  selectionMode?: boolean
+  isSelected?: boolean
+  onToggleSelection?: (productId: string) => void
+}
+
+const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = false, isSelected = false, onToggleSelection }: ProductCardProps) => {
+  const navigate = useNavigate()
+
+  const handleClick = useCallback(() => {
+    if (selectionMode && onToggleSelection) {
+      onToggleSelection(product.id)
+    } else {
+      navigate(`/scraper-agent/${product.id}`, { state: { from: 'scraper-agent' } })
+    }
+  }, [navigate, product.id, selectionMode, onToggleSelection])
+
+  const handleCheckboxClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (onToggleSelection) {
+      onToggleSelection(product.id)
+    }
+  }, [onToggleSelection, product.id])
+
+  return (
+    <div
+      onClick={handleClick}
+      className="block p-4 hover:bg-secondary-50 cursor-pointer relative hover-bg-optimized"
+      style={{ contain: 'layout style paint' }}
+    >
+      {/* Selection Checkbox - Shows when in selection mode */}
+      {selectionMode && (
+        <div className="absolute top-4 left-4 z-10" onClick={handleCheckboxClick}>
+          {isSelected ? (
+            <CheckSquare className="w-6 h-6 text-primary-600 cursor-pointer" />
+          ) : (
+            <Square className="w-6 h-6 text-gray-400 cursor-pointer hover:text-gray-600" />
+          )}
+        </div>
+      )}
+
+      {/* Pin indicator for pinned products */}
+      {showPinned && !selectionMode && (
+        <div className="absolute top-4 right-4">
+          <Pin className="w-5 h-5 text-yellow-500 fill-current" />
+        </div>
+      )}
+
+      <div className={`flex items-start gap-4 ${showPinned && !selectionMode ? 'pr-8' : ''} ${selectionMode ? 'pl-10' : ''}`}>
+        {/* Product Image */}
+        {product.main_image ? (
+          <img
+            src={product.main_image}
+            alt={product.name || 'Product'}
+            className="w-16 h-16 rounded object-cover flex-shrink-0"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-16 h-16 rounded bg-gradient-to-br from-primary-100 via-primary-50 to-purple-100 flex items-center justify-center flex-shrink-0 border border-primary-200">
+            <Package className="w-8 h-8 text-primary-400" />
+          </div>
+        )}
+
+        {/* Product Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-medium text-secondary-900 truncate">
+              {product.name || 'Unnamed Product'}
+            </h3>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {product.updated_at && (
+                <span className="text-xs text-secondary-500">
+                  {formatRelativeTime(product.updated_at)}
+                </span>
+              )}
+              {/* ERPNext Sync Status Badge */}
+              {product.sync_status && (
+                <span
+                  className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                    product.sync_status === 'synced'
+                      ? 'bg-blue-100 text-blue-700'
+                      : product.sync_status === 'failed'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}
+                  title={
+                    product.sync_status === 'synced'
+                      ? `Synced to ERPNext${product.item_code ? ` (${product.item_code})` : ''}`
+                      : product.sync_status === 'failed'
+                      ? `Sync failed${product.failed_sync_error_message ? `: ${product.failed_sync_error_message}` : ''}`
+                      : 'Not yet synced'
+                  }
+                >
+                  {product.sync_status === 'synced' && <CloudUpload className="w-3 h-3" />}
+                  {product.sync_status === 'failed' && <AlertTriangle className="w-3 h-3" />}
+                  {product.sync_status === 'pending' && <Clock className="w-3 h-3" />}
+                  <span>
+                    {product.sync_status === 'synced' && 'Synced'}
+                    {product.sync_status === 'failed' && 'Failed'}
+                    {product.sync_status === 'pending' && 'Pending'}
+                  </span>
+                </span>
+              )}
+              {/* Product Actions Menu */}
+              <ProductActionsMenu
+                productId={product.id}
+                productName={product.name || 'Unnamed Product'}
+                onActionComplete={onRefresh}
+              />
+            </div>
+          </div>
+          <p className="text-sm text-secondary-600 line-clamp-2 mt-1">
+            {product.description}
+          </p>
+          <div className="flex items-center gap-4 mt-2 flex-wrap">
+            {product.vendor && (
+              <span className="text-xs text-secondary-600">{product.vendor.toUpperCase()}</span>
+            )}
+            {product.price && (
+              <>
+                <span className="text-xs text-secondary-400">•</span>
+                <span className="text-xs font-medium text-secondary-900">
+                  £{Number(product.price).toFixed(2)}
+                </span>
+              </>
+            )}
+            {product.stock_status && (
+              <>
+                <span className="text-xs text-secondary-400">•</span>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded ${
+                    product.stock_status.toLowerCase().includes('in stock') ||
+                    product.stock_status.toLowerCase() === 'available'
+                      ? 'bg-green-100 text-green-700'
+                      : product.stock_status.toLowerCase().includes('out of stock')
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                  }`}
+                >
+                  {product.stock_status}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}, (prevProps, nextProps) => {
+  // Custom comparison for better memoization
+  // Only re-render if product data, selection state, or selection mode changes
+  return (
+    prevProps.product.id === nextProps.product.id &&
+    prevProps.product.name === nextProps.product.name &&
+    prevProps.product.description === nextProps.product.description &&
+    prevProps.product.updated_at === nextProps.product.updated_at &&
+    prevProps.product.sync_status === nextProps.product.sync_status &&
+    prevProps.showPinned === nextProps.showPinned &&
+    prevProps.selectionMode === nextProps.selectionMode &&
+    prevProps.isSelected === nextProps.isSelected
+  )
+})
+
+ProductCard.displayName = 'ProductCard'
+
+/**
+ * Products List Component - Memoized for better performance
  */
 interface ProductsListProps {
   products: ScrapedProduct[]
   isLoading: boolean
   showPinned?: boolean
   onRefresh?: () => void
+  selectionMode?: boolean
+  selectedProductIds?: Set<string>
+  onToggleSelection?: (productId: string) => void
 }
 
-function ProductsList({ products, isLoading, showPinned = false, onRefresh }: ProductsListProps) {
-  const navigate = useNavigate()
-
+const ProductsList = memo(({ products, isLoading, showPinned = false, onRefresh, selectionMode = false, selectedProductIds = new Set(), onToggleSelection }: ProductsListProps) => {
   if (isLoading) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-secondary-200">
@@ -399,147 +808,25 @@ function ProductsList({ products, isLoading, showPinned = false, onRefresh }: Pr
     )
   }
 
-  // Helper function to strip HTML tags
-  const stripHtml = (html: string | null) => {
-    if (!html) return ''
-    const tmp = document.createElement('DIV')
-    tmp.innerHTML = html
-    return tmp.textContent || tmp.innerText || ''
-  }
-
-  // Helper function to format relative time
-  const formatRelativeTime = (timestamp: string | null) => {
-    if (!timestamp) return ''
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    if (diffDays < 7) return `${diffDays}d ago`
-    return date.toLocaleDateString()
-  }
-
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-secondary-200">
+    <div
+      className="bg-white rounded-lg shadow-sm border border-secondary-200" 
+    >
       <div className="divide-y divide-secondary-200">
         {products.map((product) => (
-          <div
+          <ProductCard
             key={product.id}
-            onClick={() => navigate(`/scraper-agent/${product.id}`, { state: { from: 'scraper-agent' } })}
-            className="block p-4 hover:bg-secondary-50 transition-colors cursor-pointer relative"
-          >
-            {/* Pin indicator for pinned products */}
-            {showPinned && (
-              <div className="absolute top-4 right-4">
-                <Pin className="w-5 h-5 text-yellow-500 fill-current" />
-              </div>
-            )}
-
-            <div className={`flex items-start gap-4 ${showPinned ? 'pr-8' : ''}`}>
-              {/* Product Image */}
-              {product.main_image ? (
-                <img
-                  src={product.main_image}
-                  alt={product.name || 'Product'}
-                  className="w-16 h-16 rounded object-cover flex-shrink-0"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded bg-gradient-to-br from-primary-100 via-primary-50 to-purple-100 flex items-center justify-center flex-shrink-0 border border-primary-200">
-                  <Package className="w-8 h-8 text-primary-400" />
-                </div>
-              )}
-
-              {/* Product Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-medium text-secondary-900 truncate">
-                    {product.name || 'Unnamed Product'}
-                  </h3>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {product.updated_at && (
-                      <span className="text-xs text-secondary-500">
-                        {formatRelativeTime(product.updated_at)}
-                      </span>
-                    )}
-                    {/* ERPNext Sync Status Badge */}
-                    {product.sync_status && (
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
-                          product.sync_status === 'synced'
-                            ? 'bg-blue-100 text-blue-700'
-                            : product.sync_status === 'failed'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
-                        title={
-                          product.sync_status === 'synced'
-                            ? `Synced to ERPNext${product.item_code ? ` (${product.item_code})` : ''}`
-                            : product.sync_status === 'failed'
-                            ? `Sync failed${product.failed_sync_error_message ? `: ${product.failed_sync_error_message}` : ''}`
-                            : 'Not yet synced'
-                        }
-                      >
-                        {product.sync_status === 'synced' && <CloudUpload className="w-3 h-3" />}
-                        {product.sync_status === 'failed' && <AlertTriangle className="w-3 h-3" />}
-                        {product.sync_status === 'pending' && <Clock className="w-3 h-3" />}
-                        <span>
-                          {product.sync_status === 'synced' && 'Synced'}
-                          {product.sync_status === 'failed' && 'Failed'}
-                          {product.sync_status === 'pending' && 'Pending'}
-                        </span>
-                      </span>
-                    )}
-                    {/* Product Actions Menu */}
-                    <ProductActionsMenu
-                      productId={product.id}
-                      productName={product.name || 'Unnamed Product'}
-                      onActionComplete={onRefresh}
-                    />
-                  </div>
-                </div>
-                <p className="text-sm text-secondary-600 line-clamp-2 mt-1">
-                  {stripHtml(product.description)}
-                </p>
-                <div className="flex items-center gap-4 mt-2 flex-wrap">
-                  {product.vendor && (
-                    <span className="text-xs text-secondary-600">{product.vendor.toUpperCase()}</span>
-                  )}
-                  {product.price && (
-                    <>
-                      <span className="text-xs text-secondary-400">•</span>
-                      <span className="text-xs font-medium text-secondary-900">
-                        £{Number(product.price).toFixed(2)}
-                      </span>
-                    </>
-                  )}
-                  {product.stock_status && (
-                    <>
-                      <span className="text-xs text-secondary-400">•</span>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded ${
-                          product.stock_status.toLowerCase().includes('in stock') ||
-                          product.stock_status.toLowerCase() === 'available'
-                            ? 'bg-green-100 text-green-700'
-                            : product.stock_status.toLowerCase().includes('out of stock')
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                        }`}
-                      >
-                        {product.stock_status}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+            product={product}
+            showPinned={showPinned}
+            onRefresh={onRefresh}
+            selectionMode={selectionMode}
+            isSelected={selectedProductIds.has(product.id)}
+            onToggleSelection={onToggleSelection}
+          />
         ))}
       </div>
     </div>
   )
-}
+})
+
+ProductsList.displayName = 'ProductsList'

@@ -261,7 +261,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
           <button
             onClick={handleResyncToErpNext}
             disabled={isResyncing}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isResyncing ? (
               <>
@@ -279,7 +279,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
           <button
             onClick={handleSendToCopyright}
             disabled={isSendingToCopyright}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSendingToCopyright ? (
               <>
@@ -297,7 +297,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
           <button
             onClick={handlePushToPending}
             disabled={isPushing}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isPushing ? (
               <>
@@ -359,7 +359,7 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
         {statCards.map((card, index) => (
           <div
             key={index}
-            className="bg-white rounded-lg shadow-sm border border-secondary-200 p-6 hover:shadow-md transition-shadow"
+            className="bg-white rounded-lg shadow-sm border border-secondary-200 p-6 hover:shadow-md"
           >
             <div className="flex items-center justify-between">
               <div className="flex-1">

@@ -181,6 +181,43 @@ curl --location 'https://staging-erpnext.mcgrocer.com/api/method/mcgrocer_custom
         "stock_status": "In Stock",
         "url": "https://example.com/item1",
         "category": "Category 1",
+
+        "ai_title": "AI Title 1",
+        "summary": "AI Description 1",
+        "meta_title": "Meta Title 1",
+        "meta_description": "Meta Description 1",
+        "variants": [
+            {
+                "name": "Variant 1",
+                "price": 11.99,
+                "product_id": "123-variant1",
+                "description": "Description of Variant 1",
+                "stock_status": "In Stock",
+                "url": "https://example.com/item1/variant1",
+                "category": "Category 1"
+            },
+            {
+                "name": "Variant 1",
+                "price": 11.99,
+                "product_id": "123-variant1",
+                "description": "Description of Variant 1",
+                "stock_status": "In Stock",
+                "url": "https://example.com/item1/variant1",
+                "category": "Category 1"
+            },
+            {
+                "name": "Variant 1",
+                "price": 11.99,
+                "product_id": "123-variant1",
+                "description": "Description of Variant 1",
+                "stock_status": "In Stock",
+                "url": "https://example.com/item1/variant1",
+                "category": "Category 1"
+            }
+        ],
+        "variant_attribute" "size",
+
+
         "vendor": "Vendor 1",
         "images": ["image1.jpg", "image2.jpg"],
         "main_image": "https://example.com/main_image1.jpg",

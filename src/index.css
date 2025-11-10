@@ -16,4 +16,36 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Disable Tailwind's default "transition: all" for performance */
+  * {
+    transition-property: none;
+  }
+}
+
+@layer utilities {
+  /* Performance-optimized hover transition - only animates background-color */
+  .hover-bg-optimized {
+    transition-property: background-color;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+
+  /* Disable all transitions for scroll performance */
+  .no-transition {
+    transition: none !important;
+  }
+
+  /* Re-enable specific transitions where needed */
+  .transition-colors {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+
+  .transition-opacity {
+    transition-property: opacity;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
 }
