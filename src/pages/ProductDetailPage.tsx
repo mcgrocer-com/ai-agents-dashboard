@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield } from 'lucide-react'
+import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield, Package2 } from 'lucide-react'
 import { productsService, erpnextService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
@@ -16,6 +16,7 @@ import { CategoryTab } from '@/components/products/tabs/CategoryTab'
 import { WeightDimensionTab } from '@/components/products/tabs/WeightDimensionTab'
 import { SeoTab } from '@/components/products/tabs/SeoTab'
 import { CopyrightTab } from '@/components/products/tabs/CopyrightTab'
+import { VariantsTab } from '@/components/products/tabs/VariantsTab'
 import { RawDataTab } from '@/components/products/tabs/RawDataTab'
 import { RetryButton } from '@/components/ui/RetryButton'
 import { useToast } from '@/hooks/useToast'
@@ -308,6 +309,17 @@ export function ProductDetailPage() {
           toolsUsed={product.copyright_tools_used}
           feedback={product.copyright_feedback}
           updatedAt={product.updated_at}
+        />
+      ),
+    },
+    {
+      id: 'variants',
+      label: 'Variants',
+      icon: <Package2 className="h-4 w-4" />,
+      content: (
+        <VariantsTab
+          variants={product.variants}
+          variantCount={product.variant_count}
         />
       ),
     },

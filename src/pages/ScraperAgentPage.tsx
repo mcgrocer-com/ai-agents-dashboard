@@ -36,6 +36,7 @@ const ALL_COLUMNS: FilterColumn[] = [
   { label: 'Length', value: 'length', type: 'number' },
   { label: 'Weight', value: 'weight', type: 'number' },
   { label: 'Volumetric Weight', value: 'volumetric_weight', type: 'number' },
+  { label: 'Variant Count', value: 'variant_count', type: 'number' },
   { label: 'Created Date', value: 'created_at', type: 'date' },
   { label: 'Updated Date', value: 'updated_at', type: 'date' },
 ]
