@@ -169,7 +169,17 @@ export function ProductDetailPage() {
         throw error || new Error('Failed to push product to ERPNext')
       }
 
+      // Validate response structure
+      if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
+        throw new Error('Invalid response from ERPNext API: missing results')
+      }
+
       const result = data.results[0]
+
+      // Validate result object
+      if (!result || typeof result !== 'object') {
+        throw new Error('Invalid response from ERPNext API: invalid result object')
+      }
 
       if (result.status === 'success') {
         showToast('Product successfully pushed to ERPNext', 'success')
