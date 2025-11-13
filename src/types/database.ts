@@ -61,6 +61,8 @@ export interface ScrapedProduct {
   sync_status?: 'synced' | 'failed' | 'pending'
   item_code?: string | null
   failed_sync_error_message?: string | null
+  erpnext_updated_at?: string | null
+  failed_sync_at?: string | null
 }
 
 export interface PendingProduct {
@@ -346,7 +348,7 @@ export interface ProductFilters {
   vendor?: string
   status?: AgentStatus | string
   dynamicFilters?: DynamicFilter[]
-  sortBy?: 'name' | 'price' | 'updated_at' | 'created_at'
+  sortBy?: 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at'
   sortOrder?: 'asc' | 'desc'
   limit?: number
   offset?: number

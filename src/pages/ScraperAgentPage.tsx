@@ -171,7 +171,7 @@ export function ScraperAgentPage() {
       setError(result.error)
     } else {
       // Process products to truncate descriptions
-      const processedProducts = result.products.map(product => ({
+      const processedProducts = result.products.map((product: ScrapedProduct) => ({
         ...product,
         description: product.description
           ? stripHtml(product.description.substring(0, 200)) + (product.description.length > 200 ? '...' : '')
