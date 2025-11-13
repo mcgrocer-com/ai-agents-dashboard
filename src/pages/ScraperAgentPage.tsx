@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/useToast'
 import type { ScrapedProduct, ProductFilters } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
-type SortField = 'name' | 'price' | 'updated_at' | 'created_at'
+type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at'
 type SortDirection = 'asc' | 'desc'
 type TabType = 'all' | 'pinned'
 
@@ -438,6 +438,8 @@ export function ScraperAgentPage() {
           <option value="created_at-asc">Oldest First</option>
           <option value="updated_at-desc">Recently Updated</option>
           <option value="updated_at-asc">Least Recently Updated</option>
+          <option value="erpnext_updated_at-desc">Recently Synced to ERPNext</option>
+          <option value="erpnext_updated_at-asc">Least Recently Synced to ERPNext</option>
           <option value="name-asc">Name A-Z</option>
           <option value="name-desc">Name Z-A</option>
           <option value="price-asc">Price Low-High</option>
