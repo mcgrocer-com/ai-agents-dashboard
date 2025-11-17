@@ -15,19 +15,23 @@ import * as XLSX from 'xlsx'
 
 interface ExistingKeyword {
   id: string
-  keyword: string
-  category: string | null
-  priority: number | null
-  usage_count: number | null
-  is_active: boolean | null
+  product_title: string
+  main_keyword: string | null
+  kw1: string | null
+  kw2: string | null
+  kw3: string | null
+  kw4: string | null
   created_at: string
+  updated_at: string
 }
 
 interface ImportKeyword {
-  keyword: string
-  category?: string | null
-  priority?: number | null
-  is_active?: boolean
+  product_title: string
+  main_keyword?: string | null
+  kw1?: string | null
+  kw2?: string | null
+  kw3?: string | null
+  kw4?: string | null
 }
 
 interface SeoKeywordsUploadProps {
@@ -37,8 +41,12 @@ interface SeoKeywordsUploadProps {
 }
 
 export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploadProps) {
-  const [keywords, setKeywords] = useState<string[]>([''])
-  const [category, setCategory] = useState('')
+  const [productTitle, setProductTitle] = useState('')
+  const [mainKeyword, setMainKeyword] = useState('')
+  const [kw1, setKw1] = useState('')
+  const [kw2, setKw2] = useState('')
+  const [kw3, setKw3] = useState('')
+  const [kw4, setKw4] = useState('')
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [existingKeywords, setExistingKeywords] = useState<ExistingKeyword[]>([])
@@ -74,7 +82,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
 
       // Apply search filter on server side
       if (searchTerm) {
-        query = query.or(`keyword.ilike.%${searchTerm}%,category.ilike.%${searchTerm}%`)
+        query = query.or(`product_title.ilike.%${searchTerm}%,main_keyword.ilike.%${searchTerm}%,kw1.ilike.%${searchTerm}%,kw2.ilike.%${searchTerm}%,kw3.ilike.%${searchTerm}%,kw4.ilike.%${searchTerm}%`)
       }
 
       const { data, error, count } = await query
@@ -88,23 +96,6 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
       setToast({ message: `Failed to load keywords: ${error.message}`, type: 'error' })
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleKeywordChange = (index: number, value: string) => {
-    const newKeywords = [...keywords]
-    newKeywords[index] = value
-    setKeywords(newKeywords)
-  }
-
-  const handleAddKeyword = () => {
-    setKeywords([...keywords, ''])
-  }
-
-  const handleRemoveKeyword = (index: number) => {
-    if (keywords.length > 1) {
-      const newKeywords = keywords.filter((_, i) => i !== index)
-      setKeywords(newKeywords)
     }
   }
 
@@ -160,10 +151,14 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Filter out empty keywords
-    const validKeywords = keywords.filter((k) => k.trim() !== '')
+    // Validate required fields
+    if (!productTitle.trim()) {
+      setToast({ message: 'Please enter a product title', type: 'error' })
+      return
+    }
 
-    if (validKeywords.length === 0) {
+    // At least one keyword should be provided
+    if (!mainKeyword.trim() && !kw1.trim() && !kw2.trim() && !kw3.trim() && !kw4.trim()) {
       setToast({ message: 'Please add at least one keyword', type: 'error' })
       return
     }
@@ -171,27 +166,32 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
     setUploading(true)
 
     try {
-      // Insert keywords into seo_keywords table
-      const keywordRecords = validKeywords.map((keyword) => ({
-        keyword: keyword.trim(),
-        category: category.trim() || null,
-        is_active: true,
-        priority: 1,
-        usage_count: 0,
-      }))
+      // Insert keyword record into seo_keywords table
+      const keywordRecord = {
+        product_title: productTitle.trim(),
+        main_keyword: mainKeyword.trim() || null,
+        kw1: kw1.trim() || null,
+        kw2: kw2.trim() || null,
+        kw3: kw3.trim() || null,
+        kw4: kw4.trim() || null,
+      }
 
-      const { error } = await supabase.from('seo_keywords').insert(keywordRecords)
+      const { error } = await supabase.from('seo_keywords').insert([keywordRecord])
 
       if (error) throw error
 
       setToast({
-        message: `Successfully uploaded ${validKeywords.length} keyword(s)!`,
+        message: 'Successfully added product keywords!',
         type: 'success'
       })
 
       // Reset form
-      setKeywords([''])
-      setCategory('')
+      setProductTitle('')
+      setMainKeyword('')
+      setKw1('')
+      setKw2('')
+      setKw3('')
+      setKw4('')
 
       // Refresh existing keywords list
       await fetchExistingKeywords()
@@ -213,10 +213,14 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
 
   const handleClose = () => {
     if (!uploading && !loading && !importing) {
-      setKeywords([''])
-      setCategory('')
+      setProductTitle('')
+      setMainKeyword('')
+      setKw1('')
+      setKw2('')
+      setKw3('')
+      setKw4('')
       setSearchTerm('')
-      setActiveTab('add') 
+      setActiveTab('add')
       setImportPreview([])
       setParseError(null)
       onClose()
@@ -230,7 +234,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
 
     // Check if first line is header
     const firstLine = lines[0].toLowerCase()
-    const hasHeader = firstLine.includes('keyword')
+    const hasHeader = firstLine.includes('product') || firstLine.includes('keyword')
     const dataLines = hasHeader ? lines.slice(1) : lines
 
     const keywords: ImportKeyword[] = []
@@ -241,15 +245,12 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
 
       if (values[0]) {
         const keyword: ImportKeyword = {
-          keyword: values[0],
-          category: values[1] || null,
-          priority: values[2] ? parseInt(values[2]) : 1,
-          is_active: values[3] ? values[3].toLowerCase() === 'true' : true
-        }
-
-        // Validate priority
-        if (keyword.priority && (keyword.priority < 1 || keyword.priority > 5)) {
-          keyword.priority = 1
+          product_title: values[0],
+          main_keyword: values[1] || null,
+          kw1: values[2] || null,
+          kw2: values[3] || null,
+          kw3: values[4] || null,
+          kw4: values[5] || null,
         }
 
         keywords.push(keyword)
@@ -264,15 +265,17 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
     const data = JSON.parse(text)
 
     if (!Array.isArray(data)) {
-      throw new Error('JSON must be an array of keyword objects')
+      throw new Error('JSON must be an array of product keyword objects')
     }
 
     return data.map((item: any) => ({
-      keyword: item.keyword || '',
-      category: item.category || null,
-      priority: item.priority ? Math.min(Math.max(parseInt(item.priority), 1), 5) : 1,
-      is_active: item.is_active !== undefined ? Boolean(item.is_active) : true
-    })).filter((kw: ImportKeyword) => kw.keyword.trim() !== '')
+      product_title: item.product_title || item.productTitle || '',
+      main_keyword: item.main_keyword || item.mainKeyword || null,
+      kw1: item.kw1 || null,
+      kw2: item.kw2 || null,
+      kw3: item.kw3 || null,
+      kw4: item.kw4 || null,
+    })).filter((kw: ImportKeyword) => kw.product_title.trim() !== '')
   }
 
   // Parse Excel file
@@ -301,54 +304,42 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
 
     const startRow = hasHeader ? 1 : 0
 
-    // Process each row
+    // Process each row - each row is one product with multiple keywords
     for (let i = startRow; i < data.length; i++) {
       const row = data[i]
       if (!row || row.length === 0) continue
 
-      // Extract product title (column A) for category
-      const productTitle = row[0] ? String(row[0]).trim() : null
+      // Extract product title (column A)
+      const productTitle = row[0] ? String(row[0]).trim() : ''
+
+      // Skip if no product title
+      if (!productTitle) continue
+
+      // Skip if it's a header row
+      if (productTitle.toLowerCase().includes('product') ||
+          productTitle.toLowerCase().includes('title')) {
+        continue
+      }
 
       // Extract keywords from columns B-F (Main Keyword, KW1, KW2, KW3, KW4)
-      const keywordColumns = [1, 2, 3, 4, 5] // Column indices for B, C, D, E, F
+      const mainKeyword = row[1] ? String(row[1]).trim() : null
+      const kw1 = row[2] ? String(row[2]).trim() : null
+      const kw2 = row[3] ? String(row[3]).trim() : null
+      const kw3 = row[4] ? String(row[4]).trim() : null
+      const kw4 = row[5] ? String(row[5]).trim() : null
 
-      for (const colIndex of keywordColumns) {
-        const keywordValue = row[colIndex]
-        if (keywordValue && String(keywordValue).trim()) {
-          const keywordText = String(keywordValue).trim()
-
-          // Skip if it's a header value
-          if (keywordText.toLowerCase().includes('keyword') ||
-              keywordText.toLowerCase() === 'kw1' ||
-              keywordText.toLowerCase() === 'kw2' ||
-              keywordText.toLowerCase() === 'kw3' ||
-              keywordText.toLowerCase() === 'kw4') {
-            continue
-          }
-
-          keywords.push({
-            keyword: keywordText,
-            category: productTitle || null,
-            priority: 1,
-            is_active: true
-          })
-        }
-      }
+      // Create one record per product
+      keywords.push({
+        product_title: productTitle,
+        main_keyword: mainKeyword || null,
+        kw1: kw1 || null,
+        kw2: kw2 || null,
+        kw3: kw3 || null,
+        kw4: kw4 || null,
+      })
     }
 
-    // Remove duplicates
-    const uniqueKeywords = keywords.reduce((acc, curr) => {
-      const exists = acc.some(kw =>
-        kw.keyword.toLowerCase() === curr.keyword.toLowerCase() &&
-        kw.category === curr.category
-      )
-      if (!exists) {
-        acc.push(curr)
-      }
-      return acc
-    }, [] as ImportKeyword[])
-
-    return uniqueKeywords
+    return keywords
   }
 
   // Handle file selection
@@ -401,11 +392,12 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
 
     try {
       const keywordRecords = importPreview.map(kw => ({
-        keyword: kw.keyword.trim(),
-        category: kw.category?.trim() || null,
-        is_active: kw.is_active !== undefined ? kw.is_active : true,
-        priority: kw.priority || 1,
-        usage_count: 0,
+        product_title: kw.product_title.trim(),
+        main_keyword: kw.main_keyword?.trim() || null,
+        kw1: kw.kw1?.trim() || null,
+        kw2: kw.kw2?.trim() || null,
+        kw3: kw.kw3?.trim() || null,
+        kw4: kw.kw4?.trim() || null,
       }))
 
       // Step 1: Clear all existing keywords
@@ -434,11 +426,11 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
       console.log('New keywords inserted successfully')
 
       setToast({
-        message: `Successfully imported ${keywordRecords.length} keyword(s)!`,
+        message: `Successfully imported ${keywordRecords.length} product(s) with keywords!`,
         type: 'success'
       })
 
-      // Reset import state 
+      // Reset import state
       setImportPreview([])
       setParseError(null)
 
@@ -520,7 +512,7 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
             >
               <div className="flex items-center gap-2">
                 <Tag className="h-4 w-4" />
-                <span>View Keywords ({totalKeywordsCount.toLocaleString()})</span>
+                <span>View Products ({totalKeywordsCount.toLocaleString()})</span>
               </div>
             </button>
           </div>
@@ -529,64 +521,108 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
           {activeTab === 'add' && (
             <form onSubmit={handleSubmit} className="space-y-6">
 
-              {/* Category (Optional) */}
+              {/* Product Title */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Category (Optional)
+                  Product Title <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  placeholder="e.g., Electronics, Fashion, Home & Garden"
+                  value={productTitle}
+                  onChange={(e) => setProductTitle(e.target.value)}
+                  placeholder="e.g., Organic Baby Formula"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   disabled={uploading}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Group keywords by category for better organization
+                  The product title for keyword grouping
                 </p>
               </div>
 
-              {/* Keywords List */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Keywords <span className="text-red-500">*</span>
+              {/* Keywords */}
+              <div className="space-y-4">
+                <label className="block text-sm font-medium text-gray-700">
+                  Keywords
                 </label>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {keywords.map((keyword, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={keyword}
-                        onChange={(e) => handleKeywordChange(index, e.target.value)}
-                        placeholder={`Keyword ${index + 1}`}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        disabled={uploading}
-                      />
-                      {keywords.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveKeyword(index)}
-                          disabled={uploading}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                          title="Remove keyword"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+
+                {/* Main Keyword */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Main Keyword
+                  </label>
+                  <input
+                    type="text"
+                    value={mainKeyword}
+                    onChange={(e) => setMainKeyword(e.target.value)}
+                    placeholder="Primary keyword"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    disabled={uploading}
+                  />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleAddKeyword}
-                  disabled={uploading}
-                  className="mt-3 px-3 py-2 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Add Another Keyword</span>
-                </button>
+                {/* KW1 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Keyword 1
+                  </label>
+                  <input
+                    type="text"
+                    value={kw1}
+                    onChange={(e) => setKw1(e.target.value)}
+                    placeholder="Additional keyword 1"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    disabled={uploading}
+                  />
+                </div>
+
+                {/* KW2 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Keyword 2
+                  </label>
+                  <input
+                    type="text"
+                    value={kw2}
+                    onChange={(e) => setKw2(e.target.value)}
+                    placeholder="Additional keyword 2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    disabled={uploading}
+                  />
+                </div>
+
+                {/* KW3 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Keyword 3
+                  </label>
+                  <input
+                    type="text"
+                    value={kw3}
+                    onChange={(e) => setKw3(e.target.value)}
+                    placeholder="Additional keyword 3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    disabled={uploading}
+                  />
+                </div>
+
+                {/* KW4 */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Keyword 4
+                  </label>
+                  <input
+                    type="text"
+                    value={kw4}
+                    onChange={(e) => setKw4(e.target.value)}
+                    placeholder="Additional keyword 4"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    disabled={uploading}
+                  />
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  At least one keyword is required
+                </p>
               </div>
 
               {/* Action Buttons */}
@@ -675,45 +711,54 @@ export function SeoKeywordsUpload({ open, onClose, onSuccess }: SeoKeywordsUploa
                         </thead>
                         <tbody>
                           <tr>
-                            <td className="border border-gray-300 px-2 py-1">Product 1</td>
-                            <td className="border border-gray-300 px-2 py-1">keyword 1</td>
-                            <td className="border border-gray-300 px-2 py-1">keyword 2</td>
-                            <td className="border border-gray-300 px-2 py-1">keyword 3</td>
-                            <td className="border border-gray-300 px-2 py-1">keyword 4</td>
-                            <td className="border border-gray-300 px-2 py-1">keyword 5</td>
+                            <td className="border border-gray-300 px-2 py-1">Organic Baby Formula</td>
+                            <td className="border border-gray-300 px-2 py-1">organic formula</td>
+                            <td className="border border-gray-300 px-2 py-1">baby formula</td>
+                            <td className="border border-gray-300 px-2 py-1">infant formula</td>
+                            <td className="border border-gray-300 px-2 py-1">organic baby food</td>
+                            <td className="border border-gray-300 px-2 py-1">ready to feed formula</td>
                           </tr>
                         </tbody>
                       </table>
                       <p className="text-gray-600 mt-2">
-                        • Product title (Column A) becomes the category<br/>
-                        • Keywords are extracted from columns B-F<br/>
-                        • Duplicate keywords are automatically removed
+                        • Each row represents one product with its keywords<br/>
+                        • Column A: Product title (required)<br/>
+                        • Columns B-F: Main Keyword, KW1, KW2, KW3, KW4
                       </p>
                     </div>
                   </div>
                   <div>
                     <p className="font-medium text-gray-700">CSV Format:</p>
                     <pre className="mt-1 p-2 bg-white rounded border border-gray-200 overflow-x-auto">
-keyword,category,priority,is_active
-example keyword,Electronics,1,true
-another keyword,Fashion,2,true
+product_title,main_keyword,kw1,kw2,kw3,kw4
+Organic Baby Formula,organic formula,baby formula,infant formula,organic baby food,ready to feed
+Natural Toddler Milk,toddler milk,organic toddler,natural milk,baby milk,
                     </pre>
                   </div>
                   <div>
                     <p className="font-medium text-gray-700">JSON Format:</p>
                     <pre className="mt-1 p-2 bg-white rounded border border-gray-200 overflow-x-auto">
 {JSON.stringify([
-  { keyword: 'example keyword', category: 'Electronics', priority: 1, is_active: true }
+  {
+    product_title: 'Organic Baby Formula',
+    main_keyword: 'organic formula',
+    kw1: 'baby formula',
+    kw2: 'infant formula',
+    kw3: 'organic baby food',
+    kw4: 'ready to feed'
+  }
 ], null, 2)}
                     </pre>
                   </div>
                   <div className="pt-2 border-t border-gray-300">
                     <p className="font-medium text-gray-700 mb-1">Field Descriptions:</p>
                     <ul className="list-disc list-inside space-y-1 ml-2">
-                      <li><span className="font-medium">keyword</span>: The SEO keyword (required)</li>
-                      <li><span className="font-medium">category</span>: Product category (optional)</li>
-                      <li><span className="font-medium">priority</span>: Priority level 1-5 (optional, defaults to 1)</li>
-                      <li><span className="font-medium">is_active</span>: Whether keyword is active (optional, defaults to true)</li>
+                      <li><span className="font-medium">product_title</span>: The product title (required)</li>
+                      <li><span className="font-medium">main_keyword</span>: Primary SEO keyword (optional)</li>
+                      <li><span className="font-medium">kw1</span>: Additional keyword 1 (optional)</li>
+                      <li><span className="font-medium">kw2</span>: Additional keyword 2 (optional)</li>
+                      <li><span className="font-medium">kw3</span>: Additional keyword 3 (optional)</li>
+                      <li><span className="font-medium">kw4</span>: Additional keyword 4 (optional)</li>
                     </ul>
                   </div>
                 </div>
@@ -723,33 +768,49 @@ another keyword,Fashion,2,true
               {importPreview.length > 0 && (
                 <div>
                   <h4 className="font-medium text-gray-900 text-sm mb-3">
-                    Preview ({importPreview.length} keywords)
+                    Preview ({importPreview.length} products)
                   </h4>
                   <div className="max-h-64 overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
                     {importPreview.slice(0, 50).map((kw, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded text-sm"
+                        className="p-3 bg-white border border-gray-200 rounded text-sm"
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-900">{kw.keyword}</span>
-                            {kw.category && (
-                              <span className="px-2 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded">
-                                {kw.category}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                            <span>Priority: {kw.priority || 1}</span>
-                            <span>Active: {kw.is_active ? 'Yes' : 'No'}</span>
-                          </div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium text-gray-900">{kw.product_title}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                          {kw.main_keyword && (
+                            <div>
+                              <span className="font-medium">Main:</span> {kw.main_keyword}
+                            </div>
+                          )}
+                          {kw.kw1 && (
+                            <div>
+                              <span className="font-medium">KW1:</span> {kw.kw1}
+                            </div>
+                          )}
+                          {kw.kw2 && (
+                            <div>
+                              <span className="font-medium">KW2:</span> {kw.kw2}
+                            </div>
+                          )}
+                          {kw.kw3 && (
+                            <div>
+                              <span className="font-medium">KW3:</span> {kw.kw3}
+                            </div>
+                          )}
+                          {kw.kw4 && (
+                            <div>
+                              <span className="font-medium">KW4:</span> {kw.kw4}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
                     {importPreview.length > 50 && (
                       <p className="text-xs text-gray-500 text-center pt-2">
-                        ... and {importPreview.length - 50} more keywords
+                        ... and {importPreview.length - 50} more products
                       </p>
                     )}
                   </div>
@@ -780,7 +841,7 @@ another keyword,Fashion,2,true
                   ) : (
                     <>
                       <Upload className="h-4 w-4" />
-                      <span>Import {importPreview.length > 0 ? `${importPreview.length} Keywords` : 'Keywords'}</span>
+                      <span>Import {importPreview.length > 0 ? `${importPreview.length} Products` : 'Products'}</span>
                     </>
                   )}
                 </button>
@@ -826,7 +887,7 @@ another keyword,Fashion,2,true
                   <Tag className="h-12 w-12 mx-auto mb-3 text-gray-400" />
                   <p className="font-medium">No keywords found</p>
                   <p className="text-sm mt-1">
-                    {searchTerm ? 'Try a different search term' : 'Add your first keyword to get started'}
+                    {searchTerm ? 'Try a different search term' : 'Add your first product keywords to get started'}
                   </p>
                 </div>
               ) : (
@@ -834,29 +895,40 @@ another keyword,Fashion,2,true
                   {existingKeywords.map((kw) => (
                     <div
                       key={kw.id}
-                      className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                      className="flex items-start justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900">{kw.keyword}</span>
-                          {kw.category && (
-                            <span className="px-2 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded">
-                              {kw.category}
-                            </span>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium text-gray-900">{kw.product_title}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                          {kw.main_keyword && (
+                            <div>
+                              <span className="font-medium">Main:</span> {kw.main_keyword}
+                            </div>
                           )}
-                          {!kw.is_active && (
-                            <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-600 rounded">
-                              Inactive
-                            </span>
+                          {kw.kw1 && (
+                            <div>
+                              <span className="font-medium">KW1:</span> {kw.kw1}
+                            </div>
+                          )}
+                          {kw.kw2 && (
+                            <div>
+                              <span className="font-medium">KW2:</span> {kw.kw2}
+                            </div>
+                          )}
+                          {kw.kw3 && (
+                            <div>
+                              <span className="font-medium">KW3:</span> {kw.kw3}
+                            </div>
+                          )}
+                          {kw.kw4 && (
+                            <div>
+                              <span className="font-medium">KW4:</span> {kw.kw4}
+                            </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                          {kw.priority !== null && (
-                            <span>Priority: {kw.priority}</span>
-                          )}
-                          {kw.usage_count !== null && (
-                            <span>Used: {kw.usage_count} times</span>
-                          )}
+                        <div className="mt-2 text-xs text-gray-500">
                           <span>Added: {new Date(kw.created_at).toLocaleDateString()}</span>
                         </div>
                       </div>
@@ -865,7 +937,7 @@ another keyword,Fashion,2,true
                         onClick={() => handleDeleteKeyword(kw.id)}
                         disabled={deleting === kw.id}
                         className="ml-3 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                        title="Delete keyword"
+                        title="Delete product keywords"
                       >
                         {deleting === kw.id ? (
                           <LoadingSpinner size="sm" className="border-red-600 border-t-transparent" />
@@ -881,7 +953,7 @@ another keyword,Fashion,2,true
               {/* Stats */}
               {!loading && totalKeywordsCount > 0 && (
                 <div className="text-sm text-gray-600 text-center pt-4 border-t border-gray-200">
-                  Showing {existingKeywords.length} of {totalKeywordsCount.toLocaleString()} keywords
+                  Showing {existingKeywords.length} of {totalKeywordsCount.toLocaleString()} products
                 </div>
               )}
 
@@ -909,9 +981,9 @@ another keyword,Fashion,2,true
                 <Trash2 className="w-5 h-5 text-red-600" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Clear All Keywords?</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Clear All Products?</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Are you sure you want to delete all <span className="font-semibold">{totalKeywordsCount.toLocaleString()}</span> keywords? This action cannot be undone.
+                  Are you sure you want to delete all <span className="font-semibold">{totalKeywordsCount.toLocaleString()}</span> products? This action cannot be undone.
                 </p>
                 <div className="flex gap-3 justify-end">
                   <button
