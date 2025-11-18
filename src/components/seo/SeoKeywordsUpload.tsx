@@ -10,7 +10,7 @@ import { supabase } from '@/lib/supabase/client'
 import { Dialog } from '@/components/ui/Dialog'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Toast } from '@/components/ui/Toast'
-import { Tag, Upload, X, Plus, Trash2, Search, FileUp } from 'lucide-react'
+import { Tag, Upload, Plus, Trash2, Search, FileUp } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 interface ExistingKeyword {
