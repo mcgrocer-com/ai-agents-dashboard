@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw, RotateCcw } from 'lucide-react'
+import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw, RotateCcw, Settings } from 'lucide-react'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/useToast'
@@ -15,9 +15,10 @@ import type { VendorStatistics as VendorStats } from '@/types/statistics'
 
 interface VendorStatisticsProps {
   vendor: string
+  onConfigureClick?: () => void
 }
 
-export function VendorStatistics({ vendor }: VendorStatisticsProps) {
+export function VendorStatistics({ vendor, onConfigureClick }: VendorStatisticsProps) {
   const { showToast } = useToast()
   const [stats, setStats] = useState<VendorStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -252,6 +253,17 @@ export function VendorStatistics({ vendor }: VendorStatisticsProps) {
             Total Products in queue: {stats.totalProducts.toLocaleString()}
           </p>
         </div>
+
+        {/* Configure Sync Vendors Button - Only show for all vendors */}
+        {vendor === 'all' && onConfigureClick && (
+          <button
+            onClick={onConfigureClick}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Configure Sync Vendors
+          </button>
+        )}
 
         {/* Send to Queue and Resync Buttons - Only show for specific vendors */}
         {vendor !== 'all' && (

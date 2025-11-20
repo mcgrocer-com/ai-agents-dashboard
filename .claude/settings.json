@@ -1,0 +1,56 @@
+{
+  "allowedTools": [
+    "Edit",
+    "MultiEdit",
+    "Read",
+    "Write",
+    "Bash",
+    "Glob",
+    "Grep",
+    "WebFetch",
+    "WebSearch",
+    "TodoWrite",
+    "NotebookEdit",
+    "BashOutput",
+    "KillShell",
+    "Task",
+    "mcp__task-master-ai",
+    "mcp__supabase-mcp",
+    "mcp__context7",
+    "mcp__playwright"
+  ],
+  "workflowSettings": {
+    "codeReview": {
+      "enabled": true,
+      "autoReviewOnPR": true,
+      "reviewDimensions": [
+        "code-quality",
+        "security",
+        "performance",
+        "architecture",
+        "maintainability"
+      ]
+    },
+    "securityScanning": {
+      "enabled": true,
+      "autoScanOnCommit": false,
+      "scanDepth": "comprehensive"
+    },
+    "performanceMonitoring": {
+      "enabled": true,
+      "bundleAnalysis": true,
+      "runtimeProfiling": false
+    }
+  },
+  "projectContext": {
+    "type": "ai-workflow-dashboard",
+    "framework": "react-typescript",
+    "backend": "supabase",
+    "taskManagement": "taskmaster",
+    "specializations": [
+      "multi-agent-coordination",
+      "real-time-data",
+      "product-processing"
+    ]
+  }
+}

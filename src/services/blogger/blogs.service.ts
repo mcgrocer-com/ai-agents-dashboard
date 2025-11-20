@@ -1,0 +1,368 @@
+/**
+ * Blogger Blogs Service
+ * Handles CRUD operations for blog posts
+ */
+
+import { supabase } from '@/lib/supabase/client';
+import type {
+  BloggerBlog,
+  BlogWithRelations,
+  BlogFilters,
+  BlogStatus,
+  ServiceResponse,
+  PaginatedResponse,
+} from '@/types/blogger';
+
+/**
+ * Create a new blog post
+ */
+export async function createBlog(
+  blog: Omit<BloggerBlog, 'id' | 'created_at' | 'updated_at' | 'user_id'>
+): Promise<ServiceResponse<BloggerBlog>> {
+  try {
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        data: null,
+        error: new Error('User not authenticated'),
+        success: false,
+      };
+    }
+
+    const { data, error } = await supabase
+      .from('blogger_blogs')
+      .insert({
+        ...blog,
+        user_id: user.id,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating blog:', error);
+      return { data: null, error, success: false };
+    }
+
+    return { data, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error creating blog:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Get user's blogs with optional filters and pagination
+ */
+export async function getUserBlogs(
+  filters?: BlogFilters,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<ServiceResponse<PaginatedResponse<BlogWithRelations>>> {
+  try {
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        data: null,
+        error: new Error('User not authenticated'),
+        success: false,
+      };
+    }
+
+    // Build query
+    let query = supabase
+      .from('blogger_blogs')
+      .select(
+        `
+        *,
+        persona:blogger_personas(*),
+        template:blogger_templates(*),
+        primary_keyword:blogger_keywords(*)
+      `,
+        { count: 'exact' }
+      )
+      .eq('user_id', user.id);
+
+    // Apply filters
+    if (filters?.status && filters.status !== 'all') {
+      query = query.eq('status', filters.status);
+    }
+
+    if (filters?.persona_id) {
+      query = query.eq('persona_id', filters.persona_id);
+    }
+
+    if (filters?.template_id) {
+      query = query.eq('template_id', filters.template_id);
+    }
+
+    if (filters?.search) {
+      query = query.or(
+        `title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`
+      );
+    }
+
+    // Apply sorting
+    const sortBy = filters?.sort_by || 'created_at';
+    const sortOrder = filters?.sort_order || 'desc';
+    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+    // Apply pagination
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    query = query.range(from, to);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error('Error fetching blogs:', error);
+      return { data: null, error, success: false };
+    }
+
+    const totalPages = count ? Math.ceil(count / pageSize) : 0;
+
+    return {
+      data: {
+        data: data || [],
+        total: count || 0,
+        page,
+        page_size: pageSize,
+        total_pages: totalPages,
+      },
+      error: null,
+      success: true,
+    };
+  } catch (error) {
+    console.error('Unexpected error fetching blogs:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Get a single blog by ID with all relations
+ */
+export async function getBlogById(
+  id: string
+): Promise<ServiceResponse<BlogWithRelations>> {
+  try {
+    const { data, error } = await supabase
+      .from('blogger_blogs')
+      .select(
+        `
+        *,
+        persona:blogger_personas(*),
+        template:blogger_templates(*),
+        primary_keyword:blogger_keywords(*),
+        products:blogger_blog_products(*)
+      `
+      )
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching blog:', error);
+      return { data: null, error, success: false };
+    }
+
+    return { data, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error fetching blog:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Update a blog post
+ */
+export async function updateBlog(
+  id: string,
+  updates: Partial<
+    Omit<BloggerBlog, 'id' | 'user_id' | 'created_at' | 'updated_at'>
+  >
+): Promise<ServiceResponse<BloggerBlog>> {
+  try {
+    const { data, error } = await supabase
+      .from('blogger_blogs')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating blog:', error);
+      return { data: null, error, success: false };
+    }
+
+    return { data, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error updating blog:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Delete a blog post
+ */
+export async function deleteBlog(id: string): Promise<ServiceResponse<void>> {
+  try {
+    const { error } = await supabase
+      .from('blogger_blogs')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting blog:', error);
+      return { data: null, error, success: false };
+    }
+
+    return { data: null, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error deleting blog:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Duplicate a blog post
+ */
+export async function duplicateBlog(
+  id: string
+): Promise<ServiceResponse<BloggerBlog>> {
+  try {
+    // Fetch the original blog
+    const { data: original, error: fetchError } = await supabase
+      .from('blogger_blogs')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !original) {
+      console.error('Error fetching blog to duplicate:', fetchError);
+      return { data: null, error: fetchError, success: false };
+    }
+
+    // Create a duplicate with modified title
+    const {
+      id: _id,
+      created_at: _created,
+      updated_at: _updated,
+      slug: _slug,
+      shopify_article_id: _article,
+      shopify_blog_id: _blog,
+      published_at: _published,
+      ...blogData
+    } = original;
+
+    const duplicate = {
+      ...blogData,
+      title: `${original.title} (Copy)`,
+      status: 'draft' as BlogStatus,
+    };
+
+    return await createBlog(duplicate);
+  } catch (error) {
+    console.error('Unexpected error duplicating blog:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Update blog status
+ */
+export async function updateBlogStatus(
+  id: string,
+  status: BlogStatus
+): Promise<ServiceResponse<BloggerBlog>> {
+  const updates: Partial<BloggerBlog> = { status };
+
+  // If publishing, set published_at timestamp
+  if (status === 'published') {
+    updates.published_at = new Date().toISOString();
+  }
+
+  return await updateBlog(id, updates);
+}
+
+/**
+ * Get blog statistics for user
+ */
+export async function getBlogStats(): Promise<
+  ServiceResponse<{
+    total: number;
+    drafts: number;
+    published: number;
+    archived: number;
+  }>
+> {
+  try {
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        data: null,
+        error: new Error('User not authenticated'),
+        success: false,
+      };
+    }
+
+    const { data, error } = await supabase
+      .from('blogger_blogs')
+      .select('status')
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.error('Error fetching blog stats:', error);
+      return { data: null, error, success: false };
+    }
+
+    const stats = {
+      total: data.length,
+      drafts: data.filter((b) => b.status === 'draft').length,
+      published: data.filter((b) => b.status === 'published').length,
+      archived: data.filter((b) => b.status === 'archived').length,
+    };
+
+    return { data: stats, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error fetching blog stats:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}

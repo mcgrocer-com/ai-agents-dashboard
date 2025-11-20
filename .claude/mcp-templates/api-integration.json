@@ -1,0 +1,183 @@
+{
+  "templateName": "api-integration",
+  "description": "Template for integrating with REST/GraphQL APIs - USE ONLY when MCP tool is CRUCIAL to agent's core expertise",
+  "version": "1.0.0",
+  "costWarning": "IMPORTANT: Only create MCP tools for free services or those requiring LLM API keys. Avoid paid/subscription services unless absolutely critical.",
+  "mcpJustification": "MCP tools should ONLY be added when they are ESSENTIAL to the agent's expertise. Most tasks can be handled with standard tools (Read, Write, Edit, Bash, WebFetch). Example of justified MCP: supabase-mcp for Supabase backend expert.",
+  "variables": [
+    {
+      "name": "SERVICE",
+      "description": "Service name (e.g., stripe, shopify)",
+      "required": true
+    },
+    {
+      "name": "API_KEY",
+      "description": "API authentication key",
+      "required": true,
+      "secure": true
+    },
+    {
+      "name": "BASE_URL",
+      "description": "Base URL for API endpoints",
+      "required": true
+    },
+    {
+      "name": "API_VERSION",
+      "description": "API version to use",
+      "required": false,
+      "default": "latest"
+    }
+  ],
+  "mcpConfig": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "@custom/{{SERVICE}}-mcp-server",
+      "--version={{API_VERSION}}"
+    ],
+    "env": {
+      "{{SERVICE_UPPER}}_API_KEY": "{{API_KEY}}",
+      "{{SERVICE_UPPER}}_BASE_URL": "{{BASE_URL}}"
+    }
+  },
+  "methods": [
+    {
+      "name": "{{SERVICE}}_list",
+      "description": "List resources from {{SERVICE}}",
+      "parameters": {
+        "resource": {
+          "type": "string",
+          "description": "Resource type to list"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Maximum number of items",
+          "default": 100
+        },
+        "offset": {
+          "type": "number",
+          "description": "Pagination offset",
+          "default": 0
+        }
+      }
+    },
+    {
+      "name": "{{SERVICE}}_get",
+      "description": "Get specific resource from {{SERVICE}}",
+      "parameters": {
+        "resource": {
+          "type": "string",
+          "description": "Resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource identifier"
+        }
+      }
+    },
+    {
+      "name": "{{SERVICE}}_create",
+      "description": "Create new resource in {{SERVICE}}",
+      "parameters": {
+        "resource": {
+          "type": "string",
+          "description": "Resource type to create"
+        },
+        "data": {
+          "type": "object",
+          "description": "Resource data"
+        }
+      }
+    },
+    {
+      "name": "{{SERVICE}}_update",
+      "description": "Update resource in {{SERVICE}}",
+      "parameters": {
+        "resource": {
+          "type": "string",
+          "description": "Resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource identifier"
+        },
+        "data": {
+          "type": "object",
+          "description": "Updated data"
+        }
+      }
+    },
+    {
+      "name": "{{SERVICE}}_delete",
+      "description": "Delete resource from {{SERVICE}}",
+      "parameters": {
+        "resource": {
+          "type": "string",
+          "description": "Resource type"
+        },
+        "id": {
+          "type": "string",
+          "description": "Resource identifier"
+        }
+      }
+    },
+    {
+      "name": "{{SERVICE}}_search",
+      "description": "Search resources in {{SERVICE}}",
+      "parameters": {
+        "resource": {
+          "type": "string",
+          "description": "Resource type"
+        },
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "filters": {
+          "type": "object",
+          "description": "Additional filters"
+        }
+      }
+    }
+  ],
+  "examples": {
+    "github": {
+      "SERVICE": "github",
+      "API_KEY": "ghp_...",
+      "BASE_URL": "https://api.github.com",
+      "API_VERSION": "v3",
+      "cost": "FREE",
+      "justification": "Essential for GitHub integration specialist managing repos/PRs/issues"
+    },
+    "openai": {
+      "SERVICE": "openai",
+      "API_KEY": "sk-...",
+      "BASE_URL": "https://api.openai.com/v1",
+      "API_VERSION": "v1",
+      "cost": "LLM_API_KEY",
+      "justification": "Essential for AI/LLM integration specialist"
+    },
+    "supabase": {
+      "SERVICE": "supabase",
+      "API_KEY": "anon_key_...",
+      "BASE_URL": "https://project.supabase.co",
+      "API_VERSION": "v1",
+      "cost": "FREE_TIER",
+      "justification": "Essential for Supabase backend expert"
+    }
+  },
+  "avoidExamples": {
+    "stripe": {
+      "reason": "PAID SERVICE - Use WebFetch and standard tools instead",
+      "alternative": "Use WebFetch for Stripe API calls, don't create MCP tool"
+    },
+    "shopify": {
+      "reason": "PAID SERVICE - Use WebFetch and standard tools instead",
+      "alternative": "Use WebFetch for Shopify API calls, don't create MCP tool"
+    },
+    "aws": {
+      "reason": "PAID SERVICE - Use Bash with AWS CLI or WebFetch instead",
+      "alternative": "Use Bash tool with aws-cli commands"
+    }
+  }
+}

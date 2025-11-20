@@ -19,6 +19,7 @@ import {
   LogOut,
   ChevronLeft,
   Menu,
+  PenTool,
 } from 'lucide-react'
 
 export function DashboardLayout() {
@@ -43,6 +44,7 @@ export function DashboardLayout() {
     { name: 'Weight', path: '/agents/weight', icon: Scale },
     { name: 'SEO', path: '/agents/seo', icon: Search },
     { name: 'Copyright', path: '/agents/copyright', icon: Shield },
+    { name: 'Blogger', path: '/blogger', icon: PenTool },
   ]
 
   const toolItems = [
@@ -209,8 +211,8 @@ export function DashboardLayout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
-        <div className="container mx-auto p-6">
+      <main className="flex-1 overflow-auto flex flex-col">
+        <div className="container mx-auto p-6 flex-1 flex flex-col">
           <Outlet />
         </div>
       </main>

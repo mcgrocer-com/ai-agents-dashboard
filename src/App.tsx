@@ -23,6 +23,11 @@ import {
   AgentToolsPage,
   AdminPage,
 } from '@/pages'
+import {
+  BloggerDashboardPage,
+  BloggerCreatePage,
+  BloggerDetailPage,
+} from '@/pages/blogger'
 
 function App() {
   const { message, type, hideToast } = useToast()
@@ -47,6 +52,10 @@ function App() {
             <Route path="/agents/copyright" element={<CopyrightAgentPage />} />
             <Route path="/agent-tools" element={<AgentToolsPage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/blogger" element={<BloggerDashboardPage />} />
+            <Route path="/blogger/create" element={<BloggerCreatePage />} />
+            <Route path="/blogger/:id" element={<BloggerDetailPage />} />
+            <Route path="/blogger/:id/edit" element={<BloggerCreatePage />} />
           </Route>
         </Route>
 

@@ -8,12 +8,15 @@ import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send } from 'lucide-react'
 import { productsService } from '@/services'
+import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
 import { Pagination } from '@/components/ui/Pagination'
 import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/components/filters/AdvancedFilterBuilder'
 import { VendorStatistics } from '@/components/scraper/VendorStatistics'
+import { VendorSelectionDialog } from '@/components/scraper/VendorSelectionDialog'
 import { ProductActionsMenu } from '@/components/scraper/ProductActionsMenu'
 import { useToast } from '@/hooks/useToast'
+import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { ScrapedProduct, ProductFilters } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
@@ -76,6 +79,7 @@ const formatRelativeTime = (timestamp: string | null): string => {
 
 export function ScraperAgentPage() {
   const { showToast } = useToast()
+  const { preferences, updateVendorSyncPreferences } = useUserPreferences()
   const [activeTab, setActiveTab] = useState<TabType>('all')
   const [products, setProducts] = useState<ScrapedProduct[]>([])
   const [count, setCount] = useState(0)
@@ -97,11 +101,27 @@ export function ScraperAgentPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
   const [isSendingBulk, setIsSendingBulk] = useState(false)
 
+  // Vendor selection dialog states
+  const [showVendorDialog, setShowVendorDialog] = useState(false)
+  const [vendorsList, setVendorsList] = useState<{ name: string; count: number; syncCount?: number }[]>([])
+
   // Fetch vendors on mount and set default vendor filter
   useEffect(() => {
     const loadVendors = async () => {
       const { vendors: vendorList } = await productsService.getVendors()
       if (vendorList && vendorList.length > 0) {
+        // Fetch sync-ready counts for each vendor
+        const vendorsWithSyncCounts = await Promise.all(
+          vendorList.map(async (vendor: { name: string; count: number }) => {
+            const stats = await scraperProductsService.getVendorStatistics(vendor.name)
+            return {
+              ...vendor,
+              syncCount: stats?.withAllData || 0
+            }
+          })
+        )
+
+        setVendorsList(vendorsWithSyncCounts)
         setDefaultVendor('all')
 
         // Create dropdown options from vendors with "All Vendors" at top
@@ -306,10 +326,25 @@ export function ScraperAgentPage() {
     }
   }, [selectedProductIds, showToast, clearSelection, fetchProducts])
 
+  // Handler for saving vendor sync preferences
+  const handleSaveVendorPreferences = async (vendors: string[]) => {
+    const success = await updateVendorSyncPreferences(vendors)
+    if (success) {
+      showToast(
+        vendors.length === 0
+          ? 'All vendors will be synced to ERPNext'
+          : `${vendors.length} vendor${vendors.length > 1 ? 's' : ''} selected for ERPNext sync`,
+        'success'
+      )
+    } else {
+      showToast('Failed to save vendor preferences', 'error')
+    }
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full space-y-4">
       {/* Header */}
-      <div>
+      <div className="flex-shrink-0">
         <h1 className="text-3xl font-bold text-secondary-900">Scraper Agent</h1>
         <p className="text-secondary-600 mt-1">
           Browse and manage products scraped from various sources
@@ -317,15 +352,14 @@ export function ScraperAgentPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div className="flex-shrink-0 border-b border-gray-200">
         <nav className="-mb-px flex gap-6">
           <button
             onClick={() => handleTabChange('all')}
-            className={`py-3 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'all'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'all'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <div className="flex items-center gap-2">
               <Package className="w-4 h-4" />
@@ -334,11 +368,10 @@ export function ScraperAgentPage() {
           </button>
           <button
             onClick={() => handleTabChange('pinned')}
-            className={`py-3 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'pinned'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'pinned'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             <div className="flex items-center gap-2">
               <Pin className="w-4 h-4" />
@@ -348,21 +381,25 @@ export function ScraperAgentPage() {
         </nav>
       </div>
 
-      {/* Vendor Statistics - Shows for all vendors (displays helper) or specific vendor (displays stats) */}
+      {/* Vendor Statistics */}
       {defaultVendor && (
-        <VendorStatistics vendor={defaultVendor} />
+        <div className="flex-shrink-0">
+          <VendorStatistics
+            vendor={defaultVendor}
+            onConfigureClick={() => setShowVendorDialog(true)}
+          />
+        </div>
       )}
 
       {/* Search and Controls Bar */}
-      <div className="flex gap-3 items-center">
+      <div className="flex-shrink-0 flex gap-3 items-center">
         {/* Selection Mode Toggle */}
         <button
           onClick={toggleSelectionMode}
-          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${
-            selectionMode
-              ? 'border-primary-500 bg-primary-50 text-primary-700'
-              : 'border-secondary-300 text-secondary-700 hover:bg-secondary-50'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${selectionMode
+            ? 'border-primary-500 bg-primary-50 text-primary-700'
+            : 'border-secondary-300 text-secondary-700 hover:bg-secondary-50'
+            }`}
           title="Toggle selection mode"
         >
           {selectionMode ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
@@ -407,11 +444,10 @@ export function ScraperAgentPage() {
         {/* Filter Button */}
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${
-            filters.filter((f) => !f.isDefault).length > 0
-              ? 'border-primary-500 bg-primary-50 text-primary-700'
-              : 'border-secondary-300 text-secondary-700 hover:bg-secondary-50'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${filters.filter((f) => !f.isDefault).length > 0
+            ? 'border-primary-500 bg-primary-50 text-primary-700'
+            : 'border-secondary-300 text-secondary-700 hover:bg-secondary-50'
+            }`}
         >
           <SlidersHorizontal className="w-4 h-4" />
           <span>Filters</span>
@@ -477,7 +513,7 @@ export function ScraperAgentPage() {
 
       {/* Bulk Actions Bar - Shows when items are selected */}
       {selectionMode && selectedProductIds.size > 0 && (
-        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">
+        <div className="flex-shrink-0 bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CheckSquare className="w-5 h-5 text-primary-600" />
             <div className="flex flex-col">
@@ -510,7 +546,7 @@ export function ScraperAgentPage() {
       )}
 
       {/* Results Summary */}
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex-shrink-0 flex items-center justify-between text-sm">
         <div className="flex items-center gap-4">
           <p className="text-secondary-600">
             Showing {products.length} of {count.toLocaleString()} {activeTab === 'pinned' ? 'pinned ' : ''}products
@@ -534,33 +570,48 @@ export function ScraperAgentPage() {
         )}
       </div>
 
-      {/* Products List */}
-      {error ? (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">Error loading products: {error.message}</p>
-        </div>
-      ) : (
-        <ProductsList
-          products={products}
-          isLoading={isLoading}
-          showPinned={activeTab === 'pinned'}
-          onRefresh={fetchProducts}
-          selectionMode={selectionMode}
-          selectedProductIds={selectedProductIds}
-          onToggleSelection={toggleProductSelection}
-        />
-      )}
+      {/* Products List - fills remaining space */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {error ? (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-800">Error loading products: {error.message}</p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            <ProductsList
+              products={products}
+              isLoading={isLoading}
+              showPinned={activeTab === 'pinned'}
+              onRefresh={fetchProducts}
+              selectionMode={selectionMode}
+              selectedProductIds={selectedProductIds}
+              onToggleSelection={toggleProductSelection}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Pagination */}
-      {!isLoading && count > 0 && (
-        <Pagination
-          currentPage={page}
-          pageSize={pageSize}
-          totalCount={count}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
-      )}
+      <div className="flex-shrink-0">
+        {!isLoading && count > 0 && (
+          <Pagination
+            currentPage={page}
+            pageSize={pageSize}
+            totalCount={count}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
+      </div>
+
+      {/* Vendor Selection Dialog */}
+      <VendorSelectionDialog
+        open={showVendorDialog}
+        onClose={() => setShowVendorDialog(false)}
+        vendors={vendorsList}
+        selectedVendors={preferences?.sync_vendors || []}
+        onSave={handleSaveVendorPreferences}
+      />
     </div>
   )
 }
@@ -649,19 +700,18 @@ const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = fals
               {/* ERPNext Sync Status Badge */}
               {product.sync_status && (
                 <span
-                  className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
-                    product.sync_status === 'synced'
-                      ? 'bg-blue-100 text-blue-700'
-                      : product.sync_status === 'failed'
+                  className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${product.sync_status === 'synced'
+                    ? 'bg-blue-100 text-blue-700'
+                    : product.sync_status === 'failed'
                       ? 'bg-red-100 text-red-700'
                       : 'bg-gray-100 text-gray-700'
-                  }`}
+                    }`}
                   title={
                     product.sync_status === 'synced'
                       ? `Synced to ERPNext${product.item_code ? ` (${product.item_code})` : ''}`
                       : product.sync_status === 'failed'
-                      ? `Sync failed${product.failed_sync_error_message ? `: ${product.failed_sync_error_message}` : ''}`
-                      : 'Not yet synced'
+                        ? `Sync failed${product.failed_sync_error_message ? `: ${product.failed_sync_error_message}` : ''}`
+                        : 'Not yet synced'
                   }
                 >
                   {product.sync_status === 'synced' && <CloudUpload className="w-3 h-3" />}
@@ -701,14 +751,13 @@ const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = fals
               <>
                 <span className="text-xs text-secondary-400">•</span>
                 <span
-                  className={`text-xs px-2 py-0.5 rounded ${
-                    product.stock_status.toLowerCase().includes('in stock') ||
+                  className={`text-xs px-2 py-0.5 rounded ${product.stock_status.toLowerCase().includes('in stock') ||
                     product.stock_status.toLowerCase() === 'available'
-                      ? 'bg-green-100 text-green-700'
-                      : product.stock_status.toLowerCase().includes('out of stock')
+                    ? 'bg-green-100 text-green-700'
+                    : product.stock_status.toLowerCase().includes('out of stock')
                       ? 'bg-red-100 text-red-700'
                       : 'bg-yellow-100 text-yellow-700'
-                  }`}
+                    }`}
                 >
                   {product.stock_status}
                 </span>
@@ -787,11 +836,10 @@ const ProductsList = memo(({ products, isLoading, showPinned = false, onRefresh,
     return (
       <div className="bg-white rounded-lg shadow-sm border border-secondary-200">
         <div className="flex flex-col items-center justify-center py-12">
-          <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${
-            showPinned
-              ? 'from-yellow-100 via-yellow-50 to-amber-100 border-yellow-200'
-              : 'from-primary-100 via-primary-50 to-purple-100 border-primary-200'
-          } flex items-center justify-center mb-4 border`}>
+          <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${showPinned
+            ? 'from-yellow-100 via-yellow-50 to-amber-100 border-yellow-200'
+            : 'from-primary-100 via-primary-50 to-purple-100 border-primary-200'
+            } flex items-center justify-center mb-4 border`}>
             {showPinned ? (
               <Pin className="w-10 h-10 text-yellow-500" />
             ) : (
@@ -813,7 +861,7 @@ const ProductsList = memo(({ products, isLoading, showPinned = false, onRefresh,
 
   return (
     <div
-      className="bg-white rounded-lg shadow-sm border border-secondary-200" 
+      className="bg-white rounded-lg shadow-sm border border-secondary-200"
     >
       <div className="divide-y divide-secondary-200">
         {products.map((product) => (

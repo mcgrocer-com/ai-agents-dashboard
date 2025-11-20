@@ -12,3 +12,4 @@ export { useRealtime, usePendingProductsRealtime, useScrapedProductsRealtime } f
 export { useDashboardRealtime, useAgentRealtime, useRecentActivityRealtime } from './useDashboardRealtime'
 export { useScraperProducts, useScraperVendors, useStockStatuses } from './useScraperProducts'
 export { useMariaDBProducts } from './useMariaDBProducts'
+export { useUserPreferences } from './useUserPreferences'
