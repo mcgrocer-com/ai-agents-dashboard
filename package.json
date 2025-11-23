@@ -17,6 +17,8 @@
     "fix:seo-rls": "node scripts/run-migration.js"
   },
   "dependencies": {
+    "@browserbasehq/stagehand": "^3.0.3",
+    "@google/generative-ai": "^0.24.1",
     "@headlessui/react": "^2.2.9",
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.3.0",
@@ -30,12 +32,15 @@
     "react-router-dom": "^7.9.4",
     "recharts": "^2.12.7",
     "ssh2": "^1.17.0",
+    "sweetalert2": "^11.26.3",
     "swr": "^2.3.6",
     "three": "^0.180.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.67"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.1",
+    "@tailwindcss/typography": "^0.5.19",
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

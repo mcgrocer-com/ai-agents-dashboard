@@ -55,7 +55,8 @@ export function BloggerDashboardPage() {
   };
 
   const handleEdit = (id: string) => {
-    navigate(`/blogger/${id}/edit`);
+    const blog = blogs.find(b => b.id === id);
+    navigate(`/blogger/${id}/edit`, { state: { blog } });
   };
 
   const handleDelete = async (id: string) => {

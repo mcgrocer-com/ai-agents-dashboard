@@ -45,15 +45,6 @@ export function ProductSelector({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Product Links
-        </h3>
-        <p className="text-sm text-gray-600">
-          Search and add Shopify products to link in your blog content.
-        </p>
-      </div>
-
       <form onSubmit={handleSearch} className="flex gap-2">
         <input
           type="text"

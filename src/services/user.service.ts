@@ -9,6 +9,7 @@ import type { User } from '@/types/database'
 
 export interface UserPreferences {
   sync_vendors?: string[]
+  prioritize_copyright?: boolean
   [key: string]: any
 }
 
@@ -49,7 +50,8 @@ class UserService {
    */
   async updateVendorSyncPreferences(
     userId: string,
-    vendors: string[]
+    vendors: string[],
+    prioritizeCopyright?: boolean
   ): Promise<ServiceResponse<UserPreferences>> {
     try {
       // First get current preferences
@@ -58,6 +60,9 @@ class UserService {
 
       // Update sync_vendors field
       preferences.sync_vendors = vendors
+      if (prioritizeCopyright !== undefined) {
+        preferences.prioritize_copyright = prioritizeCopyright
+      }
 
       // Save back to database
       const { data, error } = await supabase

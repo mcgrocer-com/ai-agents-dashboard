@@ -32,7 +32,10 @@ export interface BloggerPersona {
   role: string;
   bio: string;
   expertise: string;
-  context_data: PersonaContextData;
+  avatar_url?: string;
+  tone?: string;
+  writing_style?: string;
+  context_data?: PersonaContextData;
   created_at: string;
   updated_at: string;
 }
@@ -44,11 +47,11 @@ export interface BloggerTemplate {
   id: string;
   name: string;
   description: string;
-  h1_template: string;
+  h1_template?: string;
   content_structure: string;
-  seo_rules: string;
-  prompt_template: string;
-  notes: string | null;
+  seo_rules?: string;
+  prompt_template?: string;
+  notes?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -56,12 +59,12 @@ export interface BloggerTemplate {
 /**
  * Keyword competition level
  */
-export type KeywordCompetition = 'low' | 'medium' | 'high';
+export type KeywordCompetition = 'low' | 'medium' | 'high' | number;
 
 /**
  * Keyword search intent
  */
-export type KeywordIntent = 'transactional' | 'informational' | 'navigational';
+export type KeywordIntent = 'transactional' | 'informational' | 'navigational' | string;
 
 /**
  * Cached keyword research data
@@ -205,20 +208,26 @@ export interface BlogFilters {
 export interface KeywordResearchResponse {
   keywords: Array<{
     keyword: string;
-    search_volume: number;
-    competition: KeywordCompetition;
-    cpc: number;
-    intent: KeywordIntent;
+    volume?: number;
+    difficulty?: number;
+    search_volume?: number;
+    competition?: KeywordCompetition;
+    cpc?: number;
+    intent?: KeywordIntent;
   }>;
+  related_topics?: string[];
 }
 
 /**
  * External API response for meta data generation
  */
 export interface MetaDataResponse {
-  meta_title: string;
-  meta_description: string;
-  suggested_h1: string;
+  title?: string;
+  description?: string;
+  keywords?: string[];
+  meta_title?: string;
+  meta_description?: string;
+  suggested_h1?: string;
 }
 
 /**
@@ -238,9 +247,14 @@ export interface GenerateBlogRequest {
 export interface GenerateBlogResponse {
   content: string;
   markdown: string;
-  word_count: number;
-  estimated_seo_score: number;
-  estimated_readability: number;
+  word_count?: number;
+  estimated_seo_score?: number;
+  estimated_readability?: number;
+  meta?: {
+    title: string;
+    description: string;
+    keywords: string[];
+  };
 }
 
 /**

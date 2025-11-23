@@ -12,7 +12,7 @@ interface UseUserPreferencesReturn {
   preferences: UserPreferences | null
   loading: boolean
   error: Error | null
-  updateVendorSyncPreferences: (vendors: string[]) => Promise<boolean>
+  updateVendorSyncPreferences: (vendors: string[], prioritizeCopyright?: boolean) => Promise<boolean>
   refreshPreferences: () => Promise<void>
 }
 
@@ -45,12 +45,13 @@ export function useUserPreferences(): UseUserPreferencesReturn {
     loadPreferences()
   }, [user?.id])
 
-  const updateVendorSyncPreferences = async (vendors: string[]): Promise<boolean> => {
+  const updateVendorSyncPreferences = async (vendors: string[], prioritizeCopyright?: boolean): Promise<boolean> => {
     if (!user?.id) return false
 
     const { data, error: err } = await userService.updateVendorSyncPreferences(
       user.id,
-      vendors
+      vendors,
+      prioritizeCopyright
     )
 
     if (err) {

@@ -327,8 +327,8 @@ export function ScraperAgentPage() {
   }, [selectedProductIds, showToast, clearSelection, fetchProducts])
 
   // Handler for saving vendor sync preferences
-  const handleSaveVendorPreferences = async (vendors: string[]) => {
-    const success = await updateVendorSyncPreferences(vendors)
+  const handleSaveVendorPreferences = async (vendors: string[], prioritizeCopyright: boolean) => {
+    const success = await updateVendorSyncPreferences(vendors, prioritizeCopyright)
     if (success) {
       showToast(
         vendors.length === 0
@@ -610,6 +610,7 @@ export function ScraperAgentPage() {
         onClose={() => setShowVendorDialog(false)}
         vendors={vendorsList}
         selectedVendors={preferences?.sync_vendors || []}
+        prioritizeCopyright={preferences?.prioritize_copyright || false}
         onSave={handleSaveVendorPreferences}
       />
     </div>

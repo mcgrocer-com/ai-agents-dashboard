@@ -65,27 +65,6 @@ export function BlogPreview({ blog }: BlogPreviewProps) {
           </div>
         )}
 
-        {/* Scores */}
-        {(blog.seo_score !== null || blog.readability_score !== null) && (
-          <div className="mt-4 flex gap-4">
-            {blog.seo_score !== null && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-700">SEO Score:</span>
-                <span className="text-sm font-semibold text-blue-600">
-                  {blog.seo_score}/100
-                </span>
-              </div>
-            )}
-            {blog.readability_score !== null && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-700">Readability:</span>
-                <span className="text-sm font-semibold text-green-600">
-                  {blog.readability_score}/100
-                </span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Blog content */}

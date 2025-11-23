@@ -21,15 +21,6 @@ export function PersonaSelector({
 }: PersonaSelectorProps) {
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Choose Your Writer Persona
-        </h3>
-        <p className="text-sm text-gray-600">
-          Select a persona that matches your content style and expertise level.
-        </p>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {personas.map((persona) => {
           const isSelected = selectedPersonaId === persona.id;
@@ -41,10 +32,9 @@ export function PersonaSelector({
               disabled={isLoading}
               className={`
                 relative p-4 text-left rounded-lg border-2 transition-all
-                ${
-                  isSelected
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-blue-300 hover:shadow-md'
+                ${isSelected
+                  ? 'border-blue-600 bg-blue-50'
+                  : 'border-gray-200 bg-white hover:border-blue-300 hover:shadow-md'
                 }
                 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}

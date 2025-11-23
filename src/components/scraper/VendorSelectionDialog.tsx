@@ -18,7 +18,8 @@ interface VendorSelectionDialogProps {
   onClose: () => void
   vendors: VendorOption[]
   selectedVendors: string[]
-  onSave: (vendors: string[]) => Promise<void>
+  prioritizeCopyright: boolean
+  onSave: (vendors: string[], prioritizeCopyright: boolean) => Promise<void>
   loading?: boolean
 }
 
@@ -27,15 +28,18 @@ export function VendorSelectionDialog({
   onClose,
   vendors,
   selectedVendors,
+  prioritizeCopyright = false,
   onSave,
   loading = false,
 }: VendorSelectionDialogProps) {
   const [selected, setSelected] = useState<string[]>(selectedVendors)
+  const [isPrioritizeCopyright, setIsPrioritizeCopyright] = useState(prioritizeCopyright)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setSelected(selectedVendors)
-  }, [selectedVendors, open])
+    setIsPrioritizeCopyright(prioritizeCopyright)
+  }, [selectedVendors, prioritizeCopyright, open])
 
   if (!open) return null
 
@@ -58,7 +62,7 @@ export function VendorSelectionDialog({
   const handleSave = async () => {
     setSaving(true)
     try {
-      await onSave(selected)
+      await onSave(selected, isPrioritizeCopyright)
       onClose()
     } catch (error) {
       console.error('Failed to save vendor preferences:', error)
@@ -151,6 +155,32 @@ export function VendorSelectionDialog({
               No vendors selected - all vendors will be synced
             </p>
           )}
+
+          {/* Prioritize Copyright Checkbox */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <label className="flex items-center p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPrioritizeCopyright}
+                onChange={(e) => setIsPrioritizeCopyright(e.target.checked)}
+                disabled={saving}
+                className="w-4 h-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500"
+              />
+              <div className="ml-3 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-900">
+                    Prioritize Copyright Products
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Sync products with completed copyright check first
+                </p>
+              </div>
+              {isPrioritizeCopyright && (
+                <Check className="w-4 h-4 text-primary-600 ml-2" />
+              )}
+            </label>
+          </div>
         </div>
 
         {/* Footer */}

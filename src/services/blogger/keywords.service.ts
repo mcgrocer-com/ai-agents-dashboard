@@ -32,16 +32,28 @@ export async function cacheKeyword(
     }
 
     // Check if keyword already exists for this topic and user
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from('blogger_keywords')
       .select('*')
       .eq('keyword', keyword.keyword)
       .eq('topic', keyword.topic)
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
+    // If found, return existing keyword
     if (existing) {
       return { data: existing, error: null, success: true };
+    }
+
+    // Ignore "not found" errors, but log other errors
+    if (existingError && existingError.code !== 'PGRST116') {
+      console.error('Error checking for existing keyword:', existingError);
+    }
+
+    // Convert numeric competition to string values for database
+    let competition: KeywordCompetition = keyword.competition || 'medium';
+    if (typeof competition === 'number') {
+      competition = competition < 30 ? 'low' : competition < 70 ? 'medium' : 'high';
     }
 
     // Create new keyword
@@ -49,6 +61,7 @@ export async function cacheKeyword(
       .from('blogger_keywords')
       .insert({
         ...keyword,
+        competition,
         user_id: user.id,
       })
       .select()

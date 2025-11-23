@@ -1,9 +1,9 @@
 /**
  * SeoOptimizer Component
- * SEO meta fields with character counts and score display
+ * SEO meta fields with character counts and validation
  */
 
-import { TrendingUp, CheckCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle } from 'lucide-react';
 
 interface SeoOptimizerProps {
   metaTitle: string;
@@ -29,13 +29,6 @@ export function SeoOptimizer({
   const idealTitleRange = titleLength >= 50 && titleLength <= 60;
   const idealDescRange = descLength >= 140 && descLength <= 160;
 
-  const getScoreColor = (score: number | null) => {
-    if (!score) return 'text-gray-400';
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
   return (
     <div className="space-y-6">
       <div>
@@ -43,32 +36,9 @@ export function SeoOptimizer({
           SEO Optimization
         </h3>
         <p className="text-sm text-gray-600">
-          Optimize your meta tags for search engines and track your SEO score.
+          Optimize your meta tags for search engines.
         </p>
       </div>
-
-      {(seoScore !== null || readabilityScore !== null) && (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">SEO Score</span>
-              <TrendingUp className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className={`text-3xl font-bold ${getScoreColor(seoScore)}`}>
-              {seoScore ?? '—'}/100
-            </div>
-          </div>
-          <div className="p-4 bg-green-50 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Readability</span>
-              <TrendingUp className="w-5 h-5 text-green-600" />
-            </div>
-            <div className={`text-3xl font-bold ${getScoreColor(readabilityScore)}`}>
-              {readabilityScore ?? '—'}/100
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="space-y-4">
         <div>

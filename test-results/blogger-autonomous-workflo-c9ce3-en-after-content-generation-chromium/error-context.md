@@ -1,0 +1,352 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "MCGrocer" [level=1] [ref=e7]
+        - button "Collapse sidebar" [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+      - navigation [ref=e11]:
+        - link "Home" [ref=e12] [cursor=pointer]:
+          - /url: "#/dashboard"
+          - img [ref=e13]
+          - generic [ref=e18]: Home
+        - heading "Agents" [level=3] [ref=e22]
+        - link "Scraper" [ref=e23] [cursor=pointer]:
+          - /url: "#/scraper-agent"
+          - img [ref=e24]
+          - generic [ref=e28]: Scraper
+        - link "Category" [ref=e29] [cursor=pointer]:
+          - /url: "#/agents/category"
+          - img [ref=e30]
+          - generic [ref=e33]: Category
+        - link "Weight" [ref=e34] [cursor=pointer]:
+          - /url: "#/agents/weight"
+          - img [ref=e35]
+          - generic [ref=e39]: Weight
+        - link "SEO" [ref=e40] [cursor=pointer]:
+          - /url: "#/agents/seo"
+          - img [ref=e41]
+          - generic [ref=e44]: SEO
+        - link "Copyright" [ref=e45] [cursor=pointer]:
+          - /url: "#/agents/copyright"
+          - img [ref=e46]
+          - generic [ref=e48]: Copyright
+        - link "Blogger" [ref=e49] [cursor=pointer]:
+          - /url: "#/blogger"
+          - img [ref=e50]
+          - generic [ref=e55]: Blogger
+        - link "Agent Tools" [ref=e58] [cursor=pointer]:
+          - /url: "#/agent-tools"
+          - img [ref=e59]
+          - generic [ref=e61]: Agent Tools
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - generic [ref=e66]: C
+          - paragraph [ref=e68]: careers@mcgrocer.com
+        - button "Sign out" [ref=e69] [cursor=pointer]:
+          - img [ref=e70]
+  - main [ref=e73]:
+    - generic [ref=e75]:
+      - generic [ref=e76]:
+        - generic [ref=e77]:
+          - heading "Dashboard" [level=1] [ref=e78]
+          - paragraph [ref=e79]: Overview of AI workflow processing
+        - button "Manage Tasks" [ref=e80] [cursor=pointer]:
+          - img [ref=e81]
+          - text: Manage Tasks
+      - generic [ref=e84]:
+        - generic [ref=e86]:
+          - generic [ref=e87]:
+            - paragraph [ref=e88]: Partial Sanitized
+            - paragraph [ref=e89]: 68,320
+            - paragraph [ref=e90]: Weight & Category complete
+          - img [ref=e92]
+        - generic [ref=e97]:
+          - generic [ref=e98]:
+            - paragraph [ref=e99]: Full Sanitized
+            - paragraph [ref=e100]: 41,566
+            - paragraph [ref=e101]: All agents complete
+          - img [ref=e103]
+        - generic [ref=e108]:
+          - generic [ref=e109]:
+            - paragraph [ref=e110]: Processing
+            - paragraph [ref=e111]: "10"
+            - paragraph [ref=e112]: Across all agents
+          - img [ref=e114]
+        - generic [ref=e117]:
+          - generic [ref=e118]:
+            - paragraph [ref=e119]: Success Rate
+            - paragraph [ref=e120]: 98.34%
+            - paragraph [ref=e121]: Average of all agents
+          - img [ref=e123]
+      - generic [ref=e126]:
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - img [ref=e131]
+              - heading "Category Mapper" [level=3] [ref=e134]
+            - generic [ref=e135]: "Last: 11/22/2025"
+          - generic [ref=e136]:
+            - generic [ref=e137]:
+              - paragraph [ref=e138]: Total Products
+              - paragraph [ref=e139]: 104,318
+            - generic [ref=e140]:
+              - paragraph [ref=e141]: Success Rate
+              - paragraph [ref=e142]: 99.67%
+            - generic [ref=e143]:
+              - paragraph [ref=e144]: Avg Confidence
+              - paragraph [ref=e145]: 91.00%
+          - generic [ref=e147]:
+            - generic [ref=e148]:
+              - paragraph [ref=e149]: Pending
+              - paragraph [ref=e150]: 22,249
+            - generic [ref=e151]:
+              - paragraph [ref=e152]: Processing
+              - paragraph [ref=e153]: "0"
+            - generic [ref=e154]:
+              - paragraph [ref=e155]: Complete
+              - paragraph [ref=e156]: 81,798
+            - generic [ref=e157]:
+              - paragraph [ref=e158]: Failed
+              - paragraph [ref=e159]: "271"
+        - generic [ref=e160]:
+          - generic [ref=e161]:
+            - generic [ref=e162]:
+              - img [ref=e164]
+              - heading "Weight & Dimension" [level=3] [ref=e168]
+            - generic [ref=e169]: "Last: 11/22/2025"
+          - generic [ref=e170]:
+            - generic [ref=e171]:
+              - paragraph [ref=e172]: Total Products
+              - paragraph [ref=e173]: 104,318
+            - generic [ref=e174]:
+              - paragraph [ref=e175]: Success Rate
+              - paragraph [ref=e176]: 95.90%
+            - generic [ref=e177]:
+              - paragraph [ref=e178]: Avg Confidence
+              - paragraph [ref=e179]: 81.00%
+          - generic [ref=e181]:
+            - generic [ref=e182]:
+              - paragraph [ref=e183]: Pending
+              - paragraph [ref=e184]: 32,687
+            - generic [ref=e185]:
+              - paragraph [ref=e186]: Processing
+              - paragraph [ref=e187]: "10"
+            - generic [ref=e188]:
+              - paragraph [ref=e189]: Complete
+              - paragraph [ref=e190]: 68,684
+            - generic [ref=e191]:
+              - paragraph [ref=e192]: Failed
+              - paragraph [ref=e193]: 2,937
+        - generic [ref=e194]:
+          - generic [ref=e195]:
+            - generic [ref=e196]:
+              - img [ref=e198]
+              - heading "SEO Optimizer" [level=3] [ref=e201]
+            - generic [ref=e202]: "Last: 11/22/2025"
+          - generic [ref=e203]:
+            - generic [ref=e204]:
+              - paragraph [ref=e205]: Total Products
+              - paragraph [ref=e206]: 104,318
+            - generic [ref=e207]:
+              - paragraph [ref=e208]: Success Rate
+              - paragraph [ref=e209]: 97.79%
+            - generic [ref=e210]:
+              - paragraph [ref=e211]: Avg Confidence
+              - paragraph [ref=e212]: 100.00%
+          - generic [ref=e214]:
+            - generic [ref=e215]:
+              - paragraph [ref=e216]: Pending
+              - paragraph [ref=e217]: 51,724
+            - generic [ref=e218]:
+              - paragraph [ref=e219]: Processing
+              - paragraph [ref=e220]: "0"
+            - generic [ref=e221]:
+              - paragraph [ref=e222]: Complete
+              - paragraph [ref=e223]: 51,431
+            - generic [ref=e224]:
+              - paragraph [ref=e225]: Failed
+              - paragraph [ref=e226]: 1,163
+        - generic [ref=e227]:
+          - generic [ref=e228]:
+            - generic [ref=e229]:
+              - img [ref=e231]
+              - heading "Copyright Detector" [level=3] [ref=e233]
+            - generic [ref=e234]: "Last: 11/17/2025"
+          - generic [ref=e235]:
+            - generic [ref=e236]:
+              - paragraph [ref=e237]: Total Products
+              - paragraph [ref=e238]: "142"
+            - generic [ref=e239]:
+              - paragraph [ref=e240]: Success Rate
+              - paragraph [ref=e241]: 100.00%
+            - generic [ref=e242]:
+              - paragraph [ref=e243]: Avg Confidence
+              - paragraph [ref=e244]: 97.00%
+          - generic [ref=e246]:
+            - generic [ref=e247]:
+              - paragraph [ref=e248]: Pending
+              - paragraph [ref=e249]: "10"
+            - generic [ref=e250]:
+              - paragraph [ref=e251]: Processing
+              - paragraph [ref=e252]: "0"
+            - generic [ref=e253]:
+              - paragraph [ref=e254]: Complete
+              - paragraph [ref=e255]: "132"
+            - generic [ref=e256]:
+              - paragraph [ref=e257]: Failed
+              - paragraph [ref=e258]: "0"
+      - generic [ref=e259]:
+        - generic [ref=e260]:
+          - generic [ref=e261]:
+            - heading "Processing Queue" [level=2] [ref=e262]
+            - generic [ref=e263]:
+              - generic [ref=e266]: 106,670 Pending
+              - generic [ref=e269]: 202,045 Complete
+          - generic [ref=e270]:
+            - link "Category Mapper 104,047 total 22,249 pending 81,798 complete" [ref=e271] [cursor=pointer]:
+              - /url: "#/agents/category"
+              - generic [ref=e272]:
+                - generic [ref=e273]: Category Mapper
+                - generic [ref=e274]: 104,047 total
+              - generic [ref=e278]:
+                - generic [ref=e279]: 22,249 pending
+                - generic [ref=e280]: 81,798 complete
+            - link "Weight & Dimension 101,371 total 32,687 pending 68,684 complete" [ref=e281] [cursor=pointer]:
+              - /url: "#/agents/weight"
+              - generic [ref=e282]:
+                - generic [ref=e283]: Weight & Dimension
+                - generic [ref=e284]: 101,371 total
+              - generic [ref=e288]:
+                - generic [ref=e289]: 32,687 pending
+                - generic [ref=e290]: 68,684 complete
+            - link "SEO Optimizer 103,155 total 51,724 pending 51,431 complete" [ref=e291] [cursor=pointer]:
+              - /url: "#/agents/seo"
+              - generic [ref=e292]:
+                - generic [ref=e293]: SEO Optimizer
+                - generic [ref=e294]: 103,155 total
+              - generic [ref=e298]:
+                - generic [ref=e299]: 51,724 pending
+                - generic [ref=e300]: 51,431 complete
+            - link "Copyright Detection 142 total 10 pending 132 complete" [ref=e301] [cursor=pointer]:
+              - /url: "#/agents/copyright"
+              - generic [ref=e302]:
+                - generic [ref=e303]: Copyright Detection
+                - generic [ref=e304]: 142 total
+              - generic [ref=e308]:
+                - generic [ref=e309]: 10 pending
+                - generic [ref=e310]: 132 complete
+        - generic [ref=e311]:
+          - generic [ref=e312]:
+            - heading "Recent Activity" [level=2] [ref=e313]:
+              - img [ref=e314]
+              - text: Recent Activity
+            - generic [ref=e320]: Live
+          - generic [ref=e321]:
+            - button "Processing (10)" [ref=e322] [cursor=pointer]
+            - button "Complete" [ref=e323] [cursor=pointer]
+          - generic [ref=e324]:
+            - generic [ref=e325] [cursor=pointer]:
+              - img "Emma Bridgewater Christmas Crackers 1/2 Pint Mug" [ref=e327]
+              - generic [ref=e331]:
+                - generic [ref=e332]:
+                  - generic [ref=e333]: Weight & Dimension
+                  - generic [ref=e334]: processing
+                - paragraph [ref=e335]: Emma Bridgewater Christmas Crackers 1/2 Pint Mug
+                - generic [ref=e336]:
+                  - generic [ref=e337]: ocado
+                  - generic [ref=e338]: 9 seconds ago
+            - generic [ref=e339] [cursor=pointer]:
+              - img "Brew Tea Co Twisted Breakfast - Lemon - Loose Leaf Tea" [ref=e341]
+              - generic [ref=e345]:
+                - generic [ref=e346]:
+                  - generic [ref=e347]: Weight & Dimension
+                  - generic [ref=e348]: processing
+                - paragraph [ref=e349]: Brew Tea Co Twisted Breakfast - Lemon - Loose Leaf Tea
+                - generic [ref=e350]:
+                  - generic [ref=e351]: ocado
+                  - generic [ref=e352]: 9 seconds ago
+            - generic [ref=e353] [cursor=pointer]:
+              - img "Illy Compatible Capsules Lungo" [ref=e355]
+              - generic [ref=e359]:
+                - generic [ref=e360]:
+                  - generic [ref=e361]: Weight & Dimension
+                  - generic [ref=e362]: processing
+                - paragraph [ref=e363]: Illy Compatible Capsules Lungo
+                - generic [ref=e364]:
+                  - generic [ref=e365]: ocado
+                  - generic [ref=e366]: 9 seconds ago
+            - generic [ref=e367] [cursor=pointer]:
+              - img "Humza Meat Spring Roll" [ref=e369]
+              - generic [ref=e373]:
+                - generic [ref=e374]:
+                  - generic [ref=e375]: Weight & Dimension
+                  - generic [ref=e376]: processing
+                - paragraph [ref=e377]: Humza Meat Spring Roll
+                - generic [ref=e378]:
+                  - generic [ref=e379]: ocado
+                  - generic [ref=e380]: 9 seconds ago
+            - generic [ref=e381] [cursor=pointer]:
+              - img "M&S Baby Cotton Long Sleeve Bodysuits, White, Newborn" [ref=e383]
+              - generic [ref=e387]:
+                - generic [ref=e388]:
+                  - generic [ref=e389]: Weight & Dimension
+                  - generic [ref=e390]: processing
+                - paragraph [ref=e391]: M&S Baby Cotton Long Sleeve Bodysuits, White, Newborn
+                - generic [ref=e392]:
+                  - generic [ref=e393]: ocado
+                  - generic [ref=e394]: 9 seconds ago
+            - generic [ref=e395] [cursor=pointer]:
+              - img "Emma Bridgewater Christmas Crackers Tea Towel" [ref=e397]
+              - generic [ref=e401]:
+                - generic [ref=e402]:
+                  - generic [ref=e403]: Weight & Dimension
+                  - generic [ref=e404]: processing
+                - paragraph [ref=e405]: Emma Bridgewater Christmas Crackers Tea Towel
+                - generic [ref=e406]:
+                  - generic [ref=e407]: ocado
+                  - generic [ref=e408]: 9 seconds ago
+            - generic [ref=e409] [cursor=pointer]:
+              - img "M&S Dried Goji Berries" [ref=e411]
+              - generic [ref=e415]:
+                - generic [ref=e416]:
+                  - generic [ref=e417]: Weight & Dimension
+                  - generic [ref=e418]: processing
+                - paragraph [ref=e419]: M&S Dried Goji Berries
+                - generic [ref=e420]:
+                  - generic [ref=e421]: ocado
+                  - generic [ref=e422]: 9 seconds ago
+            - generic [ref=e423] [cursor=pointer]:
+              - img "Holland & Barrett Live Friendly Bacteria 3 Billion Chewable Tabs Strawberry" [ref=e425]
+              - generic [ref=e429]:
+                - generic [ref=e430]:
+                  - generic [ref=e431]: Weight & Dimension
+                  - generic [ref=e432]: processing
+                - paragraph [ref=e433]: Holland & Barrett Live Friendly Bacteria 3 Billion Chewable Tabs Strawberry
+                - generic [ref=e434]:
+                  - generic [ref=e435]: ocado
+                  - generic [ref=e436]: 9 seconds ago
+            - generic [ref=e437] [cursor=pointer]:
+              - img "M&S Baby Boys Cotton Rich Plain Joggers, Grey Marl, 3-6 Months" [ref=e439]
+              - generic [ref=e443]:
+                - generic [ref=e444]:
+                  - generic [ref=e445]: Weight & Dimension
+                  - generic [ref=e446]: processing
+                - paragraph [ref=e447]: M&S Baby Boys Cotton Rich Plain Joggers, Grey Marl, 3-6 Months
+                - generic [ref=e448]:
+                  - generic [ref=e449]: ocado
+                  - generic [ref=e450]: 9 seconds ago
+            - generic [ref=e451] [cursor=pointer]:
+              - img "M&S Discover Spiced Wood Eau De Toilette 30ml" [ref=e453]
+              - generic [ref=e457]:
+                - generic [ref=e458]:
+                  - generic [ref=e459]: Weight & Dimension
+                  - generic [ref=e460]: processing
+                - paragraph [ref=e461]: M&S Discover Spiced Wood Eau De Toilette 30ml
+                - generic [ref=e462]:
+                  - generic [ref=e463]: ocado
+                  - generic [ref=e464]: 9 seconds ago
+```
