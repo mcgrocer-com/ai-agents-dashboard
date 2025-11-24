@@ -224,7 +224,7 @@ export async function updateBlog(
 }
 
 /**
- * Delete a blog post
+ * Delete a blog post (local database only)
  */
 export async function deleteBlog(id: string): Promise<ServiceResponse<void>> {
   try {
@@ -239,6 +239,87 @@ export async function deleteBlog(id: string): Promise<ServiceResponse<void>> {
     }
 
     return { data: null, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error deleting blog:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Delete a blog post with Shopify synchronization
+ * This function handles both local and Shopify deletion
+ */
+export async function deleteBlogWithShopify(
+  id: string
+): Promise<ServiceResponse<{ shopifyDeleted: boolean; localDeleted: boolean; warnings?: string[] }>> {
+  const warnings: string[] = [];
+  let shopifyDeleted = false;
+  let localDeleted = false;
+
+  try {
+    // First, fetch the blog to check if it's published to Shopify
+    const { data: blog, error: fetchError } = await supabase
+      .from('blogger_blogs')
+      .select('shopify_article_id')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching blog for deletion:', fetchError);
+      return {
+        data: null,
+        error: fetchError,
+        success: false,
+      };
+    }
+
+    // If blog is published to Shopify, delete from Shopify first
+    if (blog?.shopify_article_id) {
+      try {
+        const { unpublishBlogFromShopify } = await import('./shopify.service');
+        const shopifyResult = await unpublishBlogFromShopify(blog.shopify_article_id);
+
+        if (shopifyResult.success) {
+          shopifyDeleted = true;
+        } else {
+          warnings.push(
+            `Failed to delete from Shopify: ${shopifyResult.error?.message || 'Unknown error'}. Continuing with local deletion.`
+          );
+        }
+      } catch (error) {
+        console.error('Error deleting from Shopify:', error);
+        warnings.push(
+          `Error deleting from Shopify: ${error instanceof Error ? error.message : 'Unknown error'}. Continuing with local deletion.`
+        );
+      }
+    }
+
+    // Delete from local database
+    const deleteResult = await deleteBlog(id);
+
+    if (deleteResult.success) {
+      localDeleted = true;
+    } else {
+      return {
+        data: null,
+        error: deleteResult.error || new Error('Failed to delete blog from local database'),
+        success: false,
+      };
+    }
+
+    return {
+      data: {
+        shopifyDeleted,
+        localDeleted,
+        warnings: warnings.length > 0 ? warnings : undefined,
+      },
+      error: null,
+      success: true,
+    };
   } catch (error) {
     console.error('Unexpected error deleting blog:', error);
     return {

@@ -9,7 +9,7 @@ import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, Eye } from 'luc
 import { BlogPreview } from '@/components/blogger';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Toast } from '@/components/ui/Toast';
-import { getBlogById, deleteBlog, updateBlogStatus, updateBlog } from '@/services/blogger/blogs.service';
+import { getBlogById, deleteBlogWithShopify, updateBlogStatus, updateBlog } from '@/services/blogger/blogs.service';
 import { publishBlogToShopify, unpublishBlogFromShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
 import type { BlogWithRelations, ShopifyBlog } from '@/types/blogger';
 
@@ -78,29 +78,38 @@ export function BloggerDetailPage() {
 
     setIsDeleting(true);
     try {
-      // If blog was published to Shopify, delete from Shopify first
-      if (blog.shopify_article_id) {
-        const shopifyResult = await unpublishBlogFromShopify(blog.shopify_article_id);
-        if (!shopifyResult.success) {
-          setToast({
-            message: `Failed to delete from Shopify: ${shopifyResult.error?.message || 'Unknown error'}. Blog will still be deleted locally.`,
-            type: 'error'
-          });
-          // Continue with local deletion even if Shopify deletion fails
-        }
-      }
+      const result = await deleteBlogWithShopify(id);
 
-      // Delete from local database
-      const result = await deleteBlog(id);
       if (result.success) {
+        // Show success message
         setToast({ message: 'Blog deleted successfully!', type: 'success' });
-        navigate('/blogger');
+
+        // Show warnings if Shopify deletion failed
+        if (result.data?.warnings && result.data.warnings.length > 0) {
+          setTimeout(() => {
+            setToast({
+              message: result.data!.warnings![0],
+              type: 'info'
+            });
+          }, 2000);
+        }
+
+        // Navigate after a short delay to show toast
+        setTimeout(() => {
+          navigate('/blogger');
+        }, 1500);
       } else {
-        setToast({ message: `Failed to delete blog: ${result.error?.message || 'Unknown error'}`, type: 'error' });
+        setToast({
+          message: `Failed to delete blog: ${result.error?.message || 'Unknown error'}`,
+          type: 'error'
+        });
       }
     } catch (error) {
       console.error('Error deleting blog:', error);
-      setToast({ message: `Error deleting blog: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
+      setToast({
+        message: `Error deleting blog: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error'
+      });
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
@@ -309,7 +318,7 @@ export function BloggerDetailPage() {
         title="Delete Blog"
         message={
           blog?.shopify_article_id
-            ? "Are you sure you want to delete this blog? This will also remove it from Shopify. This action cannot be undone."
+            ? "Are you sure you want to delete this blog? This will also remove the article from Shopify. This action cannot be undone."
             : "Are you sure you want to delete this blog? This action cannot be undone."
         }
         confirmText="Delete"

@@ -9,7 +9,8 @@ import { Plus, Search, Filter, RefreshCw, ExternalLink, FileImage } from 'lucide
 import { BlogList } from '@/components/blogger';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader';
-import { getUserBlogs, deleteBlog, duplicateBlog, getBlogStats } from '@/services/blogger/blogs.service';
+import { Toast } from '@/components/ui/Toast';
+import { getUserBlogs, deleteBlogWithShopify, duplicateBlog, getBlogStats } from '@/services/blogger/blogs.service';
 import { fetchPublishedBlogs } from '@/services/blogger/shopify.service';
 import type { BlogWithRelations, BlogFilters, BlogStatus, ShopifyBlogArticle } from '@/types/blogger';
 
@@ -27,6 +28,7 @@ export function BloggerDashboardPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [blogToDelete, setBlogToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   useEffect(() => {
     if (activeTab === 'my-blogs') {
@@ -96,11 +98,36 @@ export function BloggerDashboardPage() {
 
     setIsDeleting(true);
     try {
-      const result = await deleteBlog(blogToDelete);
+      const result = await deleteBlogWithShopify(blogToDelete);
+
       if (result.success) {
+        // Show success message
+        setToast({ message: 'Blog deleted successfully!', type: 'success' });
+
+        // Show warnings if Shopify deletion failed
+        if (result.data?.warnings && result.data.warnings.length > 0) {
+          setTimeout(() => {
+            setToast({
+              message: result.data!.warnings![0],
+              type: 'info'
+            });
+          }, 3000);
+        }
+
         loadBlogs();
         loadStats();
+      } else {
+        setToast({
+          message: `Failed to delete blog: ${result.error?.message || 'Unknown error'}`,
+          type: 'error'
+        });
       }
+    } catch (error) {
+      console.error('Error deleting blog:', error);
+      setToast({
+        message: `Error deleting blog: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'error'
+      });
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
@@ -350,12 +377,22 @@ export function BloggerDashboardPage() {
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={confirmDelete}
         title="Delete Blog"
-        message="Are you sure you want to delete this blog? This action cannot be undone."
+        message="Are you sure you want to delete this blog? If published to Shopify, it will also be removed from there."
         confirmText="Delete"
         cancelText="Cancel"
         variant="danger"
         loading={isDeleting}
       />
+
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+          duration={5000}
+        />
+      )}
     </div>
   );
 }
