@@ -13,6 +13,7 @@ export type KeyType =
   | 'weight-and-dimension-key'
   | 'seo-agent-key'
   | 'supabase-key'
+  | 'decodo-key'
 
 export interface HealthStatus {
   success: boolean
@@ -126,6 +127,7 @@ class ApiHealthService {
       'weight-and-dimension-key',
       'seo-agent-key',
       'supabase-key',
+      'decodo-key',
     ]
 
     const results: Record<string, HealthStatus> = {}

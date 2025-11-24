@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Search, Database, CheckCircle, XCircle, AlertCircle, RefreshCw, ExternalLink, Sparkles, Weight, ScanSearch, Brain } from 'lucide-react'
+import { Search, Database, CheckCircle, XCircle, AlertCircle, RefreshCw, ExternalLink, Sparkles, Weight, ScanSearch, Brain, Globe } from 'lucide-react'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Toast } from '@/components/ui/Toast'
 import { apiHealthService, type AgentToolStatus } from '@/services'
@@ -57,6 +57,12 @@ const toolConfigs: Record<string, { icon: any; color: string; description: strin
     color: 'green',
     description: 'Database, authentication, and storage backend for all agent data',
     docsUrl: 'https://supabase.com/docs',
+  },
+  'decodo-key': {
+    icon: Globe,
+    color: 'blue',
+    description: 'Decodo API for Google Suggest keyword research and competitive intelligence',
+    docsUrl: 'https://decodo.com',
   },
 }
 
