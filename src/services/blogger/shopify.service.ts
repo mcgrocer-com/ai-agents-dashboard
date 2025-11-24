@@ -15,7 +15,7 @@ import type {
 } from '@/types/blogger';
 
 const SHOPIFY_STORE_URL = 'https://mcgrocer-com.myshopify.com';
-const SHOPIFY_API_KEY = import.meta.env.VITE_SHOPIFY_API_KEY || '';
+const SHOPIFY_API_KEY = import.meta.env.SHOPIFY_API_KEY || '';
 const SHOPIFY_API_VERSION = '2024-10';
 const SUPABASE_EDGE_FUNCTION_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1';
 
