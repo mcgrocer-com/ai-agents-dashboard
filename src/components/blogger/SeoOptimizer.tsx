@@ -3,7 +3,7 @@
  * SEO meta fields with character counts and validation
  */
 
-import { CheckCircle, AlertCircle, Upload, X, Image } from 'lucide-react';
+import { CheckCircle, AlertCircle, Upload, X } from 'lucide-react';
 import { useState } from 'react';
 import { uploadBlogImage } from '@/services/blogger/images.service';
 

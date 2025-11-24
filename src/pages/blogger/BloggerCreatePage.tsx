@@ -20,9 +20,9 @@ import { getAllPersonas } from '@/services/blogger/personas.service';
 import { getAllTemplates } from '@/services/blogger/templates.service';
 import { generateMetaData, calculateSeoScore, calculateReadabilityScore } from '@/services/blogger/ai.service';
 import { generateBlogWithGemini, type ProcessingLog } from '@/services/blogger/gemini-content.service';
-import { createBlog, getBlogById, updateBlog, updateBlogStatus } from '@/services/blogger/blogs.service';
+import { createBlog, getBlogById, updateBlog } from '@/services/blogger/blogs.service';
 import { publishBlogToShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
-import type { BloggerPersona, BloggerTemplate, BlogWithRelations, ShopifyBlog } from '@/types/blogger';
+import type { BloggerPersona, BloggerTemplate, BlogWithRelations } from '@/types/blogger';
 import Swal from 'sweetalert2';
 
 const TOTAL_STEPS = 6;
@@ -75,7 +75,6 @@ export function BloggerCreatePage() {
   const [metaDescription, setMetaDescription] = useState('');
   const [featuredImage, setFeaturedImage] = useState<string>(''); // Image URL
   const [featuredImageAlt, setFeaturedImageAlt] = useState<string>('');
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [seoScore, setSeoScore] = useState<number | null>(null);
   const [readabilityScore, setReadabilityScore] = useState<number | null>(null);
 

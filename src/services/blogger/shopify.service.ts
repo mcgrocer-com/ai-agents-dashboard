@@ -8,7 +8,6 @@ import type {
   ShopifyProductSearchResponse,
   ShopifyPublishRequest,
   ShopifyPublishResponse,
-  ShopifyBlog,
   ShopifyBlogsResponse,
   ShopifyBlogArticle,
   ShopifyArticlesResponse,
