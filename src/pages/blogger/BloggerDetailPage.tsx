@@ -75,7 +75,7 @@ export function BloggerDetailPage() {
       // Publish to Shopify
       const result = await publishBlogToShopify({
         title: blog.title,
-        body_html: blog.content,
+        content: blog.content,
         author: blog.persona?.name || 'Admin',
         tags: blog.primary_keyword ? [blog.primary_keyword.keyword] : [],
         meta_title: blog.meta_title,

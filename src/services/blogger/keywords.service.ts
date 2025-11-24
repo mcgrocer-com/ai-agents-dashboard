@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase/client';
 import type {
   BloggerKeyword,
   KeywordCompetition,
-  KeywordIntent,
   ServiceResponse,
 } from '@/types/blogger';
 

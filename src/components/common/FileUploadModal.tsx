@@ -19,7 +19,7 @@ export default function FileUploadModal({
     onSaveEmbeddedLink,
     selectedOption,
     onSaveImage,
-    savingImage,
+    _savingImage,
     setSavingImage,
 }: FileUploadModalProps) {
     const [activeTab, setActiveTab] = useState<"files" | "url">("files");
@@ -52,7 +52,7 @@ export default function FileUploadModal({
 
     if (!isOpen) return null;
 
-    const validateUrl = (inputUrl: string, type: string): { isValid: boolean; error?: string } => {
+    const validateUrl = (inputUrl: string, _type: string): { isValid: boolean; error?: string } => {
         if (!inputUrl.trim()) {
             return { isValid: false, error: "URL cannot be empty" };
         }

@@ -111,7 +111,7 @@ export async function getProductByHandle(
  * This requires Admin API access which cannot be done from the browser
  */
 export async function publishBlogToShopify(
-  request: ShopifyPublishRequest
+  _request: ShopifyPublishRequest
 ): Promise<ServiceResponse<ShopifyPublishResponse>> {
   try {
     // TODO: Replace with actual backend API endpoint
@@ -149,8 +149,8 @@ export async function publishBlogToShopify(
  * TODO: Implement backend API endpoint with Shopify Admin API credentials
  */
 export async function updateBlogOnShopify(
-  articleId: number,
-  request: ShopifyPublishRequest
+  _articleId: number,
+  _request: ShopifyPublishRequest
 ): Promise<ServiceResponse<ShopifyPublishResponse>> {
   try {
     // TODO: Replace with actual backend API endpoint
@@ -170,7 +170,7 @@ export async function updateBlogOnShopify(
  * TODO: Implement backend API endpoint with Shopify Admin API credentials
  */
 export async function unpublishBlogFromShopify(
-  articleId: number
+  _articleId: number
 ): Promise<ServiceResponse<void>> {
   try {
     // TODO: Replace with actual backend API endpoint

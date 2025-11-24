@@ -8,8 +8,6 @@ import { CheckCircle, AlertCircle } from 'lucide-react';
 interface SeoOptimizerProps {
   metaTitle: string;
   metaDescription: string;
-  seoScore: number | null;
-  readabilityScore: number | null;
   onMetaTitleChange: (value: string) => void;
   onMetaDescriptionChange: (value: string) => void;
   isLoading?: boolean;
@@ -18,8 +16,6 @@ interface SeoOptimizerProps {
 export function SeoOptimizer({
   metaTitle,
   metaDescription,
-  seoScore,
-  readabilityScore,
   onMetaTitleChange,
   onMetaDescriptionChange,
   isLoading = false,

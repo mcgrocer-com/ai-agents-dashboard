@@ -10,8 +10,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { searchProducts } from './shopify.service';
 import { getTopRankingArticles as getTopRankingArticlesService, scrapeArticlesBatch } from './ai.service';
 import { researchKeywords as researchKeywordsService } from './ai.service';
-import type { BloggerPersona, BloggerTemplate } from '@/types/blogger';
-import type { ServiceResponse } from './blogs.service';
+import type { BloggerPersona, BloggerTemplate, ServiceResponse } from '@/types/blogger';
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
