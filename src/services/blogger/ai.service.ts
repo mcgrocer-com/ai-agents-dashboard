@@ -400,9 +400,10 @@ export async function scrapeArticlesBatch(
       },
       body: JSON.stringify({
         urls,
-        api_key: GEMINI_API_KEY
+        api_key: GEMINI_API_KEY,
+        timeout: 60000, // 60 second per-article timeout (increased from default 30s)
       }),
-      signal: AbortSignal.timeout(120000), // 2 minute timeout for batch
+      signal: AbortSignal.timeout(180000), // 3 minute overall timeout for batch (increased from 2 min)
     });
 
     if (!response.ok) {

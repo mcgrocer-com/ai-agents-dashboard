@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Filter, RefreshCw } from 'lucide-react';
 import { BlogList } from '@/components/blogger';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { getUserBlogs, deleteBlog, duplicateBlog, getBlogStats } from '@/services/blogger/blogs.service';
 import type { BlogWithRelations, BlogFilters, BlogStatus } from '@/types/blogger';
 
@@ -18,6 +19,9 @@ export function BloggerDashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<BlogStatus | 'all'>('all');
   const [stats, setStats] = useState({ total: 0, drafts: 0, published: 0, archived: 0 });
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [blogToDelete, setBlogToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadBlogs();
@@ -59,13 +63,25 @@ export function BloggerDashboardPage() {
     navigate(`/blogger/${id}/edit`, { state: { blog } });
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this blog?')) return;
+  const handleDelete = (id: string) => {
+    setBlogToDelete(id);
+    setShowDeleteDialog(true);
+  };
 
-    const result = await deleteBlog(id);
-    if (result.success) {
-      loadBlogs();
-      loadStats();
+  const confirmDelete = async () => {
+    if (!blogToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await deleteBlog(blogToDelete);
+      if (result.success) {
+        loadBlogs();
+        loadStats();
+      }
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+      setBlogToDelete(null);
     }
   };
 
@@ -175,6 +191,19 @@ export function BloggerDashboardPage() {
           isLoading={isLoading}
         />
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={confirmDelete}
+        title="Delete Blog"
+        message="Are you sure you want to delete this blog? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 }

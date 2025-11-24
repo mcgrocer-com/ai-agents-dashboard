@@ -5,8 +5,9 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Send, Archive, Eye } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, Eye } from 'lucide-react';
 import { BlogPreview } from '@/components/blogger';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { getBlogById, deleteBlog, updateBlogStatus } from '@/services/blogger/blogs.service';
 import { publishBlogToShopify, unpublishBlogFromShopify } from '@/services/blogger/shopify.service';
 import type { BlogWithRelations } from '@/types/blogger';
@@ -18,6 +19,8 @@ export function BloggerDetailPage() {
   const [blog, setBlog] = useState<BlogWithRelations | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -45,12 +48,22 @@ export function BloggerDetailPage() {
     navigate(`/blogger/${id}/edit`);
   };
 
-  const handleDelete = async () => {
-    if (!id || !confirm('Are you sure you want to delete this blog?')) return;
+  const handleDelete = () => {
+    setShowDeleteDialog(true);
+  };
 
-    const result = await deleteBlog(id);
-    if (result.success) {
-      navigate('/blogger');
+  const confirmDelete = async () => {
+    if (!id) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await deleteBlog(id);
+      if (result.success) {
+        navigate('/blogger');
+      }
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
     }
   };
 
@@ -97,9 +110,10 @@ export function BloggerDetailPage() {
   };
 
   const handleArchive = async () => {
-    if (!id) return;
+    if (!id || !blog) return;
 
-    const result = await updateBlogStatus(id, 'archived');
+    const newStatus = blog.status === 'archived' ? 'draft' : 'archived';
+    const result = await updateBlogStatus(id, newStatus);
     if (result.success) {
       loadBlog();
     }
@@ -186,8 +200,17 @@ export function BloggerDetailPage() {
               className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700
                 flex items-center gap-2"
             >
-              <Archive className="w-4 h-4" />
-              Archive
+              {blog.status === 'archived' ? (
+                <>
+                  <ArchiveRestore className="w-4 h-4" />
+                  Unarchive
+                </>
+              ) : (
+                <>
+                  <Archive className="w-4 h-4" />
+                  Archive
+                </>
+              )}
             </button>
 
             <button
@@ -208,6 +231,19 @@ export function BloggerDetailPage() {
           <BlogPreview blog={blog} />
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={confirmDelete}
+        title="Delete Blog"
+        message="Are you sure you want to delete this blog? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 }

@@ -65,21 +65,6 @@ export function BlogCard({
             <span className="font-medium">Template:</span> {blog.template.name}
           </p>
         )}
-
-        {(blog.seo_score !== null || blog.readability_score !== null) && (
-          <div className="flex gap-4 text-sm">
-            {blog.seo_score !== null && (
-              <span className="text-gray-600">
-                <span className="font-medium">SEO:</span> {blog.seo_score}/100
-              </span>
-            )}
-            {blog.readability_score !== null && (
-              <span className="text-gray-600">
-                <span className="font-medium">Readability:</span> {blog.readability_score}/100
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="flex gap-2 pt-3 border-t border-gray-200">

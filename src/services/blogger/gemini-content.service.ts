@@ -296,7 +296,7 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
         }
 
         return {
-          articles: articlesResult.data.map(a => ({
+          articles: articlesResult.data.slice(0, articlesResearchCount).map(a => ({
             position: a.position,
             title: a.title,
             url: a.url,
@@ -351,6 +351,9 @@ export async function generateBlogWithGemini(
     addLog('info', `Topic: ${request.topic}`);
     addLog('info', `Persona: ${request.persona.name}`);
     addLog('info', `Template: ${request.template.name}`);
+    addLog('info', `Model: ${request.model || 'gemini-2.0-flash-exp'}`);
+    addLog('info', `Total Articles To Research: ${request.articlesResearchCount || 3}`);
+    addLog('info', `Embed Product Images: ${request.includeImages || false}`);
 
     // Step 1: Build rich system prompt
     const systemPrompt = buildSystemPrompt(
@@ -430,10 +433,10 @@ Begin with researchKeywords now.`
           } else if (fc.functionCall.name === 'getTopRankingArticles' && functionResult && !Array.isArray(functionResult)) {
             selectedKeyword = fc.functionCall.args.keyword;
             const result = functionResult as any;
-            articlesAnalyzed = result.articles?.length || 0;
-            const scrapedCount = result.scrapedContent?.length || 0;
+            const totalArticles = result.articles?.length || 0;
+            articlesAnalyzed = result.scrapedContent?.length || 0;
             const urls = result.scrapedContent?.map((s: any) => s.url) || [];
-            addLog('function_response', `Found ${articlesAnalyzed} top-ranking articles for "${selectedKeyword}" (automatically scraped top ${scrapedCount})`);
+            addLog('function_response', `Found ${totalArticles} top-ranking articles for "${selectedKeyword}" (automatically scraped top ${articlesAnalyzed})`);
             urls.map((url: string) => addLog('function_response', `Scraped article: words: ${result.scrapedContent?.find((s: any) => s.url === url)?.fullWordCount || 0} ${url}`));
           } else if (fc.functionCall.name === 'searchProducts' && Array.isArray(functionResult)) {
             addLog('function_response', `Found ${functionResult.length} products for "${fc.functionCall.args.query}"`);

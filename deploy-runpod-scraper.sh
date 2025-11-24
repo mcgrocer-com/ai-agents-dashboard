@@ -30,8 +30,8 @@ echo "Step 3: Creating package.json..."
 cat > package.json << 'PACKAGEJSON'
 {
   "name": "mcgrocer-scraper-service",
-  "version": "1.1.0",
-  "description": "Article scraping service using Playwright + Gemini AI with batch processing",
+  "version": "1.2.0",
+  "description": "Article scraping service using Playwright + Gemini AI with configurable timeout batch processing",
   "main": "server-playwright.js",
   "scripts": {
     "start": "node server-playwright.js"
@@ -89,94 +89,154 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'mcgrocer-scraper-playwright', version: '1.0.2' });
+  res.json({ status: 'ok', service: 'mcgrocer-scraper-playwright', version: '1.2.0' });
 });
 
-// Article scraping endpoint
-app.post('/scrape-article', async (req, res) => {
-  let browser = null;
-  const startTime = Date.now();
+// Batch article scraping endpoint (handles 1-10 articles)
+app.post('/scrape-articles-batch', async (req, res) => {
+  const batchStartTime = Date.now();
 
   try {
-    const { url } = req.body;
+    const { urls, api_key, timeout = 30000 } = req.body;
 
-    if (!url) {
-      return res.status(400).json({ error: 'URL is required' });
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ error: 'URLs array is required' });
     }
 
-    console.log(`[${new Date().toISOString()}] Scraping request: ${url}`);
+    if (!api_key) {
+      return res.status(400).json({ error: 'API key is required' });
+    }
 
-    // Launch browser
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
-    const page = await context.newPage();
+    if (urls.length > 10) {
+      return res.status(400).json({ error: 'Maximum 10 URLs allowed per batch' });
+    }
 
-    // Navigate to article
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    console.log('[' + new Date().toISOString() + '] Batch scraping ' + urls.length + ' articles (timeout: ' + timeout + 'ms)...');
 
-    // Extract page content
-    const content = await page.evaluate(() => {
-      const article = document.querySelector('article') || document.querySelector('main') || document.body;
-      return {
-        title: document.title || document.querySelector('h1')?.textContent || '',
-        text: article?.innerText || document.body.innerText,
-        html: article?.innerHTML || document.body.innerHTML
-      };
+    // Initialize Gemini with provided API key
+    const genAI = new GoogleGenerativeAI(api_key);
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash-exp',
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json'
+      }
     });
 
-    // Use Gemini to structure the content (with API key from request)
-    const genAI = new GoogleGenerativeAI(api_key);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const prompt = `Extract structured article content from this text and HTML:
+    // Scrape all articles concurrently
+    const results = await Promise.all(
+      urls.map(async (url) => {
+        let browser = null;
+        const startTime = Date.now();
 
-Title: ${content.title}
+        try {
+          // Launch browser
+          browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext();
+          const page = await context.newPage();
 
-Text: ${content.text.substring(0, 5000)}
+          // Navigate to article with configurable timeout
+          await page.goto(url, {
+            waitUntil: 'networkidle',
+            timeout: timeout  // Use configurable timeout
+          });
+          await page.waitForTimeout(2000);
 
-Return JSON with this exact structure:
-{
-  "title": "Article title or main heading",
-  "content": "Full article text content - all paragraphs combined",
-  "headings": ["All article section headings in order"]
-}`;
+          // Extract page content
+          const content = await page.evaluate(() => {
+            const article = document.querySelector('article') || document.querySelector('main') || document.body;
+            return {
+              title: document.title || document.querySelector('h1')?.textContent || '',
+              text: article?.innerText || document.body.innerText,
+              html: article?.innerHTML || document.body.innerHTML
+            };
+          });
 
-    const result = await model.generateContent(prompt);
-    const response = result.response.text();
+          // Use Gemini to structure the content
+          const prompt = 'Extract structured article content from this text:\\n\\n' +
+            'Title: ' + content.title + '\\n\\n' +
+            'Text: ' + content.text.substring(0, 5000) + '\\n\\n' +
+            'You MUST return ONLY valid JSON with this exact structure (no markdown, no explanation):\\n' +
+            '{\\n' +
+            '  "title": "Article title or main heading",\\n' +
+            '  "content": "Full article text content - all paragraphs combined",\\n' +
+            '  "headings": ["All article section headings in order"]\\n' +
+            '}';
 
-    // Parse Gemini response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Failed to extract structured data from Gemini response');
-    }
+          const result = await model.generateContent(prompt);
+          const response = result.response.text();
 
-    const article = JSON.parse(jsonMatch[0]);
+          console.log('[' + new Date().toISOString() + '] Gemini response preview for ' + url + ': ' + response.substring(0, 200));
 
-    // Calculate word count
-    const wordCount = article.content.split(/\s+/).filter(w => w.length > 0).length;
+          // Parse Gemini response - try direct parse first since we requested JSON mime type
+          let article;
+          try {
+            article = JSON.parse(response);
+          } catch (e) {
+            // Fallback to regex extraction
+            const jsonMatch = response.match(/\\{[\\s\\S]*\\}/);
+            if (!jsonMatch) {
+              console.error('[' + new Date().toISOString() + '] Failed to parse Gemini response for ' + url + '. Full response: ' + response);
+              throw new Error('Failed to extract structured data from Gemini response');
+            }
+            article = JSON.parse(jsonMatch[0]);
+          }
 
-    const duration = Date.now() - startTime;
-    console.log(`[${new Date().toISOString()}] Scraped ${url} in ${duration}ms (${wordCount} words)`);
+          // Calculate word count
+          const wordCount = article.content ? String(article.content).split(/\s+/).filter(w => w.length > 0).length : 0;
+
+          const duration = Date.now() - startTime;
+          console.log('[' + new Date().toISOString() + '] ✓ Scraped ' + url + ' in ' + duration + 'ms (' + wordCount + ' words)');
+
+          return {
+            url,
+            success: true,
+            title: article.title,
+            text: article.content,
+            wordCount,
+            headings: article.headings || [],
+          };
+
+        } catch (error) {
+          const duration = Date.now() - startTime;
+          console.error('[' + new Date().toISOString() + '] ✗ Failed ' + url + ' after ' + duration + 'ms: ' + error.message);
+
+          return {
+            url,
+            success: false,
+            error: error.message,
+          };
+        } finally {
+          if (browser) {
+            await browser.close();
+          }
+        }
+      })
+    );
+
+    const batchDuration = Date.now() - batchStartTime;
+    const successful = results.filter(r => r.success).length;
+
+    console.log('[' + new Date().toISOString() + '] Batch complete: ' + successful + '/' + urls.length + ' successful in ' + batchDuration + 'ms');
 
     res.json({
-      url,
-      title: article.title,
-      text: article.content,
-      wordCount,
-      headings: article.headings || [],
+      total: urls.length,
+      successful,
+      failed: urls.length - successful,
+      duration_ms: batchDuration,
+      results,
     });
 
   } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error(`[${new Date().toISOString()}] Error after ${duration}ms:`, error.message);
+    const batchDuration = Date.now() - batchStartTime;
+    console.error('[' + new Date().toISOString() + '] Batch error after ' + batchDuration + 'ms:', error.message);
+
     res.status(500).json({
-      error: error.message || 'Scraping failed',
-      url: req.body.url,
+      error: error.message || 'Batch scraping failed',
+      total: req.body.urls?.length || 0,
+      successful: 0,
+      failed: req.body.urls?.length || 0,
     });
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 });
 
@@ -188,9 +248,9 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Article Scraper Service (Playwright) running on port ${PORT}`);
+  console.log(`Article Scraper Service (Playwright) v1.2.0 running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Scraping endpoint: POST http://localhost:${PORT}/scrape-article`);
+  console.log(`Batch scrape:  POST http://localhost:${PORT}/scrape-articles-batch (1-10 articles)`);
   console.log(`Using Gemini API key: ${GEMINI_API_KEY.substring(0, 20)}...`);
 });
 
@@ -258,12 +318,11 @@ echo "  Stop:         pm2 stop scraper"
 echo ""
 echo "Testing:"
 echo "  Health check:    curl http://localhost:8000/health"
-echo "  Single scrape:   curl -X POST http://localhost:8000/scrape-article \\"
-echo "                     -H 'Content-Type: application/json' \\"
-echo "                     -d '{\"url\":\"https://example.com\",\"api_key\":\"YOUR_GEMINI_KEY\"}'"
 echo "  Batch scrape:    curl -X POST http://localhost:8000/scrape-articles-batch \\"
 echo "                     -H 'Content-Type: application/json' \\"
-echo "                     -d '{\"urls\":[\"https://url1.com\",\"https://url2.com\"],\"api_key\":\"YOUR_GEMINI_KEY\"}'"
+echo "                     -d '{\"urls\":[\"https://url1.com\"],\"api_key\":\"YOUR_GEMINI_KEY\",\"timeout\":60000}'"
+echo ""
+echo "  Note: Batch endpoint handles 1-10 articles per request with configurable timeout"
 echo ""
 echo "============================================================"
 
