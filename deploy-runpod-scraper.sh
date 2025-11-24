@@ -84,13 +84,8 @@ app.use((req, res, next) => {
 });
 
 const PORT = process.env.PORT || 8000;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyDE7_jKXrXT7vB-oYA-9Cbtr1gFOemDRsQ';
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'mcgrocer-scraper-playwright', version: '1.2.0' });
-});
+
 
 // Batch article scraping endpoint (handles 1-10 articles)
 app.post('/scrape-articles-batch', async (req, res) => {
@@ -251,7 +246,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Article Scraper Service (Playwright) v1.2.0 running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`Batch scrape:  POST http://localhost:${PORT}/scrape-articles-batch (1-10 articles)`);
-  console.log(`Using Gemini API key: ${GEMINI_API_KEY.substring(0, 20)}...`);
 });
 
 // Graceful shutdown
