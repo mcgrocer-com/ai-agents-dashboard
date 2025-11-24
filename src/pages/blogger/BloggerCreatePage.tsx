@@ -588,8 +588,6 @@ export function BloggerCreatePage() {
           <SeoOptimizer
             metaTitle={metaTitle}
             metaDescription={metaDescription}
-            seoScore={seoScore}
-            readabilityScore={readabilityScore}
             onMetaTitleChange={setMetaTitle}
             onMetaDescriptionChange={setMetaDescription}
             isLoading={isLoading}

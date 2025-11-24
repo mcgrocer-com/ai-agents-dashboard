@@ -8,7 +8,6 @@ export interface FileUploadModalProps {
     onSaveEmbeddedLink: (url: string, type: string, caption?: string) => void;
     selectedOption?: string;
     onSaveImage?: (url: string, caption: string) => void;
-    savingImage?: string;
     setSavingImage?: (url: string) => void;
 }
 
@@ -19,7 +18,6 @@ export default function FileUploadModal({
     onSaveEmbeddedLink,
     selectedOption,
     onSaveImage,
-    _savingImage,
     setSavingImage,
 }: FileUploadModalProps) {
     const [activeTab, setActiveTab] = useState<"files" | "url">("files");
@@ -29,7 +27,7 @@ export default function FileUploadModal({
     const [url, setUrl] = useState("");
     const [error, setError] = useState("");
     const [isUploadActive, setIsUploadActive] = useState(false);
-    const [caption, setCaption] = useState("");
+    const [caption, _setCaption] = useState("");
     const [isUploading, setIsUploading] = useState(false);
     const modalRef = useRef<HTMLDivElement>(null);
 
