@@ -5,17 +5,22 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, RefreshCw } from 'lucide-react';
+import { Plus, Search, Filter, RefreshCw, ExternalLink, FileImage } from 'lucide-react';
 import { BlogList } from '@/components/blogger';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { ShimmerLoader } from '@/components/ui/ShimmerLoader';
 import { getUserBlogs, deleteBlog, duplicateBlog, getBlogStats } from '@/services/blogger/blogs.service';
-import type { BlogWithRelations, BlogFilters, BlogStatus } from '@/types/blogger';
+import { fetchPublishedBlogs } from '@/services/blogger/shopify.service';
+import type { BlogWithRelations, BlogFilters, BlogStatus, ShopifyBlogArticle } from '@/types/blogger';
 
 export function BloggerDashboardPage() {
   const navigate = useNavigate();
 
+  const [activeTab, setActiveTab] = useState<'my-blogs' | 'shopify'>('my-blogs');
   const [blogs, setBlogs] = useState<BlogWithRelations[]>([]);
+  const [shopifyBlogs, setShopifyBlogs] = useState<ShopifyBlogArticle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingShopify, setIsLoadingShopify] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<BlogStatus | 'all'>('all');
   const [stats, setStats] = useState({ total: 0, drafts: 0, published: 0, archived: 0 });
@@ -24,9 +29,13 @@ export function BloggerDashboardPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    loadBlogs();
-    loadStats();
-  }, [statusFilter, searchQuery]);
+    if (activeTab === 'my-blogs') {
+      loadBlogs();
+      loadStats();
+    } else {
+      loadShopifyBlogs();
+    }
+  }, [activeTab, statusFilter, searchQuery]);
 
   const loadBlogs = async () => {
     setIsLoading(true);
@@ -51,6 +60,20 @@ export function BloggerDashboardPage() {
     const result = await getBlogStats();
     if (result.success && result.data) {
       setStats(result.data);
+    }
+  };
+
+  const loadShopifyBlogs = async () => {
+    setIsLoadingShopify(true);
+    try {
+      const result = await fetchPublishedBlogs(50);
+      if (result.success && result.data) {
+        setShopifyBlogs(result.data.articles);
+      }
+    } catch (error) {
+      console.error('Error loading Shopify blogs:', error);
+    } finally {
+      setIsLoadingShopify(false);
     }
   };
 
@@ -118,78 +141,207 @@ export function BloggerDashboardPage() {
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-4">
-          <div className="bg-gray-50 rounded-lg p-3">
-            <p className="text-xs text-gray-600 mb-1">Total Blogs</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3">
-            <p className="text-xs text-gray-600 mb-1">Drafts</p>
-            <p className="text-2xl font-bold text-gray-700">{stats.drafts}</p>
-          </div>
-          <div className="bg-green-50 rounded-lg p-3">
-            <p className="text-xs text-gray-600 mb-1">Published</p>
-            <p className="text-2xl font-bold text-green-600">{stats.published}</p>
-          </div>
-          <div className="bg-yellow-50 rounded-lg p-3">
-            <p className="text-xs text-gray-600 mb-1">Archived</p>
-            <p className="text-2xl font-bold text-yellow-600">{stats.archived}</p>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="flex gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2
-              w-5 h-5 text-gray-400"
-            />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search blogs..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md
-                focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Filter className="w-5 h-5 text-gray-400" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as BlogStatus | 'all')}
-              className="px-4 py-2 border border-gray-300 rounded-md
-                focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
-
+        {/* Tabs */}
+        <div className="flex gap-4 mb-4 border-b border-gray-200">
           <button
-            onClick={loadBlogs}
-            className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50
-              flex items-center gap-2"
+            onClick={() => setActiveTab('my-blogs')}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'my-blogs'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
           >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
+            My Blogs
+          </button>
+          <button
+            onClick={() => setActiveTab('shopify')}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'shopify'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Published on Shopify
           </button>
         </div>
+
+        {/* Stats - Only show for My Blogs tab */}
+        {activeTab === 'my-blogs' && (
+          <div className="grid grid-cols-4 gap-4 mb-4">
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs text-gray-600 mb-1">Total Blogs</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs text-gray-600 mb-1">Drafts</p>
+              <p className="text-2xl font-bold text-gray-700">{stats.drafts}</p>
+            </div>
+            <div className="bg-green-50 rounded-lg p-3">
+              <p className="text-xs text-gray-600 mb-1">Published</p>
+              <p className="text-2xl font-bold text-green-600">{stats.published}</p>
+            </div>
+            <div className="bg-yellow-50 rounded-lg p-3">
+              <p className="text-xs text-gray-600 mb-1">Archived</p>
+              <p className="text-2xl font-bold text-yellow-600">{stats.archived}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Filters - Only show for My Blogs tab */}
+        {activeTab === 'my-blogs' && (
+          <div className="flex gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2
+                w-5 h-5 text-gray-400"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search blogs..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md
+                  focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Filter className="w-5 h-5 text-gray-400" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as BlogStatus | 'all')}
+                className="px-4 py-2 border border-gray-300 rounded-md
+                  focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+
+            <button
+              onClick={loadBlogs}
+              className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50
+                flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+          </div>
+        )}
+
+        {/* Shopify Refresh Button */}
+        {activeTab === 'shopify' && (
+          <div className="flex justify-end">
+            <button
+              onClick={loadShopifyBlogs}
+              className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50
+                flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Blog List */}
+      {/* Content Area */}
       <div className="flex-1 overflow-y-auto bg-gray-50 px-6 py-8">
-        <BlogList
-          blogs={blogs}
-          onView={handleView}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onDuplicate={handleDuplicate}
-          isLoading={isLoading}
-        />
+        {activeTab === 'my-blogs' ? (
+          <BlogList
+            blogs={blogs}
+            onView={handleView}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onDuplicate={handleDuplicate}
+            isLoading={isLoading}
+          />
+        ) : (
+          <div className="space-y-4">
+            {isLoadingShopify ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <ShimmerLoader key={i} type="blog-card" />
+                ))}
+              </div>
+            ) : shopifyBlogs.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">No published blogs found on Shopify</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {shopifyBlogs.map((article) => {
+                  const blogUrl = `https://mcgrocer-com.myshopify.com/blogs/${article.blog?.handle}/${article.handle}`;
+                  return (
+                    <div
+                      key={article.id}
+                      className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                    >
+                      {/* Featured Image */}
+                      <div className="w-full h-48 overflow-hidden bg-gray-100">
+                        {article.image?.url ? (
+                          <img
+                            src={article.image.url}
+                            alt={article.image.altText || article.title}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                            <FileImage className="w-16 h-16 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-4">
+                        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
+                          {article.title}
+                        </h3>
+                        {article.excerpt && (
+                          <p className="text-sm text-gray-600 mb-3 line-clamp-3">
+                            {article.excerpt}
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
+                          <span>Blog: {article.blog?.title || 'Unknown'}</span>
+                          {article.publishedAt && (
+                            <span>{new Date(article.publishedAt).toLocaleDateString()}</span>
+                          )}
+                        </div>
+                        {article.tags && article.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {article.tags.slice(0, 3).map((tag, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {article.tags.length > 3 && (
+                              <span className="px-2 py-1 bg-gray-50 text-gray-600 text-xs rounded">
+                                +{article.tags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <a
+                          href={blogUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          View on Shopify
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Delete Confirmation Dialog */}

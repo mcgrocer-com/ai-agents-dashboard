@@ -101,6 +101,8 @@ export interface BloggerBlog {
   markdown_content: string | null;
   meta_title: string;
   meta_description: string;
+  featured_image_url: string | null;
+  featured_image_alt: string | null;
   status: BlogStatus;
   shopify_article_id: number | null;
   shopify_blog_id: number | null;
@@ -170,6 +172,8 @@ export interface BlogFormData {
   // Step 5: Meta Data
   meta_title: string;
   meta_description: string;
+  featured_image_url?: string;
+  featured_image_alt?: string;
 
   // Step 6: Content
   content: string;
@@ -286,23 +290,83 @@ export interface ShopifyProductSearchResponse {
  * Shopify publish request
  */
 export interface ShopifyPublishRequest {
+  blogId: string;  // Shopify blog ID (e.g., "gid://shopify/Blog/74558931119")
   title: string;
   content: string;
-  meta_title: string;
-  meta_description: string;
-  author: string;
-  blog_id?: number;
+  metaTitle?: string;
+  metaDescription?: string;
+  featuredImageUrl?: string;
+  featuredImageAlt?: string;
+  author?: string;
   tags?: string[];
+  publishedAt?: string;  // ISO date string
 }
 
 /**
  * Shopify publish response
  */
 export interface ShopifyPublishResponse {
-  article_id: number;
-  blog_id: number;
-  url: string;
-  published_at: string;
+  article: {
+    id: string;
+    title: string;
+    handle: string;
+    url: string;
+    publishedAt: string;
+    createdAt: string;
+    blog: {
+      id: string;
+      title: string;
+      handle: string;
+    };
+  };
+}
+
+/**
+ * Shopify blog from GraphQL API
+ */
+export interface ShopifyBlog {
+  id: string;
+  title: string;
+  handle: string;
+  commentPolicy?: string;
+}
+
+/**
+ * Shopify blog article from GraphQL API
+ */
+export interface ShopifyBlogArticle {
+  id: string;
+  title: string;
+  handle: string;
+  content: string;
+  excerpt?: string;
+  publishedAt?: string;
+  tags?: string[];
+  image?: {
+    url: string;
+    altText?: string;
+  };
+  blog?: {
+    id: string;
+    title: string;
+    handle: string;
+  };
+}
+
+/**
+ * Shopify blogs response from GraphQL
+ */
+export interface ShopifyBlogsResponse {
+  blogs: ShopifyBlog[];
+  total: number;
+}
+
+/**
+ * Shopify articles response from GraphQL
+ */
+export interface ShopifyArticlesResponse {
+  articles: ShopifyBlogArticle[];
+  total: number;
 }
 
 // ============================================================================

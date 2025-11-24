@@ -10,6 +10,7 @@ import type {
   GenerateBlogResponse,
   ServiceResponse,
 } from '@/types/blogger';
+import { generateRelatedBlogLinks } from './shopify.service';
 
 const API_URL = "https://mcgroceraiblogscreator-production.up.railway.app";
 
@@ -170,31 +171,13 @@ export async function generateMetaData(
 }
 
 /**
- * Generate blog content using AI
+ * Generate blog content using AI with automatic internal linking
  */
 export async function generateBlogContent(
   request: GenerateBlogRequest
 ): Promise<ServiceResponse<GenerateBlogResponse>> {
   try {
-    // We need to pass the persona and template objects/strings, but the request has IDs.
-    // In a real app we might need to fetch them or pass them in.
-    // For now, we'll assume the backend handles IDs or we need to pass strings.
-    // The reference API expects JSON stringified objects for persona and template.
-    // We'll need to fetch the actual persona/template data first if we only have IDs.
-    // However, to keep it simple and matching the reference flow, we might need to adjust the caller to pass full objects.
-    // For now, let's try to pass the IDs and see if it works, or mock the objects.
-
-    // Actually, the reference API expects:
-    // topic, meta_description, persona (string/json), template (string/json), keywords (array)
-
-    // We will use a helper to get the persona/template data from constants if needed, 
-    // but since this is a service, we should probably rely on what's passed.
-    // The `GenerateBlogRequest` type might need to be updated or we fetch here.
-    // Let's assume the caller passes enough info or we use defaults.
-
-    // Temporary: We'll construct a basic object. 
-    // Ideally we should look up the persona/template by ID from the constants we just created.
-
+    // Generate the main blog content
     const res = await fetch(`${API_URL}/advanced-blog/generate`, {
       method: "POST",
       headers: {
@@ -202,9 +185,9 @@ export async function generateBlogContent(
       },
       body: JSON.stringify({
         topic: request.topic,
-        meta_description: "Generated content", // We might need to pass this
-        persona: JSON.stringify({ id: request.persona_id }), // Pass ID as object
-        template: JSON.stringify({ id: request.template_id }), // Pass ID as object
+        meta_description: "Generated content",
+        persona: JSON.stringify({ id: request.persona_id }),
+        template: JSON.stringify({ id: request.template_id }),
         keywords: request.keywords,
       }),
     });
@@ -214,11 +197,35 @@ export async function generateBlogContent(
     }
 
     const data = await res.json();
+    let finalContent = data.content;
+
+    // Fetch related blog links from Shopify for internal linking
+    console.log(`[AI Service] Fetching related blog links for topic: "${request.topic}"`);
+    const linksResult = await generateRelatedBlogLinks(request.topic, 5);
+
+    if (linksResult.success && linksResult.data && linksResult.data.length > 0) {
+      console.log(`[AI Service] Found ${linksResult.data.length} related articles to embed`);
+
+      // Append "Related Articles" section with internal links
+      const relatedSection = `
+
+## Related Articles
+
+For more information about ${request.topic}, check out these articles:
+
+${linksResult.data.map(link => `- ${link.markdown}`).join('\n')}
+      `.trim();
+
+      finalContent += '\n\n' + relatedSection;
+      console.log(`[AI Service] ✓ Related articles section added to blog content`);
+    } else {
+      console.log(`[AI Service] No related articles found for "${request.topic}"`);
+    }
 
     return {
       data: {
-        content: data.content,
-        markdown: data.content,
+        content: finalContent,
+        markdown: finalContent,
         meta: {
           title: "",
           description: "",
@@ -496,9 +503,15 @@ export function calculateSeoScore(
   }
 
   // Internal links (10 points)
-  const linkCount = (content.match(/<a[^>]*href/gi) || []).length;
-  if (linkCount >= 3) {
+  // Count both HTML and markdown links
+  const htmlLinkCount = (content.match(/<a[^>]*href/gi) || []).length;
+  const markdownLinkCount = (content.match(/\[([^\]]+)\]\(([^)]+)\)/g) || []).length;
+  const linkCount = htmlLinkCount + markdownLinkCount;
+
+  if (linkCount >= 5) {
     score += 10;
+  } else if (linkCount >= 3) {
+    score += 8;
   } else if (linkCount >= 1) {
     score += 5;
   }

@@ -25,8 +25,13 @@ dist-ssr
 
 # Environment variables
 .env
+.env.*
 .env.local
 .env.*.local
+
+# Test files
+test-*.js
+test-*.ps1
 
 # Supabase
 supabase/.temp/
@@ -38,3 +43,4 @@ supabase/seeding-report.json
 
 # Windows
 nul
+.tunnel-token

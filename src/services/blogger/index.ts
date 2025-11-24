@@ -10,3 +10,4 @@ export * from './blogs.service';
 export * from './keywords.service';
 export * from './ai.service';
 export * from './shopify.service';
+export * from './images.service';

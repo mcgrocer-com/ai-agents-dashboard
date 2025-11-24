@@ -20,8 +20,9 @@ import { getAllPersonas } from '@/services/blogger/personas.service';
 import { getAllTemplates } from '@/services/blogger/templates.service';
 import { generateMetaData, calculateSeoScore, calculateReadabilityScore } from '@/services/blogger/ai.service';
 import { generateBlogWithGemini, type ProcessingLog } from '@/services/blogger/gemini-content.service';
-import { createBlog, getBlogById, updateBlog } from '@/services/blogger/blogs.service';
-import type { BloggerPersona, BloggerTemplate, BlogWithRelations } from '@/types/blogger';
+import { createBlog, getBlogById, updateBlog, updateBlogStatus } from '@/services/blogger/blogs.service';
+import { publishBlogToShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
+import type { BloggerPersona, BloggerTemplate, BlogWithRelations, ShopifyBlog } from '@/types/blogger';
 import Swal from 'sweetalert2';
 
 const TOTAL_STEPS = 6;
@@ -37,6 +38,9 @@ export function BloggerCreatePage() {
   // Wizard state
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Generate draft blog ID for image uploads during creation
+  const [draftBlogId] = useState(() => crypto.randomUUID());
 
   // Step 1: Topic
   const [topic, setTopic] = useState('');
@@ -69,6 +73,9 @@ export function BloggerCreatePage() {
   // Step 5: Meta Data & SEO
   const [metaTitle, setMetaTitle] = useState('');
   const [metaDescription, setMetaDescription] = useState('');
+  const [featuredImage, setFeaturedImage] = useState<string>(''); // Image URL
+  const [featuredImageAlt, setFeaturedImageAlt] = useState<string>('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [seoScore, setSeoScore] = useState<number | null>(null);
   const [readabilityScore, setReadabilityScore] = useState<number | null>(null);
 
@@ -185,6 +192,8 @@ export function BloggerCreatePage() {
       selectedKeyword,
       metaTitle,
       metaDescription,
+      featuredImage,
+      featuredImageAlt,
       content,
       markdownContent,
       currentStep,
@@ -232,6 +241,8 @@ export function BloggerCreatePage() {
         setSelectedKeyword(draft.selectedKeyword || '');
         setMetaTitle(draft.metaTitle || '');
         setMetaDescription(draft.metaDescription || '');
+        setFeaturedImage(draft.featuredImage || '');
+        setFeaturedImageAlt(draft.featuredImageAlt || '');
         setContent(draft.content || '');
         setMarkdownContent(draft.markdownContent || '');
         setCurrentStep(draft.currentStep || 1);
@@ -390,6 +401,8 @@ export function BloggerCreatePage() {
           markdown_content: markdownContent,
           meta_title: metaTitle,
           meta_description: metaDescription,
+          featured_image_url: featuredImage || null,
+          featured_image_alt: featuredImageAlt || null,
           seo_score: seoScore,
           readability_score: readabilityScore,
           word_count: content.split(/\s+/).length,
@@ -413,6 +426,8 @@ export function BloggerCreatePage() {
           markdown_content: markdownContent,
           meta_title: metaTitle,
           meta_description: metaDescription,
+          featured_image_url: featuredImage || null,
+          featured_image_alt: featuredImageAlt || null,
           status: 'draft',
           seo_score: seoScore,
           readability_score: readabilityScore,
@@ -457,24 +472,148 @@ export function BloggerCreatePage() {
   };
 
   const handleDirectPublishToShopify = async () => {
+    if (!selectedPersona) return;
+
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Step 1: Fetch available Shopify blogs
+      const blogsResult = await fetchShopifyBlogs(10);
 
-      Swal.fire({
-        icon: 'success',
-        title: 'Blog posted on Shopify',
-        text: 'Your blog has been successfully published.',
+      if (!blogsResult.success || !blogsResult.data || blogsResult.data.blogs.length === 0) {
+        Swal.fire({
+          icon: 'error',
+          title: 'No Shopify Blogs Found',
+          text: 'Could not load Shopify blogs. Please check your Shopify connection.',
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const shopifyBlogs = blogsResult.data.blogs;
+
+      // Step 2: Show blog selection dialog
+      const blogOptions = shopifyBlogs.reduce((acc, blog) => {
+        acc[blog.id] = `${blog.title} (${blog.handle})`;
+        return acc;
+      }, {} as Record<string, string>);
+
+      const { value: selectedBlogId, isConfirmed } = await Swal.fire({
+        title: 'Select Shopify Blog',
+        html: `
+          <div style="text-align: left;">
+            <p style="margin-bottom: 12px; color: #4b5563;">Choose which Shopify blog to publish this article to:</p>
+            <div style="margin-bottom: 16px; padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;">
+              <p style="margin: 0; font-size: 14px; color: #1e40af;"><strong>Title:</strong> ${metaTitle}</p>
+              <p style="margin: 8px 0 0 0; font-size: 14px; color: #1e40af;"><strong>Author:</strong> ${selectedPersona.name}</p>
+              <p style="margin: 8px 0 0 0; font-size: 14px; color: #1e40af;"><strong>Words:</strong> ${wordCount}</p>
+            </div>
+          </div>
+        `,
+        input: 'select',
+        inputOptions: blogOptions,
+        inputValue: shopifyBlogs[0].id,
+        showCancelButton: true,
+        confirmButtonText: 'Publish',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#6b7280',
+        inputValidator: (value) => {
+          if (!value) {
+            return 'Please select a blog!';
+          }
+          return null;
+        }
       });
-      clearAutoSave();
-      navigate('/blogger');
+
+      if (!isConfirmed || !selectedBlogId) {
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 3: Save blog to database first
+      const baseSlug = metaTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .substring(0, 50);
+      const uniqueSlug = `${baseSlug}-${Date.now()}`;
+
+      const createResult = await createBlog({
+        persona_id: selectedPersona.id,
+        template_id: selectedTemplate!.id,
+        primary_keyword_id: null,
+        title: metaTitle,
+        slug: uniqueSlug,
+        content,
+        markdown_content: markdownContent,
+        meta_title: metaTitle,
+        meta_description: metaDescription,
+        featured_image_url: featuredImage || null,
+        featured_image_alt: featuredImageAlt || null,
+        status: 'draft', // Will be updated to published after successful Shopify publish
+        seo_score: seoScore,
+        readability_score: readabilityScore,
+        word_count: wordCount,
+        shopify_article_id: null,
+        shopify_blog_id: null,
+        published_at: null,
+      });
+
+      if (!createResult.success || !createResult.data) {
+        throw new Error('Failed to save blog to database');
+      }
+
+      const blogId = createResult.data.id;
+
+      // Step 4: Publish to Shopify
+      const publishResult = await publishBlogToShopify({
+        blogId: selectedBlogId,
+        title: metaTitle,
+        content,
+        metaTitle,
+        metaDescription,
+        featuredImageUrl: featuredImage || undefined,
+        featuredImageAlt: featuredImageAlt || undefined,
+        author: selectedPersona.name,
+        tags: selectedKeyword ? [selectedKeyword] : [],
+        publishedAt: new Date().toISOString(),
+      });
+
+      if (publishResult.success && publishResult.data) {
+        // Extract numeric ID from Shopify GID
+        const articleIdMatch = publishResult.data.article.id.match(/\/(\d+)$/);
+        const shopifyArticleId = articleIdMatch ? parseInt(articleIdMatch[1]) : null;
+
+        // Update blog with Shopify article ID and status
+        if (shopifyArticleId) {
+          await updateBlog(blogId, {
+            shopify_article_id: shopifyArticleId,
+            status: 'published'
+          });
+        }
+
+        Swal.fire({
+          icon: 'success',
+          title: 'Published to Shopify!',
+          html: `
+            <p>Your blog has been successfully published to Shopify.</p>
+            <p style="margin-top: 12px;"><strong>Article URL:</strong></p>
+            <p style="word-break: break-all;"><a href="${publishResult.data.article.url}" target="_blank">${publishResult.data.article.url}</a></p>
+          `,
+          confirmButtonText: 'View Dashboard',
+        });
+
+        clearAutoSave();
+        navigate('/blogger');
+      } else {
+        throw new Error(publishResult.error?.message || 'Failed to publish to Shopify');
+      }
     } catch (error) {
       console.error('Error publishing to Shopify:', error);
       Swal.fire({
         icon: 'error',
-        title: 'Error',
-        text: 'Failed to post blog to Shopify.',
+        title: 'Publishing Failed',
+        text: error instanceof Error ? error.message : 'Failed to publish blog to Shopify. The blog has been saved as a draft.',
       });
     } finally {
       setIsLoading(false);
@@ -588,8 +727,19 @@ export function BloggerCreatePage() {
           <SeoOptimizer
             metaTitle={metaTitle}
             metaDescription={metaDescription}
+            featuredImage={featuredImage}
+            featuredImageAlt={featuredImageAlt}
+            blogId={id || draftBlogId} // Use existing ID in edit mode, or generated UUID in create mode
             onMetaTitleChange={setMetaTitle}
             onMetaDescriptionChange={setMetaDescription}
+            onFeaturedImageChange={(url, alt) => {
+              setFeaturedImage(url);
+              setFeaturedImageAlt(alt);
+            }}
+            onImageRemove={() => {
+              setFeaturedImage('');
+              setFeaturedImageAlt('');
+            }}
             isLoading={isLoading}
           />
         );
@@ -607,6 +757,8 @@ export function BloggerCreatePage() {
           markdown_content: markdownContent,
           meta_title: metaTitle,
           meta_description: metaDescription,
+          featured_image_url: featuredImage || null,
+          featured_image_alt: featuredImageAlt || null,
           status: 'draft',
           shopify_article_id: null,
           shopify_blog_id: null,

@@ -3,7 +3,7 @@
  * Full blog preview with metadata and rendered content
  */
 
-import { Calendar, User, FileText, TrendingUp } from 'lucide-react';
+import { Calendar, User, FileText, TrendingUp, FileImage } from 'lucide-react';
 import type { BlogWithRelations } from '@/types/blogger';
 
 interface BlogPreviewProps {
@@ -65,6 +65,21 @@ export function BlogPreview({ blog }: BlogPreviewProps) {
           </div>
         )}
 
+      </div>
+
+      {/* Featured Image */}
+      <div className="w-full h-64 md:h-96 overflow-hidden bg-gray-100">
+        {blog.featured_image_url ? (
+          <img
+            src={blog.featured_image_url}
+            alt={blog.featured_image_alt || blog.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+            <FileImage className="w-24 h-24 text-gray-400" />
+          </div>
+        )}
       </div>
 
       {/* Blog content */}

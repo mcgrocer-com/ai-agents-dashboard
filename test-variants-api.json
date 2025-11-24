@@ -1,6 +1,0 @@
-{
-  "vendor": "superdrug",
-  "fields": ["name", "url", "price", "stock_status"],
-  "page_size": 5,
-  "page": 1
-}

@@ -5,11 +5,95 @@
  */
 
 interface ShimmerLoaderProps {
-  type?: 'card' | 'table' | 'product-detail' | 'agent-page'
+  type?: 'card' | 'table' | 'product-detail' | 'agent-page' | 'blog-preview' | 'blog-card'
   rows?: number
 }
 
 export function ShimmerLoader({ type = 'card', rows = 5 }: ShimmerLoaderProps) {
+  if (type === 'blog-card') {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        {/* Featured image shimmer */}
+        <div className="w-full h-48 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+          bg-[length:200%_100%] animate-shimmer"
+        />
+
+        {/* Content shimmer */}
+        <div className="p-4 space-y-3">
+          <div className="h-5 w-3/4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+            bg-[length:200%_100%] animate-shimmer rounded"
+          />
+          <div className="h-4 w-full bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+            bg-[length:200%_100%] animate-shimmer rounded"
+          />
+          <div className="h-4 w-5/6 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+            bg-[length:200%_100%] animate-shimmer rounded"
+          />
+          <div className="flex justify-between items-center pt-2">
+            <div className="h-3 w-24 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+              bg-[length:200%_100%] animate-shimmer rounded"
+            />
+            <div className="h-3 w-20 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+              bg-[length:200%_100%] animate-shimmer rounded"
+            />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <div className="h-6 w-16 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+              bg-[length:200%_100%] animate-shimmer rounded"
+            />
+            <div className="h-6 w-16 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+              bg-[length:200%_100%] animate-shimmer rounded"
+            />
+            <div className="h-6 w-16 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+              bg-[length:200%_100%] animate-shimmer rounded"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === 'blog-preview') {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden animate-pulse">
+        {/* Header shimmer */}
+        <div className="bg-gray-50 border-b border-gray-200 px-6 py-4 space-y-3">
+          <div className="h-8 w-3/4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+            bg-[length:200%_100%] animate-shimmer rounded"
+          />
+          <div className="flex gap-4">
+            <div className="h-4 w-32 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+              bg-[length:200%_100%] animate-shimmer rounded"
+            />
+            <div className="h-4 w-32 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+              bg-[length:200%_100%] animate-shimmer rounded"
+            />
+            <div className="h-4 w-32 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+              bg-[length:200%_100%] animate-shimmer rounded"
+            />
+          </div>
+        </div>
+
+        {/* Featured image shimmer */}
+        <div className="w-full h-64 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+          bg-[length:200%_100%] animate-shimmer"
+        />
+
+        {/* Content shimmer */}
+        <div className="px-6 py-8 space-y-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-4 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200
+                bg-[length:200%_100%] animate-shimmer rounded"
+              style={{ width: `${Math.random() * 20 + 80}%` }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (type === 'product-detail') {
     return (
       <div className="space-y-6 animate-pulse">

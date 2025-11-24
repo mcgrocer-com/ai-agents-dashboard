@@ -7,7 +7,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { searchProducts } from './shopify.service';
+import { searchProducts, generateRelatedBlogLinks } from './shopify.service';
 import { getTopRankingArticles as getTopRankingArticlesService, scrapeArticlesBatch } from './ai.service';
 import { researchKeywords as researchKeywordsService } from './ai.service';
 import type { BloggerPersona, BloggerTemplate, ServiceResponse } from '@/types/blogger';
@@ -519,6 +519,31 @@ Begin with researchKeywords now.`
 
     if (hasH2 && hasH3 && hasParagraphs) {
       addLog('info', `✓ HTML structure validated (h2, h3, p tags present)`);
+    }
+
+    // Step 5.5: Fetch and append related blog links from Shopify
+    addLog('info', `Fetching related blog articles from Shopify...`);
+    const linksResult = await generateRelatedBlogLinks(request.topic, 5);
+
+    if (linksResult.success && linksResult.data && linksResult.data.length > 0) {
+      addLog('success', `✓ Found ${linksResult.data.length} related articles`);
+
+      // Append related articles section in HTML
+      const relatedSection = `
+
+<h2>Related Articles</h2>
+
+<p>For more information about ${request.topic}, check out these articles:</p>
+
+<ul>
+${linksResult.data.map(link => `  <li><a href="${link.url}" target="_blank">${link.title}</a></li>`).join('\n')}
+</ul>
+      `.trim();
+
+      cleanContent += '\n\n' + relatedSection;
+      addLog('success', `✓ Related articles section added (${linksResult.data.length} links)`);
+    } else {
+      addLog('info', `No related articles found for "${request.topic}"`);
     }
 
     // Calculate word count
