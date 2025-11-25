@@ -18,7 +18,7 @@ import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { AgentProductCard } from '@/components/products/AgentProductCard'
 import { AgentVendorStatistics } from '@/components/agents/AgentVendorStatistics'
 import { AdvancedFilterBuilder, type FilterRule } from '@/components/filters/AdvancedFilterBuilder'
-import { Package, Search, SlidersHorizontal, RefreshCw, Trash2, type LucideIcon } from 'lucide-react'
+import { Package, Search, SlidersHorizontal, RefreshCw, Trash2, RotateCcw, type LucideIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import type { AgentType } from '@/services/agents.service'
 
@@ -76,6 +76,8 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
   const [showClearQueueConfirm, setShowClearQueueConfirm] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
+  const [showResetCompletedConfirm, setShowResetCompletedConfirm] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
 
   const { metrics } = useAgentMetrics()
   const { vendors } = useVendors()
@@ -155,17 +157,18 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   }
 
   const handleClearQueue = async () => {
+    if (!selectedVendor) return
     setIsClearing(true)
     try {
       const { data, error } = await supabase.functions.invoke('clear-copyright-queue', {
-        body: {}
+        body: { vendor: selectedVendor }
       })
 
       if (error) throw error
 
       if (data.success) {
         setToast({
-          message: `Successfully cleared ${data.stats?.cleared_count || 0} product(s) from copyright queue`,
+          message: `Successfully cleared ${data.stats?.cleared_count || 0} pending product(s) for ${selectedVendor}`,
           type: 'success'
         })
         refresh()
@@ -178,6 +181,34 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     } finally {
       setIsClearing(false)
       setShowClearQueueConfirm(false)
+    }
+  }
+
+  const handleResetCompleted = async () => {
+    setIsResetting(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('reset-copyright-completed', {
+        body: selectedVendor ? { vendor: selectedVendor } : {}
+      })
+
+      if (error) throw error
+
+      if (data.success) {
+        const vendorMsg = selectedVendor ? ` for ${selectedVendor}` : ''
+        setToast({
+          message: `Successfully reset ${data.stats?.reset_count || 0} completed product(s) to pending${vendorMsg}`,
+          type: 'success'
+        })
+        refresh()
+      } else {
+        setToast({ message: data.error || 'Failed to reset completed products', type: 'error' })
+      }
+    } catch (err) {
+      console.error('Error resetting copyright completed:', err)
+      setToast({ message: 'An error occurred while resetting completed products', type: 'error' })
+    } finally {
+      setIsResetting(false)
+      setShowResetCompletedConfirm(false)
     }
   }
 
@@ -214,14 +245,24 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {agentType === 'copyright' && agent && (agent.pending + agent.processing + agent.complete + agent.failed) > 0 && (
+              {agentType === 'copyright' && agent && agent.complete > 0 && (
+                <button
+                  onClick={() => setShowResetCompletedConfirm(true)}
+                  disabled={isResetting}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                >
+                  <RotateCcw className={`h-4 w-4 ${isResetting ? 'animate-spin' : ''}`} />
+                  <span>Reset Completed ({agent.complete})</span>
+                </button>
+              )}
+              {agentType === 'copyright' && agent && selectedVendor && agent.pending > 0 && (
                 <button
                   onClick={() => setShowClearQueueConfirm(true)}
                   disabled={isClearing}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
                 >
                   <Trash2 className={`h-4 w-4 ${isClearing ? 'animate-pulse' : ''}`} />
-                  <span>Clear Queue ({agent.pending + agent.processing + agent.complete + agent.failed})</span>
+                  <span>Clear Queue ({agent.pending})</span>
                 </button>
               )}
               {agent && agent.failed > 0 && (
@@ -458,11 +499,24 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
         onClose={() => setShowClearQueueConfirm(false)}
         onConfirm={handleClearQueue}
         title="Clear Copyright Queue"
-        message="Are you sure you want to clear ALL products from the copyright queue?\n\nThis will set copyright_status to NULL for all products (pending, processing, complete, and failed), removing them entirely from the queue. This action cannot be undone."
+        message={`Are you sure you want to clear all PENDING products for ${selectedVendor} from the copyright queue?\n\nThis will set copyright_status to NULL, removing them from the queue. This action cannot be undone.`}
         confirmText="Clear Queue"
         cancelText="Cancel"
         variant="danger"
         loading={isClearing}
+      />
+
+      {/* Reset Completed Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showResetCompletedConfirm}
+        onClose={() => setShowResetCompletedConfirm(false)}
+        onConfirm={handleResetCompleted}
+        title="Reset Completed Products"
+        message={`Are you sure you want to reset all COMPLETED products${selectedVendor ? ` for ${selectedVendor}` : ''} back to pending?\n\nThese products will be re-processed by the copyright agent.`}
+        confirmText="Reset to Pending"
+        cancelText="Cancel"
+        variant="warning"
+        loading={isResetting}
       />
 
       {/* Toast Notification */}
