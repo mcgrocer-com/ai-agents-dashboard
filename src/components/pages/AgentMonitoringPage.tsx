@@ -214,14 +214,14 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {agentType === 'copyright' && agent && agent.pending > 0 && (
+              {agentType === 'copyright' && agent && (agent.pending + agent.processing + agent.complete + agent.failed) > 0 && (
                 <button
                   onClick={() => setShowClearQueueConfirm(true)}
                   disabled={isClearing}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
                 >
                   <Trash2 className={`h-4 w-4 ${isClearing ? 'animate-pulse' : ''}`} />
-                  <span>Clear Queue ({agent.pending})</span>
+                  <span>Clear Queue ({agent.pending + agent.processing + agent.complete + agent.failed})</span>
                 </button>
               )}
               {agent && agent.failed > 0 && (
@@ -458,7 +458,7 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
         onClose={() => setShowClearQueueConfirm(false)}
         onConfirm={handleClearQueue}
         title="Clear Copyright Queue"
-        message="Are you sure you want to clear all pending products from the copyright queue?\n\nThis will set their copyright_status to NULL, removing them from the queue. This action cannot be undone."
+        message="Are you sure you want to clear ALL products from the copyright queue?\n\nThis will set copyright_status to NULL for all products (pending, processing, complete, and failed), removing them entirely from the queue. This action cannot be undone."
         confirmText="Clear Queue"
         cancelText="Cancel"
         variant="danger"
