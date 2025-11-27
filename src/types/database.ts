@@ -5,6 +5,8 @@
  * Auto-generated based on schema inspection.
  */
 
+import type { ClassificationType } from './classification'
+
 // ============================================================================
 // Core Product Types
 // ============================================================================
@@ -57,6 +59,13 @@ export interface ScrapedProduct {
   pinned: boolean | null
   created_at: string | null
   updated_at: string | null
+
+  // Classification agent results (UK medicine compliance)
+  rejected: boolean
+  classification: ClassificationType | null
+  classification_reason: string | null
+  classification_confidence: number | null
+
   // ERPNext sync status (joined from pending_products)
   sync_status?: 'synced' | 'failed' | 'pending'
   item_code?: string | null

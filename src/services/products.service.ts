@@ -173,9 +173,12 @@ class ProductsService {
         } as ScrapedProduct
       })
 
+      // When no products are returned, use 0 as count (planned count estimate can be inaccurate for filtered queries)
+      const actualCount = productsWithSyncStatus.length === 0 ? 0 : (count || 0)
+
       return {
         products: productsWithSyncStatus,
-        count: count || 0,
+        count: actualCount,
         error: null,
       }
     } catch (error) {
@@ -652,9 +655,12 @@ class ProductsService {
         } as ScrapedProduct
       })
 
+      // When no products are returned, use 0 as count (planned count estimate can be inaccurate for filtered queries)
+      const actualCount = productsWithSyncStatus.length === 0 ? 0 : (count || 0)
+
       return {
         products: productsWithSyncStatus,
-        count: count || 0,
+        count: actualCount,
         error: null,
       }
     } catch (error) {

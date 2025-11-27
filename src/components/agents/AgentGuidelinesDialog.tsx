@@ -26,6 +26,7 @@ const agentNames: Record<AgentType, string> = {
   seo: 'SEO Optimizer',
   scraper: 'Scraper',
   copyright: 'Copyright Agent',
+  classification: 'Classification Agent',
 }
 
 const agentColors: Record<AgentType, string> = {
@@ -34,6 +35,7 @@ const agentColors: Record<AgentType, string> = {
   seo: 'indigo',
   scraper: 'green',
   copyright: 'orange',
+  classification: 'emerald',
 }
 
 export function AgentGuidelinesDialog({

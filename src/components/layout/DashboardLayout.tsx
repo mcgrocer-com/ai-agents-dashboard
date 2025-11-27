@@ -15,6 +15,7 @@ import {
   Scale,
   Search,
   Shield,
+  ShieldCheck,
   Wrench,
   LogOut,
   ChevronLeft,
@@ -44,6 +45,7 @@ export function DashboardLayout() {
     { name: 'Weight', path: '/agents/weight', icon: Scale },
     { name: 'SEO', path: '/agents/seo', icon: Search },
     { name: 'Copyright', path: '/agents/copyright', icon: Shield },
+    { name: 'Classification', path: '/agents/classification', icon: ShieldCheck },
     { name: 'Blogger', path: '/blogger', icon: PenTool },
   ]
 

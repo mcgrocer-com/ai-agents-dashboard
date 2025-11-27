@@ -7,7 +7,7 @@
 import { supabase } from '@/lib/supabase/client'
 import type { AgentMetrics, AgentStatus, AgentProduct, PendingProduct, ScrapedProduct } from '@/types'
 
-export type AgentType = 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright'
+export type AgentType = 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright' | 'classification'
 
 export interface TriggerAgentParams {
   agentType: AgentType
@@ -469,6 +469,7 @@ class AgentsService {
       seo: 'seo_status',
       scraper: 'status', // Special case
       copyright: 'copyright_status',
+      classification: 'classification_status',
     }
     return fieldMap[agentType]
   }
@@ -483,6 +484,7 @@ class AgentsService {
       seo: 'seo_feedback',
       scraper: 'failed_sync_error_message', // For scraper, we use the error message field
       copyright: 'copyright_feedback',
+      classification: 'classification_feedback',
     }
     return fieldMap[agentType]
   }

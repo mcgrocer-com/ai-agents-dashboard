@@ -23,6 +23,7 @@ import {
   AgentToolsPage,
   AdminPage,
 } from '@/pages'
+import ClassificationAgentPage from '@/pages/ClassificationAgentPage'
 import {
   BloggerDashboardPage,
   BloggerCreatePage,
@@ -50,6 +51,7 @@ function App() {
             <Route path="/agents/weight" element={<WeightAgentPage />} />
             <Route path="/agents/seo" element={<SeoAgentPage />} />
             <Route path="/agents/copyright" element={<CopyrightAgentPage />} />
+            <Route path="/agents/classification" element={<ClassificationAgentPage />} />
             <Route path="/agent-tools" element={<AgentToolsPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/blogger" element={<BloggerDashboardPage />} />

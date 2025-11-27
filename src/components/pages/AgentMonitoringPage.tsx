@@ -6,10 +6,12 @@
  * Uses optimized realtime updates for live data synchronization.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAgentMetrics, usePendingForAgent, useVendors, useAgentRealtime } from '@/hooks'
 import { agentsService } from '@/services'
+import { scraperProductsService } from '@/services/scraperProducts.service'
+import type { AgentVendorStatistics as AgentVendorStats } from '@/types/statistics'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Pagination } from '@/components/ui/Pagination'
 import { Dialog } from '@/components/ui/Dialog'
@@ -78,11 +80,27 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   const [isClearing, setIsClearing] = useState(false)
   const [showResetCompletedConfirm, setShowResetCompletedConfirm] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
+  const [vendorStats, setVendorStats] = useState<AgentVendorStats | null>(null)
 
   const { metrics } = useAgentMetrics()
   const { vendors } = useVendors()
 
   const agent = metrics?.find((m) => m.agentType === agentType)
+
+  // Fetch vendor-specific statistics when vendor changes
+  useEffect(() => {
+    if (!selectedVendor) {
+      setVendorStats(null)
+      return
+    }
+
+    const fetchVendorStats = async () => {
+      const stats = await scraperProductsService.getAgentVendorStatistics(agentType, selectedVendor)
+      setVendorStats(stats)
+    }
+
+    fetchVendorStats()
+  }, [selectedVendor, agentType])
 
   // Fetch pending products with filters
   const {
@@ -148,6 +166,12 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
         setShowRetryDialog(false)
         setRetryMessage('')
         refresh()
+
+        // Refresh vendor stats if a vendor is selected
+        if (selectedVendor) {
+          const stats = await scraperProductsService.getAgentVendorStatistics(agentType, selectedVendor)
+          setVendorStats(stats)
+        }
       }
     } catch (error: any) {
       setToast({ message: `Error: ${error.message}`, type: 'error' })
@@ -172,6 +196,12 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
           type: 'success'
         })
         refresh()
+
+        // Refresh vendor stats if a vendor is selected
+        if (selectedVendor) {
+          const stats = await scraperProductsService.getAgentVendorStatistics(agentType, selectedVendor)
+          setVendorStats(stats)
+        }
       } else {
         setToast({ message: data.error || 'Failed to clear queue', type: 'error' })
       }
@@ -187,8 +217,11 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   const handleResetCompleted = async () => {
     setIsResetting(true)
     try {
-      const { data, error } = await supabase.functions.invoke('reset-copyright-completed', {
-        body: selectedVendor ? { vendor: selectedVendor } : {}
+      const { data, error } = await supabase.functions.invoke('reset-agent-completed', {
+        body: {
+          agentType,
+          ...(selectedVendor && { vendor: selectedVendor })
+        }
       })
 
       if (error) throw error
@@ -200,11 +233,17 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
           type: 'success'
         })
         refresh()
+
+        // Refresh vendor stats if a vendor is selected
+        if (selectedVendor) {
+          const stats = await scraperProductsService.getAgentVendorStatistics(agentType, selectedVendor)
+          setVendorStats(stats)
+        }
       } else {
         setToast({ message: data.error || 'Failed to reset completed products', type: 'error' })
       }
     } catch (err) {
-      console.error('Error resetting copyright completed:', err)
+      console.error(`Error resetting ${agentType} completed:`, err)
       setToast({ message: 'An error occurred while resetting completed products', type: 'error' })
     } finally {
       setIsResetting(false)
@@ -213,6 +252,19 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   }
 
   const IconComponent = config.icon
+
+  // Get the appropriate counts based on vendor selection
+  const completedCount = selectedVendor && vendorStats
+    ? vendorStats.complete
+    : agent?.complete || 0
+
+  const pendingCount = selectedVendor && vendorStats
+    ? vendorStats.pending
+    : agent?.pending || 0
+
+  const failedCount = selectedVendor && vendorStats
+    ? vendorStats.failed
+    : agent?.failed || 0
 
   return (
     <div className="space-y-6">
@@ -245,34 +297,40 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {agentType === 'copyright' && agent && agent.complete > 0 && (
+              {(agentType === 'copyright' || agentType === 'seo') && completedCount > 0 && (
                 <button
                   onClick={() => setShowResetCompletedConfirm(true)}
                   disabled={isResetting}
-                  className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                  className={`px-4 py-2 ${
+                    config.primaryColor === 'orange'
+                      ? 'bg-orange-600 hover:bg-orange-700'
+                      : config.primaryColor === 'indigo'
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : 'bg-amber-600 hover:bg-amber-700'
+                  } text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium`}
                 >
                   <RotateCcw className={`h-4 w-4 ${isResetting ? 'animate-spin' : ''}`} />
-                  <span>Reset Completed ({agent.complete})</span>
+                  <span>Reset Completed ({completedCount.toLocaleString()})</span>
                 </button>
               )}
-              {agentType === 'copyright' && agent && selectedVendor && agent.pending > 0 && (
+              {agentType === 'copyright' && selectedVendor && pendingCount > 0 && (
                 <button
                   onClick={() => setShowClearQueueConfirm(true)}
                   disabled={isClearing}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
                 >
                   <Trash2 className={`h-4 w-4 ${isClearing ? 'animate-pulse' : ''}`} />
-                  <span>Clear Queue ({agent.pending})</span>
+                  <span>Clear Queue ({pendingCount.toLocaleString()})</span>
                 </button>
               )}
-              {agent && agent.failed > 0 && (
+              {failedCount > 0 && (
                 <button
                   onClick={handleOpenRetryDialog}
                   disabled={retrying}
                   className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
                 >
                   <RefreshCw className={`h-4 w-4 ${retrying ? 'animate-spin' : ''}`} />
-                  <span>Retry Failed ({agent.failed})</span>
+                  <span>Retry Failed ({failedCount.toLocaleString()})</span>
                 </button>
               )}
             </div>
@@ -512,7 +570,7 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
         onClose={() => setShowResetCompletedConfirm(false)}
         onConfirm={handleResetCompleted}
         title="Reset Completed Products"
-        message={`Are you sure you want to reset all COMPLETED products${selectedVendor ? ` for ${selectedVendor}` : ''} back to pending?\n\nThese products will be re-processed by the copyright agent.`}
+        message={`Are you sure you want to reset all COMPLETED products${selectedVendor ? ` for ${selectedVendor}` : ''} back to pending?\n\nThese products will be re-processed by the ${config.title.toLowerCase()}.`}
         confirmText="Reset to Pending"
         cancelText="Cancel"
         variant="warning"

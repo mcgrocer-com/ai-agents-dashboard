@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle, XCircle, Info, X } from 'lucide-react'
 
 export interface ToastProps {
@@ -6,6 +6,25 @@ export interface ToastProps {
   type?: 'success' | 'error' | 'info'
   onClose: () => void
   duration?: number
+}
+
+export interface ToastState {
+  message: string
+  type: 'success' | 'error' | 'info'
+}
+
+export function useToast() {
+  const [toast, setToast] = useState<ToastState | null>(null)
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+  }, [])
+
+  const hideToast = useCallback(() => {
+    setToast(null)
+  }, [])
+
+  return { toast, showToast, hideToast }
 }
 
 export function Toast({ message, type = 'info', onClose, duration = 3000 }: ToastProps) {
