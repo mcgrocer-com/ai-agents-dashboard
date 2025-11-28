@@ -593,11 +593,10 @@ export function BloggerCreatePage() {
 
         Swal.fire({
           icon: 'success',
-          title: 'Published to Shopify!',
+          title: 'Saved to Shopify as Draft!',
           html: `
-            <p>Your blog has been successfully published to Shopify.</p>
-            <p style="margin-top: 12px;"><strong>Article URL:</strong></p>
-            <p style="word-break: break-all;"><a href="${publishResult.data.article.url}" target="_blank">${publishResult.data.article.url}</a></p>
+            <p>Your blog has been saved to Shopify as a draft.</p>
+            <p style="margin-top: 12px;">You can publish it from the Shopify admin when ready.</p>
           `,
           confirmButtonText: 'View Dashboard',
         });
@@ -605,14 +604,14 @@ export function BloggerCreatePage() {
         clearAutoSave();
         navigate('/blogger');
       } else {
-        throw new Error(publishResult.error?.message || 'Failed to publish to Shopify');
+        throw new Error(publishResult.error?.message || 'Failed to save to Shopify');
       }
     } catch (error) {
-      console.error('Error publishing to Shopify:', error);
+      console.error('Error saving to Shopify:', error);
       Swal.fire({
         icon: 'error',
-        title: 'Publishing Failed',
-        text: error instanceof Error ? error.message : 'Failed to publish blog to Shopify. The blog has been saved as a draft.',
+        title: 'Save to Shopify Failed',
+        text: error instanceof Error ? error.message : 'Failed to save blog to Shopify. The blog has been saved locally as a draft.',
       });
     } finally {
       setIsLoading(false);
@@ -627,7 +626,7 @@ export function BloggerCreatePage() {
       showCancelButton: true,
       showDenyButton: true,
       confirmButtonText: '<i class="fas fa-save"></i> Save as Draft',
-      denyButtonText: '<i class="fas fa-upload"></i> Publish to Shopify',
+      denyButtonText: '<i class="fas fa-upload"></i> Save to Shopify Draft',
       cancelButtonText: 'Cancel',
       confirmButtonColor: '#3b82f6',
       denyButtonColor: '#10b981',

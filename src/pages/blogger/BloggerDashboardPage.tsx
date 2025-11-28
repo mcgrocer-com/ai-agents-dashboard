@@ -188,7 +188,7 @@ export function BloggerDashboardPage() {
                 : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >
-            Published on Shopify
+            Shopify Drafts
           </button>
         </div>
 
@@ -204,7 +204,7 @@ export function BloggerDashboardPage() {
               <p className="text-2xl font-bold text-gray-700">{stats.drafts}</p>
             </div>
             <div className="bg-green-50 rounded-lg p-3">
-              <p className="text-xs text-gray-600 mb-1">Published</p>
+              <p className="text-xs text-gray-600 mb-1">Saved to Shopify</p>
               <p className="text-2xl font-bold text-green-600">{stats.published}</p>
             </div>
             <div className="bg-yellow-50 rounded-lg p-3">
@@ -241,7 +241,7 @@ export function BloggerDashboardPage() {
               >
                 <option value="all">All Status</option>
                 <option value="draft">Draft</option>
-                <option value="published">Published</option>
+                <option value="published">Saved to Shopify</option>
                 <option value="archived">Archived</option>
               </select>
             </div>
@@ -293,12 +293,14 @@ export function BloggerDashboardPage() {
               </div>
             ) : shopifyBlogs.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-gray-500">No published blogs found on Shopify</p>
+                <p className="text-gray-500">No drafts found on Shopify</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {shopifyBlogs.map((article) => {
-                  const blogUrl = `https://mcgrocer-com.myshopify.com/blogs/${article.blog?.handle}/${article.handle}`;
+                  // Extract numeric ID from GID format (gid://shopify/Article/123456789)
+                  const numericId = (article as any).numericId || article.id.split('/').pop();
+                  const adminUrl = `https://mcgrocer-com.myshopify.com/admin/articles/${numericId}`;
                   return (
                     <div
                       key={article.id}
@@ -353,12 +355,12 @@ export function BloggerDashboardPage() {
                           </div>
                         )}
                         <a
-                          href={blogUrl}
+                          href={adminUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
                         >
-                          View on Shopify
+                          Edit in Shopify
                           <ExternalLink className="w-4 h-4" />
                         </a>
                       </div>
@@ -377,7 +379,7 @@ export function BloggerDashboardPage() {
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={confirmDelete}
         title="Delete Blog"
-        message="Are you sure you want to delete this blog? If published to Shopify, it will also be removed from there."
+        message="Are you sure you want to delete this blog? If saved to Shopify, it will also be removed from there."
         confirmText="Delete"
         cancelText="Cancel"
         variant="danger"

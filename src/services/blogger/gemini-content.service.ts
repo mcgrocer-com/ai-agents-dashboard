@@ -33,7 +33,7 @@ export interface GeminiBlogRequest {
  */
 export interface ProcessingLog {
   timestamp: number;
-  type: 'info' | 'function_call' | 'function_response' | 'success' | 'warning';
+  type: 'info' | 'function_call' | 'function_response' | 'success' | 'warning' | 'error';
   message: string;
 }
 
@@ -245,9 +245,18 @@ ${request.includeImages !== false ? `- NEVER use placeholder images or omit imag
 }
 
 /**
+ * Result from function call with optional error info
+ */
+interface FunctionCallResult {
+  data: any;
+  error?: string;
+  scrapingErrors?: string[];
+}
+
+/**
  * Handle function calls from Gemini
  */
-async function handleFunctionCall(functionName: string, args: any, request: GeminiBlogRequest) {
+async function handleFunctionCall(functionName: string, args: any, request: GeminiBlogRequest): Promise<FunctionCallResult> {
   console.log(`[Gemini] Function call: ${functionName}`, args);
 
   switch (functionName) {
@@ -255,46 +264,63 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
       const keywordsResult = await researchKeywordsService(args.topic);
       if (keywordsResult.success && keywordsResult.data) {
         const keywords = keywordsResult.data.keywords.slice(0, args.limit || 10);
-        return keywords.map(k => ({
-          keyword: k.keyword,
-          searchVolume: k.search_volume || k.volume || 0,
-          competition: k.competition || 'UNKNOWN',
-          intent: k.intent || 'informational',
-        }));
+        return {
+          data: keywords.map(k => ({
+            keyword: k.keyword,
+            searchVolume: k.search_volume || k.volume || 0,
+            competition: k.competition || 'UNKNOWN',
+            intent: k.intent || 'informational',
+          })),
+        };
       }
-      return [];
+      return { data: [], error: keywordsResult.error?.message || 'Failed to research keywords' };
 
     case 'getTopRankingArticles':
       // Use request.articlesResearchCount as the limit (default: 3)
       const articlesResearchCount = request.articlesResearchCount || 3;
       const articlesResult = await getTopRankingArticlesService(args.keyword, articlesResearchCount);
-      if (articlesResult.success && articlesResult.data && articlesResult.data.length > 0) {
-        // Automatically batch scrape articles based on articlesResearchCount setting
-        const topUrls = articlesResult.data.slice(0, articlesResearchCount).map(a => a.url);
 
-        console.log(`[Gemini] Auto-scraping top ${topUrls.length} articles in batch...`);
-        const batchResult = await scrapeArticlesBatch(topUrls);
-
-        const scrapedArticles: any[] = [];
-        if (batchResult.success && batchResult.data) {
-          batchResult.data.forEach(scraped => {
-            if (scraped.success) {
-              const words = scraped.text.split(/\s+/);
-              const condensedText = words.slice(0, 2000).join(' ');
-
-              scrapedArticles.push({
-                url: scraped.url,
-                title: scraped.title,
-                text: condensedText,
-                fullWordCount: scraped.wordCount,
-                condensedWordCount: Math.min(2000, words.length),
-                headings: scraped.headings.slice(0, 20),
-              });
-            }
-          });
-        }
-
+      if (!articlesResult.success || !articlesResult.data || articlesResult.data.length === 0) {
         return {
+          data: { articles: [], scrapedContent: [] },
+          error: articlesResult.error?.message || `No top-ranking articles found for "${args.keyword}"`,
+        };
+      }
+
+      // Automatically batch scrape articles based on articlesResearchCount setting
+      const topUrls = articlesResult.data.slice(0, articlesResearchCount).map(a => a.url);
+
+      console.log(`[Gemini] Auto-scraping top ${topUrls.length} articles in batch...`);
+      const batchResult = await scrapeArticlesBatch(topUrls);
+
+      const scrapedArticles: any[] = [];
+      const scrapingErrors: string[] = [];
+
+      if (batchResult.success && batchResult.data) {
+        batchResult.data.forEach(scraped => {
+          if (scraped.success) {
+            const words = scraped.text.split(/\s+/);
+            const condensedText = words.slice(0, 2000).join(' ');
+
+            scrapedArticles.push({
+              url: scraped.url,
+              title: scraped.title,
+              text: condensedText,
+              fullWordCount: scraped.wordCount,
+              condensedWordCount: Math.min(2000, words.length),
+              headings: scraped.headings.slice(0, 20),
+            });
+          } else {
+            // Track scraping failures
+            scrapingErrors.push(`Failed to scrape: ${scraped.url}`);
+          }
+        });
+      } else if (batchResult.error) {
+        scrapingErrors.push(`Batch scraping failed: ${batchResult.error.message}`);
+      }
+
+      return {
+        data: {
           articles: articlesResult.data.slice(0, articlesResearchCount).map(a => ({
             position: a.position,
             title: a.title,
@@ -303,23 +329,25 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
           })),
           scrapedContent: scrapedArticles,
           note: `Automatically scraped top ${scrapedArticles.length} articles for competitive analysis`,
-        };
-      }
-      return { articles: [], scrapedContent: [] };
+        },
+        scrapingErrors: scrapingErrors.length > 0 ? scrapingErrors : undefined,
+      };
 
     case 'searchProducts':
       const productsResult = await searchProducts(args.query, args.limit || 5);
       if (productsResult.success && productsResult.data) {
-        return productsResult.data.products.map(p => ({
-          title: p.title,
-          url: p.url,
-          handle: p.handle,
-          description: p.description || '',
-          price: p.price || 'Price varies',
-          image_url: p.image_url || '',
-        }));
+        return {
+          data: productsResult.data.products.map(p => ({
+            title: p.title,
+            url: p.url,
+            handle: p.handle,
+            description: p.description || '',
+            price: p.price || 'Price varies',
+            image_url: p.image_url || '',
+          })),
+        };
       }
-      return [];
+      return { data: [], error: productsResult.error?.message || `No products found for "${args.query}"` };
 
     default:
       throw new Error(`Unknown function: ${functionName}`);
@@ -426,24 +454,49 @@ Begin with researchKeywords now.`
             request
           );
 
+          // Log any errors from the function call
+          if (functionResult.error) {
+            addLog('error', functionResult.error);
+          }
+
+          // Log any scraping errors
+          if (functionResult.scrapingErrors) {
+            functionResult.scrapingErrors.forEach(err => addLog('error', err));
+          }
+
           // Log the function response and track data
-          if (fc.functionCall.name === 'researchKeywords' && Array.isArray(functionResult)) {
-            addLog('function_response', `Found ${functionResult.length} keyword suggestions for "${fc.functionCall.args.topic}"`);
-          } else if (fc.functionCall.name === 'getTopRankingArticles' && functionResult && !Array.isArray(functionResult)) {
+          if (fc.functionCall.name === 'researchKeywords') {
+            const keywords = functionResult.data;
+            if (Array.isArray(keywords) && keywords.length > 0) {
+              addLog('function_response', `Found ${keywords.length} keyword suggestions for "${fc.functionCall.args.topic}"`);
+            } else if (!functionResult.error) {
+              addLog('error', `No keywords found for "${fc.functionCall.args.topic}"`);
+            }
+          } else if (fc.functionCall.name === 'getTopRankingArticles') {
             selectedKeyword = fc.functionCall.args.keyword;
-            const result = functionResult as any;
-            const totalArticles = result.articles?.length || 0;
-            articlesAnalyzed = result.scrapedContent?.length || 0;
-            const urls = result.scrapedContent?.map((s: any) => s.url) || [];
-            addLog('function_response', `Found ${totalArticles} top-ranking articles for "${selectedKeyword}" (automatically scraped top ${articlesAnalyzed})`);
-            urls.map((url: string) => addLog('function_response', `Scraped article: words: ${result.scrapedContent?.find((s: any) => s.url === url)?.fullWordCount || 0} ${url}`));
-          } else if (fc.functionCall.name === 'searchProducts' && Array.isArray(functionResult)) {
-            addLog('function_response', `Found ${functionResult.length} products for "${fc.functionCall.args.query}"`);
+            const data = functionResult.data;
+            const totalArticles = data?.articles?.length || 0;
+            articlesAnalyzed = data?.scrapedContent?.length || 0;
+
+            if (totalArticles === 0) {
+              addLog('error', `Found 0 top-ranking articles for "${selectedKeyword}"`);
+            } else {
+              addLog('function_response', `Found ${totalArticles} top-ranking articles for "${selectedKeyword}" (automatically scraped top ${articlesAnalyzed})`);
+              const urls = data?.scrapedContent?.map((s: any) => s.url) || [];
+              urls.forEach((url: string) => addLog('function_response', `Scraped article: words: ${data?.scrapedContent?.find((s: any) => s.url === url)?.fullWordCount || 0} ${url}`));
+            }
+          } else if (fc.functionCall.name === 'searchProducts') {
+            const products = functionResult.data;
+            if (Array.isArray(products) && products.length > 0) {
+              addLog('function_response', `Found ${products.length} products for "${fc.functionCall.args.query}"`);
+            } else if (!functionResult.error) {
+              addLog('error', `No products found for "${fc.functionCall.args.query}"`);
+            }
           }
 
           // Track product handles
-          if (fc.functionCall.name === 'searchProducts' && Array.isArray(functionResult)) {
-            functionResult.forEach((p: any) => {
+          if (fc.functionCall.name === 'searchProducts' && Array.isArray(functionResult.data)) {
+            functionResult.data.forEach((p: any) => {
               if (p.handle && !productLinksUsed.includes(p.handle)) {
                 productLinksUsed.push(p.handle);
               }
@@ -452,9 +505,9 @@ Begin with researchKeywords now.`
 
           // Return function response in the correct format for Gemini API
           // Wrap array results in an object with a 'products' key
-          const wrappedResponse = Array.isArray(functionResult)
-            ? { products: functionResult }
-            : functionResult;
+          const wrappedResponse = Array.isArray(functionResult.data)
+            ? { products: functionResult.data }
+            : functionResult.data;
 
           return {
             functionResponse: {

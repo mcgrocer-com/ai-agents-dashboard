@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Eye, Code, Sparkles, RefreshCw, Cpu, CheckCircle, AlertCircle, Info, Settings } from 'lucide-react';
+import { Eye, Code, Sparkles, RefreshCw, Cpu, CheckCircle, AlertCircle, Info, Settings, XCircle } from 'lucide-react';
 import type { ProcessingLog } from '@/services/blogger/gemini-content.service';
 
 interface ContentEditorProps {
@@ -43,6 +43,8 @@ export function ContentEditor({
         return <CheckCircle className="w-4 h-4 text-green-600" />;
       case 'warning':
         return <AlertCircle className="w-4 h-4 text-yellow-600" />;
+      case 'error':
+        return <XCircle className="w-4 h-4 text-red-600" />;
       case 'function_call':
         return <Cpu className="w-4 h-4 text-blue-600" />;
       case 'function_response':
@@ -58,6 +60,8 @@ export function ContentEditor({
         return 'text-green-700 bg-green-50 border-green-200';
       case 'warning':
         return 'text-yellow-700 bg-yellow-50 border-yellow-200';
+      case 'error':
+        return 'text-red-700 bg-red-50 border-red-200';
       case 'function_call':
         return 'text-blue-700 bg-blue-50 border-blue-200';
       case 'function_response':
@@ -168,8 +172,8 @@ export function ContentEditor({
         </div>
       </div>
 
-      {/* Processing Logs - Show during generation below Regenerate button */}
-      {isLoading && hasContent && (
+      {/* Processing Logs - Show during generation (both new and regenerate) */}
+      {isLoading && (
         <div className="bg-white border border-gray-300 rounded-lg p-4">
           <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
             <Cpu className="w-4 h-4" />

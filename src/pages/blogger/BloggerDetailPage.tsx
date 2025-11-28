@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, Eye } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, Eye, ExternalLink } from 'lucide-react';
 import { BlogPreview } from '@/components/blogger';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Toast } from '@/components/ui/Toast';
@@ -150,7 +150,7 @@ export function BloggerDetailPage() {
           await updateBlog(id, { shopify_article_id: shopifyArticleId });
         }
         loadBlog();
-        setToast({ message: 'Blog published successfully to Shopify!', type: 'success' });
+        setToast({ message: 'Blog saved to Shopify as draft!', type: 'success' });
       } else {
         setToast({ message: `Failed to publish blog: ${result.error?.message || 'Unknown error'}`, type: 'error' });
       }
@@ -175,13 +175,13 @@ export function BloggerDetailPage() {
         await updateBlogStatus(id, 'draft');
         await updateBlog(id, { shopify_article_id: null });
         loadBlog();
-        setToast({ message: 'Blog unpublished successfully from Shopify!', type: 'success' });
+        setToast({ message: 'Blog removed from Shopify successfully!', type: 'success' });
       } else {
-        setToast({ message: `Failed to unpublish blog: ${result.error?.message || 'Unknown error'}`, type: 'error' });
+        setToast({ message: `Failed to remove blog from Shopify: ${result.error?.message || 'Unknown error'}`, type: 'error' });
       }
     } catch (error) {
-      console.error('Error unpublishing blog:', error);
-      setToast({ message: `Error unpublishing blog: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
+      console.error('Error removing blog from Shopify:', error);
+      setToast({ message: `Error removing blog from Shopify: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
     } finally {
       setIsPublishing(false);
     }
@@ -257,19 +257,32 @@ export function BloggerDetailPage() {
                   flex items-center gap-2 disabled:opacity-50"
               >
                 <Send className="w-4 h-4" />
-                Publish to Shopify
+                Save to Shopify Draft
               </button>
             )}
 
-            {blog.status === 'published' && (
+            {blog.shopify_article_id && (
+              <a
+                href={`https://mcgrocer-com.myshopify.com/admin/articles/${blog.shopify_article_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700
+                  flex items-center gap-2"
+              >
+                <ExternalLink className="w-4 h-4" />
+                View on Shopify
+              </a>
+            )}
+
+            {blog.shopify_article_id && (
               <button
                 onClick={handleUnpublish}
                 disabled={isPublishing}
                 className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700
                   flex items-center gap-2 disabled:opacity-50"
               >
-                <Eye className="w-4 h-4" />
-                {isPublishing ? 'Unpublishing...' : 'Unpublish'}
+                <Trash2 className="w-4 h-4" />
+                {isPublishing ? 'Removing...' : 'Remove from Shopify'}
               </button>
             )}
 
@@ -333,7 +346,7 @@ export function BloggerDetailPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Publish to Shopify
+                Save to Shopify Draft
               </h3>
 
               <div className="mb-4">
@@ -352,7 +365,7 @@ export function BloggerDetailPage() {
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Choose which Shopify blog to publish this article to
+                  Choose which Shopify blog to save this article to
                 </p>
               </div>
 
@@ -384,12 +397,12 @@ export function BloggerDetailPage() {
                   {isPublishing ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                      Publishing...
+                      Saving...
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      Publish
+                      Save as Draft
                     </>
                   )}
                 </button>
