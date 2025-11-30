@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, Eye, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, ExternalLink } from 'lucide-react';
 import { BlogPreview } from '@/components/blogger';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Toast } from '@/components/ui/Toast';

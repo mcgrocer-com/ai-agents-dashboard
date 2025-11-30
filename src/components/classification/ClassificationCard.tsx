@@ -1,6 +1,7 @@
 /**
  * Classification Card Component
  * Displays product with classification information
+ * Clickable to open classification dialog
  */
 
 import { CheckCircle, XCircle, RotateCcw } from 'lucide-react'
@@ -13,6 +14,7 @@ interface ClassificationCardProps {
   onAccept?: (productId: string) => void
   onReject?: (productId: string) => void
   onRetry?: (productId: string) => void
+  onClick?: (product: ClassifiedProduct) => void
 }
 
 const ClassificationCard = ({
@@ -20,12 +22,29 @@ const ClassificationCard = ({
   isAdmin,
   onAccept,
   onReject,
-  onRetry
+  onRetry,
+  onClick
 }: ClassificationCardProps) => {
   const defaultImage = 'https://via.placeholder.com/150?text=No+Image'
 
+  const handleCardClick = () => {
+    if (onClick) {
+      onClick(product)
+    }
+  }
+
+  const handleButtonClick = (e: React.MouseEvent, callback: () => void) => {
+    e.stopPropagation()
+    callback()
+  }
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-secondary-200 p-4 hover:shadow-md transition-shadow">
+    <div
+      onClick={handleCardClick}
+      className={`bg-white rounded-xl shadow-sm border border-secondary-200 p-4 transition-all ${
+        onClick ? 'hover:shadow-md hover:border-blue-300 cursor-pointer' : 'hover:shadow-md'
+      }`}
+    >
       <div className="flex gap-4">
         {/* Product Image */}
         <div className="flex-shrink-0">
@@ -72,7 +91,7 @@ const ClassificationCard = ({
             <div className="flex gap-2 mt-3">
               {product.rejected && onAccept && (
                 <button
-                  onClick={() => onAccept(product.id)}
+                  onClick={(e) => handleButtonClick(e, () => onAccept(product.id))}
                   className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
                 >
                   <CheckCircle className="w-3.5 h-3.5 mr-1" />
@@ -81,7 +100,7 @@ const ClassificationCard = ({
               )}
               {!product.rejected && onReject && (
                 <button
-                  onClick={() => onReject(product.id)}
+                  onClick={(e) => handleButtonClick(e, () => onReject(product.id))}
                   className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
                 >
                   <XCircle className="w-3.5 h-3.5 mr-1" />
@@ -90,7 +109,7 @@ const ClassificationCard = ({
               )}
               {onRetry && (
                 <button
-                  onClick={() => onRetry(product.id)}
+                  onClick={(e) => handleButtonClick(e, () => onRetry(product.id))}
                   className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-secondary-700 bg-secondary-100 hover:bg-secondary-200 rounded-lg transition-colors"
                 >
                   <RotateCcw className="w-3.5 h-3.5 mr-1" />

@@ -4,19 +4,16 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Search, Package, ShieldCheck, MessageSquare, X, RefreshCw } from 'lucide-react'
+import { Search, Package, ShieldCheck, X, RefreshCw } from 'lucide-react'
 import ClassificationStats from '@/components/classification/ClassificationStats'
-import ClassificationCard from '@/components/classification/ClassificationCard'
-import ManualOverrideDialog from '@/components/classification/ManualOverrideDialog'
-import { AgentGuidelinesDialog } from '@/components/agents/AgentGuidelinesDialog'
+import { ClassificationItem } from '@/components/classification/ClassificationItem'
+import { ChangeClassificationDialog } from '@/components/classification/ChangeClassificationDialog'
 import { Pagination } from '@/components/ui/Pagination'
 import { Toast, useToast } from '@/components/ui/Toast'
 import {
   getClassifiedProducts,
   getClassificationStats,
-  acceptProduct,
-  rejectProduct,
-  retryClassification,
+  updateClassification,
   getVendors
 } from '@/services/classification.service'
 import type {
@@ -42,10 +39,9 @@ const ClassificationAgentPage = () => {
   const [totalCount, setTotalCount] = useState(0)
 
   // Dialog state
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [dialogMode, setDialogMode] = useState<'accept' | 'reject'>('accept')
   const [selectedProduct, setSelectedProduct] = useState<ClassifiedProduct | null>(null)
-  const [showGuidelines, setShowGuidelines] = useState(false)
+  const [changeDialogOpen, setChangeDialogOpen] = useState(false)
+  const [changeDialogLoading, setChangeDialogLoading] = useState(false)
 
   // Toast notifications
   const { toast, showToast, hideToast } = useToast()
@@ -108,70 +104,32 @@ const ClassificationAgentPage = () => {
     }
   }
 
-  const handleAcceptClick = (productId: string) => {
-    const product = products.find(p => p.id === productId)
-    if (product) {
-      setSelectedProduct(product)
-      setDialogMode('accept')
-      setDialogOpen(true)
-    }
+  const handleCardClick = (product: ClassifiedProduct) => {
+    setSelectedProduct(product)
+    setChangeDialogOpen(true)
   }
 
-  const handleRejectClick = (productId: string) => {
-    const product = products.find(p => p.id === productId)
-    if (product) {
-      setSelectedProduct(product)
-      setDialogMode('reject')
-      setDialogOpen(true)
-    }
-  }
-
-  const handleDialogConfirm = async (reason: string, classification?: ClassificationType) => {
-    if (!selectedProduct) return
-
+  const handleSaveClassification = async (
+    productId: string,
+    classification: ClassificationType,
+    reason: string
+  ) => {
+    setChangeDialogLoading(true)
     try {
-      if (dialogMode === 'accept') {
-        const result = await acceptProduct(selectedProduct.id, reason)
-        if (result.success) {
-          showToast('Product accepted successfully', 'success')
-          fetchData()
-        } else {
-          showToast(result.error?.message || 'Failed to accept product', 'error')
-        }
-      } else {
-        if (!classification) {
-          showToast('Please select a classification type', 'error')
-          return
-        }
-        const result = await rejectProduct(selectedProduct.id, reason, classification)
-        if (result.success) {
-          showToast('Product rejected successfully', 'success')
-          fetchData()
-        } else {
-          showToast(result.error?.message || 'Failed to reject product', 'error')
-        }
-      }
-    } catch (error) {
-      console.error('Error handling override:', error)
-      showToast('An error occurred while processing', 'error')
-    } finally {
-      setDialogOpen(false)
-      setSelectedProduct(null)
-    }
-  }
-
-  const handleRetry = async (productId: string) => {
-    try {
-      const result = await retryClassification(productId)
+      const result = await updateClassification(productId, classification, reason)
       if (result.success) {
-        showToast('Classification retry initiated', 'success')
+        showToast('Classification updated successfully', 'success')
+        setChangeDialogOpen(false)
+        setSelectedProduct(null)
         fetchData()
       } else {
-        showToast(result.error?.message || 'Failed to retry', 'error')
+        showToast(result.error?.message || 'Failed to update classification', 'error')
       }
     } catch (error) {
-      console.error('Error retrying classification:', error)
+      console.error('Error updating classification:', error)
       showToast('An error occurred', 'error')
+    } finally {
+      setChangeDialogLoading(false)
     }
   }
 
@@ -184,17 +142,6 @@ const ClassificationAgentPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Action Buttons */}
-      <div className="flex gap-3 justify-end">
-        <button
-          onClick={() => setShowGuidelines(true)}
-          className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2 text-sm font-medium"
-        >
-          <MessageSquare className="h-4 w-4" />
-          <span>Send Guidelines</span>
-        </button>
-      </div>
-
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-secondary-200 p-6">
         <div className="flex items-center gap-4">
@@ -321,15 +268,12 @@ const ClassificationAgentPage = () => {
         </div>
       ) : (
         <>
-          <div className="grid gap-4">
+          <div className="space-y-3">
             {products.map((product) => (
-              <ClassificationCard
+              <ClassificationItem
                 key={product.id}
                 product={product}
-                isAdmin={true}
-                onAccept={handleAcceptClick}
-                onReject={handleRejectClick}
-                onRetry={handleRetry}
+                onClick={handleCardClick}
               />
             ))}
           </div>
@@ -369,33 +313,26 @@ const ClassificationAgentPage = () => {
             </ul>
           </div>
           <div className="space-y-2">
-            <h3 className="font-medium text-secondary-900">Actions</h3>
+            <h3 className="font-medium text-secondary-900">How to Use</h3>
             <ul className="text-secondary-600 space-y-1 list-disc list-inside">
-              <li><strong>Accept</strong> - Approve AI classification</li>
-              <li><strong>Reject</strong> - Override with correct type</li>
-              <li><strong>Retry</strong> - Re-run classification</li>
+              <li><strong>Click</strong> - Click any product to change its classification</li>
+              <li><strong>Review</strong> - View product details and current status</li>
+              <li><strong>Update</strong> - Select the correct classification type</li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* Dialogs */}
-      <ManualOverrideDialog
-        isOpen={dialogOpen}
+      {/* Change Classification Dialog */}
+      <ChangeClassificationDialog
+        isOpen={changeDialogOpen}
+        product={selectedProduct}
         onClose={() => {
-          setDialogOpen(false)
+          setChangeDialogOpen(false)
           setSelectedProduct(null)
         }}
-        onConfirm={handleDialogConfirm}
-        mode={dialogMode}
-        productName={selectedProduct?.name || 'Unknown Product'}
-      />
-
-      <AgentGuidelinesDialog
-        open={showGuidelines}
-        onClose={() => setShowGuidelines(false)}
-        agentType="classification"
-        onSuccess={() => showToast('Guidelines updated successfully', 'success')}
+        onSave={handleSaveClassification}
+        isLoading={changeDialogLoading}
       />
 
       {/* Toast */}

@@ -402,6 +402,18 @@ export function ProductDetailPage() {
 
   const alternativeImages = extractAlternativeImages(product.images)
 
+  // Generate McGrocer URL slug from product name
+  const generateSlug = (name: string): string => {
+    return name
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '') // Remove special characters
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+      .trim()
+  }
+
+  const mcgrocerSlug = product.name ? generateSlug(product.name) : undefined
+
   // Determine navigation source from location state or default to scraper agent
   const fromPage = (location.state as any)?.from || 'scraper-agent'
 
@@ -467,6 +479,7 @@ export function ProductDetailPage() {
         onEdit={handleEdit}
         onPushToErpnext={handlePushToErpnext}
         pushing={pushing}
+        mcgrocerSlug={mcgrocerSlug}
       />
 
       {/* Agent Status Overview Cards */}

@@ -267,6 +267,66 @@ export async function rejectProduct(
 }
 
 /**
+ * Update product classification (manual override)
+ * Can change any product's classification type and reason
+ */
+export async function updateClassification(
+  productId: string,
+  classification: ClassificationType,
+  reason: string
+): Promise<ServiceResponse<{ message: string }>> {
+  try {
+    // Determine if the new classification should mark as rejected
+    const isRejected = classification === 'pharmacy' || classification === 'pom' || classification === 'unclear'
+
+    // Update scraped_products with new classification
+    const { error: updateError } = await supabase
+      .from('scraped_products')
+      .update({
+        rejected: isRejected,
+        classification: classification,
+        classification_reason: `Manual override: ${reason}`,
+        classification_confidence: 1.0 // Manual overrides have 100% confidence
+      })
+      .eq('id', productId)
+
+    if (updateError) {
+      console.error('[Classification Service] Error updating classification:', updateError)
+      return {
+        data: null,
+        error: new Error(updateError.message),
+        success: false
+      }
+    }
+
+    // If rejected, remove from pending_products
+    if (isRejected) {
+      const { error: deleteError } = await supabase
+        .from('pending_products')
+        .delete()
+        .eq('scraped_product_id', productId)
+
+      if (deleteError) {
+        console.warn('[Classification Service] Warning: Failed to remove from pending_products:', deleteError)
+      }
+    }
+
+    return {
+      data: { message: 'Classification updated successfully.' },
+      error: null,
+      success: true
+    }
+  } catch (error) {
+    console.error('[Classification Service] Unexpected error:', error)
+    return {
+      data: null,
+      error: error as Error,
+      success: false
+    }
+  }
+}
+
+/**
  * Retry classification for a product
  * Calls standalone classify-product edge function to re-classify
  * Note: This ONLY classifies. Pushing to pending_products is handled by the database webhook.

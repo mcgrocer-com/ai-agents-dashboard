@@ -25,6 +25,7 @@ interface ProductHeaderProps {
   onEdit?: () => void
   onPushToErpnext?: () => void
   pushing?: boolean
+  mcgrocerSlug?: string
 }
 
 export function ProductHeader({
@@ -45,7 +46,11 @@ export function ProductHeader({
   onEdit,
   onPushToErpnext,
   pushing = false,
+  mcgrocerSlug,
 }: ProductHeaderProps) {
+  // Check if product is synced to ERPNext
+  const isSynced = erpnextUpdatedAt && (!failedSyncAt || new Date(erpnextUpdatedAt) > new Date(failedSyncAt))
+  const mcgrocerUrl = mcgrocerSlug ? `https://mcgrocer.com/products/${mcgrocerSlug}` : null
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
       <div className="flex gap-6">
@@ -216,18 +221,32 @@ export function ProductHeader({
             )}
           </div>
 
-          {productUrl && (
-            <div className="mt-2">
-              <a
-                href={productUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-blue-600
-                  hover:text-blue-700"
-              >
-                <ExternalLink className="h-4 w-4" />
-                View Original Product
-              </a>
+          {(productUrl || (isSynced && mcgrocerUrl)) && (
+            <div className="mt-2 flex flex-wrap items-center gap-4">
+              {productUrl && (
+                <a
+                  href={productUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-blue-600
+                    hover:text-blue-700"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View Original Product
+                </a>
+              )}
+              {isSynced && mcgrocerUrl && (
+                <a
+                  href={mcgrocerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-green-600
+                    hover:text-green-700"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View on McGrocer
+                </a>
+              )}
             </div>
           )}
 
