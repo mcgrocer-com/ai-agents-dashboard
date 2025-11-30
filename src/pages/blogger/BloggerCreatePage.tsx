@@ -65,7 +65,7 @@ export function BloggerCreatePage() {
   // Generation Settings Dialog
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [generationSettings, setGenerationSettings] = useState<BlogGenerationSettings>({
-    model: 'gemini-2.0-flash-exp',
+    model: 'gemini-2.5-flash', // Default to stable, recommended model
     includeImages: true,
     articlesResearchCount: 3,
   });

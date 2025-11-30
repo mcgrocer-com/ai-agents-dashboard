@@ -15,7 +15,7 @@ interface BlogGenerationSettingsProps {
 }
 
 export interface BlogGenerationSettings {
-  model: 'gemini-2.0-flash-exp' | 'gemini-2.5-pro-exp' | 'gemini-3-pro-preview';
+  model: 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash' | 'gemini-2.0-flash-exp' | 'gemini-flash-latest';
   includeImages: boolean;
   articlesResearchCount: number;
 }
@@ -32,9 +32,31 @@ export function BlogGenerationSettingsDialog({
   if (!isOpen) return null;
 
   const modelOptions = [
-    { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash', description: 'Fast generation' },
-    { value: 'gemini-2.5-pro-exp', label: 'Gemini 2.5 Pro', description: 'Advanced quality' },
-    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro', description: 'Latest model (Nov 2025)' },
+    {
+      value: 'gemini-2.5-flash',
+      label: 'Gemini 2.5 Flash (Recommended)',
+      description: 'Fast, stable, best balance of speed and quality'
+    },
+    {
+      value: 'gemini-2.5-pro',
+      label: 'Gemini 2.5 Pro',
+      description: 'Most powerful, slower but higher quality output'
+    },
+    {
+      value: 'gemini-2.0-flash',
+      label: 'Gemini 2.0 Flash',
+      description: 'Alternative stable version'
+    },
+    {
+      value: 'gemini-flash-latest',
+      label: 'Gemini Flash Latest',
+      description: 'Latest stable version with newest features'
+    },
+    {
+      value: 'gemini-2.0-flash-exp',
+      label: 'Gemini 2.0 Flash Experimental',
+      description: 'Experimental (may have quota limits)'
+    },
   ];
 
   const handleConfirm = () => {

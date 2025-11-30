@@ -16,13 +16,35 @@ import type { BloggerPersona, BloggerTemplate, ServiceResponse } from '@/types/b
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
 /**
+ * Available Gemini models for blog generation
+ */
+export type GeminiModel =
+  | 'gemini-2.5-flash'          // Stable, fast, recommended (default)
+  | 'gemini-2.5-pro'            // More powerful, slower
+  | 'gemini-2.0-flash'          // Alternative stable version
+  | 'gemini-2.0-flash-exp'      // Experimental (may have quota limits)
+  | 'gemini-flash-latest';      // Latest version
+
+/**
+ * Model fallback priority order
+ * If primary model fails due to quota, automatically try these in order
+ */
+const MODEL_FALLBACK_CHAIN: GeminiModel[] = [
+  'gemini-2.5-flash',      // Best balance of speed and quality
+  'gemini-2.0-flash',      // Proven stable alternative
+  'gemini-2.5-pro',        // More powerful if needed
+  'gemini-flash-latest',   // Latest features
+  'gemini-2.0-flash-exp',  // Experimental (last resort)
+];
+
+/**
  * Request for blog generation
  */
 export interface GeminiBlogRequest {
   topic: string;
   persona: BloggerPersona;
   template: BloggerTemplate;
-  model?: 'gemini-2.0-flash-exp' | 'gemini-2.5-pro-exp' | 'gemini-3-pro-preview';
+  model?: GeminiModel;
   includeImages?: boolean;  // Include product images in content
   articlesResearchCount?: number;  // Number of top articles to scrape (3-10, default: 3)
   onLogUpdate?: (logs: ProcessingLog[]) => void;  // Real-time log callback
@@ -254,6 +276,34 @@ interface FunctionCallResult {
 }
 
 /**
+ * Check if error is a rate limit / quota exceeded error
+ */
+function isRateLimitError(error: any): boolean {
+  const errorMessage = error?.message || String(error);
+  return (
+    errorMessage.includes('429') ||
+    errorMessage.includes('quota') ||
+    errorMessage.includes('Too Many Requests') ||
+    errorMessage.includes('exceeded')
+  );
+}
+
+/**
+ * Get user-friendly error message for rate limit errors
+ */
+function getRateLimitMessage(model: string, error: any): string {
+  const errorMessage = error?.message || String(error);
+
+  if (errorMessage.includes('per_day')) {
+    return `Daily quota exceeded for ${model}. Trying alternative model...`;
+  } else if (errorMessage.includes('per_minute')) {
+    return `Rate limit exceeded for ${model} (too many requests). Trying alternative model...`;
+  } else {
+    return `Quota limit reached for ${model}. Trying alternative model...`;
+  }
+}
+
+/**
  * Handle function calls from Gemini
  */
 async function handleFunctionCall(functionName: string, args: any, request: GeminiBlogRequest): Promise<FunctionCallResult> {
@@ -355,7 +405,302 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
 }
 
 /**
- * Generate blog content using Gemini 2.0 Flash with function calling
+ * Generate blog content using Gemini with function calling
+ * Internal implementation - use generateBlogWithGemini() for automatic fallback
+ */
+async function generateBlogWithModel(
+  request: GeminiBlogRequest,
+  modelName: GeminiModel,
+  addLog: (type: ProcessingLog['type'], message: string) => void
+): Promise<GeminiBlogResponse> {
+  // Step 1: Build rich system prompt
+  const systemPrompt = buildSystemPrompt(
+    request.persona,
+    request.template,
+    request
+  );
+
+  // Step 2: Initialize Gemini model with function calling
+  addLog('info', `Initializing ${modelName} with function calling support`);
+
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    tools: [{ functionDeclarations: functionDeclarations as any }],
+  });
+
+  // Step 3: Generate content with autonomous agent workflow
+  addLog('info', 'Instructing AI agent to research keywords, analyze competitors, and find products...');
+
+  const chat = model.startChat({
+    history: [
+      {
+        role: 'user',
+        parts: [{ text: systemPrompt }],
+      },
+    ],
+  });
+
+  let result = await chat.sendMessage(
+    `START NOW: Follow the exact workflow described in your instructions:
+1. Call researchKeywords("${request.topic}") to get keyword suggestions
+2. Analyze the keywords and select the best one (state your choice explicitly)
+3. Call getTopRankingArticles("[selected keyword]") - this automatically scrapes ${request.articlesResearchCount || 3} articles!
+4. Call searchProducts() 3-5 times with different product queries
+5. Write the complete blog post with real product links
+
+Begin with researchKeywords now.`
+  );
+
+  // Step 4: Handle function calls iteratively
+  let functionCallCount = 0;
+  const maxFunctionCalls = 20; // Allow for keyword research + articles + product searches
+  const productLinksUsed: string[] = [];
+  let selectedKeyword = '';
+  let articlesAnalyzed = 0;
+
+  while (
+    result.response.candidates?.[0]?.content?.parts?.some(
+      part => part.functionCall
+    ) &&
+    functionCallCount < maxFunctionCalls
+  ) {
+    functionCallCount++;
+    addLog('info', `Processing function call batch ${functionCallCount}...`);
+
+    const functionCalls = result.response.candidates[0].content.parts.filter(
+      part => part.functionCall
+    );
+
+    // Execute all function calls
+    const functionResponseParts = await Promise.all(
+      functionCalls.map(async (fc: any) => {
+        // Log the function call
+        const argsStr = JSON.stringify(fc.functionCall.args);
+        addLog('function_call', `Calling ${fc.functionCall.name}(${argsStr})`);
+
+        const functionResult = await handleFunctionCall(
+          fc.functionCall.name,
+          fc.functionCall.args,
+          request
+        );
+
+        // Log any errors from the function call
+        if (functionResult.error) {
+          addLog('error', functionResult.error);
+        }
+
+        // Log any scraping errors
+        if (functionResult.scrapingErrors) {
+          functionResult.scrapingErrors.forEach(err => addLog('error', err));
+        }
+
+        // Log the function response and track data
+        if (fc.functionCall.name === 'researchKeywords') {
+          const keywords = functionResult.data;
+          if (Array.isArray(keywords) && keywords.length > 0) {
+            addLog('function_response', `Found ${keywords.length} keyword suggestions for "${fc.functionCall.args.topic}"`);
+          } else if (!functionResult.error) {
+            addLog('error', `No keywords found for "${fc.functionCall.args.topic}"`);
+          }
+        } else if (fc.functionCall.name === 'getTopRankingArticles') {
+          selectedKeyword = fc.functionCall.args.keyword;
+          const data = functionResult.data;
+          const totalArticles = data?.articles?.length || 0;
+          articlesAnalyzed = data?.scrapedContent?.length || 0;
+
+          if (totalArticles === 0) {
+            addLog('error', `Found 0 top-ranking articles for "${selectedKeyword}"`);
+          } else {
+            addLog('function_response', `Found ${totalArticles} top-ranking articles for "${selectedKeyword}" (automatically scraped top ${articlesAnalyzed})`);
+            const urls = data?.scrapedContent?.map((s: any) => s.url) || [];
+            urls.forEach((url: string) => addLog('function_response', `Scraped article: words: ${data?.scrapedContent?.find((s: any) => s.url === url)?.fullWordCount || 0} ${url}`));
+          }
+        } else if (fc.functionCall.name === 'searchProducts') {
+          const products = functionResult.data;
+          if (Array.isArray(products) && products.length > 0) {
+            addLog('function_response', `Found ${products.length} products for "${fc.functionCall.args.query}"`);
+          } else if (!functionResult.error) {
+            addLog('error', `No products found for "${fc.functionCall.args.query}"`);
+          }
+        }
+
+        // Track product handles
+        if (fc.functionCall.name === 'searchProducts' && Array.isArray(functionResult.data)) {
+          functionResult.data.forEach((p: any) => {
+            if (p.handle && !productLinksUsed.includes(p.handle)) {
+              productLinksUsed.push(p.handle);
+            }
+          });
+        }
+
+        // Return function response in the correct format for Gemini API
+        // Wrap array results in an object with a 'products' key
+        const wrappedResponse = Array.isArray(functionResult.data)
+          ? { products: functionResult.data }
+          : functionResult.data;
+
+        return {
+          functionResponse: {
+            name: fc.functionCall.name,
+            response: wrappedResponse as Record<string, unknown>,
+          },
+        };
+      })
+    );
+
+    // Send function responses back to Gemini
+    result = await chat.sendMessage(functionResponseParts);
+  }
+
+  // Step 6: Extract final content
+  const finalText = result.response.text();
+
+  if (!finalText || finalText.length < 500) {
+    throw new Error('Generated content is too short or empty');
+  }
+
+  // Clean up any markdown code blocks if present
+  let cleanContent = finalText
+    .replace(/```html\n?/g, '')
+    .replace(/```\n?/g, '')
+    .trim();
+
+  // Validate no placeholder links
+  const hasPlaceholderLinks = /<a\s+href=["']#["']/.test(cleanContent) ||
+    /href=["']PRODUCT_URL["']/.test(cleanContent);
+  if (hasPlaceholderLinks) {
+    addLog('warning', `Content contains placeholder links - AI may not have used searchProducts correctly`);
+  }
+
+  // Validate product images are embedded (only if includeImages is enabled)
+  if (request.includeImages !== false) {
+    const hasProductImages = /<img[^>]+src=["'][^"']+["'][^>]*>/.test(cleanContent);
+    if (!hasProductImages) {
+      addLog('warning', `Content does not contain product images - AI may not have embedded images from searchProducts`);
+    } else {
+      const imageCount = (cleanContent.match(/<img[^>]+>/g) || []).length;
+      addLog('info', `Product images embedded: ${imageCount} images`);
+    }
+  } else {
+    addLog('info', `Product images disabled - text links only`);
+  }
+
+  // Validate HTML structure
+  const hasH2 = /<h2[^>]*>/.test(cleanContent);
+  const hasH3 = /<h3[^>]*>/.test(cleanContent);
+  const hasParagraphs = /<p[^>]*>/.test(cleanContent);
+
+  if (!hasH2) {
+    addLog('warning', `Content missing <h2> tag - should have main heading`);
+  }
+  if (!hasH3) {
+    addLog('warning', `Content missing <h3> tags - should have section headings`);
+  }
+  if (!hasParagraphs) {
+    addLog('warning', `Content missing <p> tags - paragraphs should be wrapped`);
+  }
+
+  if (hasH2 && hasH3 && hasParagraphs) {
+    addLog('info', `✓ HTML structure validated (h2, h3, p tags present)`);
+  }
+
+  // Step 5.5: Fetch and append related blog links from Shopify
+  addLog('info', `Fetching related blog articles from Shopify...`);
+  const linksResult = await generateRelatedBlogLinks(request.topic, 5);
+
+  if (linksResult.success && linksResult.data && linksResult.data.length > 0) {
+    addLog('success', `✓ Found ${linksResult.data.length} related articles`);
+
+    // Append related articles section in HTML
+    const relatedSection = `
+
+<h2>Related Articles</h2>
+
+<p>For more information about ${request.topic}, check out these articles:</p>
+
+<ul>
+${linksResult.data.map(link => `  <li><a href="${link.url}" target="_blank">${link.title}</a></li>`).join('\n')}
+</ul>
+    `.trim();
+
+    cleanContent += '\n\n' + relatedSection;
+    addLog('success', `✓ Related articles section added (${linksResult.data.length} links)`);
+  } else {
+    addLog('info', `No related articles found for "${request.topic}"`);
+  }
+
+  // Calculate word count
+  const wordCount = cleanContent.split(/\s+/).length;
+
+  addLog('success', `✓ Blog content generated successfully!`);
+  addLog('info', `Selected keyword: "${selectedKeyword}"`);
+  addLog('info', `Word count: ${wordCount} words`);
+  addLog('info', `Product links: ${productLinksUsed.length} products mentioned`);
+  addLog('info', `Articles analyzed: ${articlesAnalyzed}`);
+  addLog('info', `Function calls: ${functionCallCount} total calls made`);
+
+  // Step 7: Generate SEO meta title and description
+  addLog('info', 'Generating SEO meta title and description...');
+
+  let metaTitle = '';
+  let metaDescription = '';
+
+  try {
+    const metaModel = genAI.getGenerativeModel({ model: modelName });
+    const metaPrompt = `Based on this blog content and primary keyword "${selectedKeyword || request.topic}", generate SEO-optimized meta tags.
+
+CONTENT:
+${cleanContent}
+
+REQUIREMENTS:
+- Meta Title: EXACTLY 50-60 characters (count carefully!), includes primary keyword naturally at the beginning, compelling and click-worthy
+- Meta Description: EXACTLY 140-160 characters (count carefully!), includes primary keyword, persuasive summary that encourages clicks
+
+Return ONLY valid JSON in this exact format (no markdown, no code blocks):
+{
+  "metaTitle": "Your SEO-optimized title here",
+  "metaDescription": "Your SEO-optimized description here"
+}`;
+
+    const metaResult = await metaModel.generateContent(metaPrompt);
+    const metaText = metaResult.response.text().trim();
+
+    // Extract JSON from response (handle potential markdown code blocks)
+    const jsonMatch = metaText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const metaData = JSON.parse(jsonMatch[0]);
+      metaTitle = metaData.metaTitle || '';
+      metaDescription = metaData.metaDescription || '';
+
+      addLog('success', `✓ Meta tags generated: "${metaTitle}" (${metaTitle.length} chars)`);
+      addLog('info', `Meta description: ${metaDescription.length} characters`);
+    } else {
+      throw new Error('Failed to parse meta data JSON');
+    }
+  } catch (metaError) {
+    addLog('warning', `Failed to generate meta tags: ${metaError instanceof Error ? metaError.message : 'Unknown error'}`);
+    // Fallback: create basic meta tags
+    metaTitle = `${selectedKeyword || request.topic} - ${request.persona.name}`;
+    metaDescription = `Comprehensive guide to ${selectedKeyword || request.topic}. Expert insights and recommendations.`;
+    addLog('info', `Using fallback meta tags`);
+  }
+
+  return {
+    content: cleanContent,
+    markdown: cleanContent, // Gemini returns HTML, not markdown
+    wordCount,
+    productLinks: productLinksUsed,
+    articlesAnalyzed,
+    selectedKeyword: selectedKeyword || request.topic, // Fallback to topic if no keyword selected
+    metaTitle,
+    metaDescription,
+    processingLogs: [], // Will be populated by the wrapper function
+  };
+}
+
+/**
+ * Generate blog content with automatic model fallback
+ * Tries models in priority order if rate limits are hit
  */
 export async function generateBlogWithGemini(
   request: GeminiBlogRequest
@@ -373,309 +718,83 @@ export async function generateBlogWithGemini(
     }
   };
 
-  try {
-    addLog('info', 'Starting blog generation...');
-    addLog('info', `Topic: ${request.topic}`);
-    addLog('info', `Persona: ${request.persona.name}`);
-    addLog('info', `Template: ${request.template.name}`);
-    addLog('info', `Model: ${request.model || 'gemini-2.0-flash-exp'}`);
-    addLog('info', `Total Articles To Research: ${request.articlesResearchCount || 3}`);
-    addLog('info', `Embed Product Images: ${request.includeImages || false}`);
+  addLog('info', 'Starting blog generation...');
+  addLog('info', `Topic: ${request.topic}`);
+  addLog('info', `Persona: ${request.persona.name}`);
+  addLog('info', `Template: ${request.template.name}`);
+  addLog('info', `Total Articles To Research: ${request.articlesResearchCount || 3}`);
+  addLog('info', `Embed Product Images: ${request.includeImages || false}`);
 
-    // Step 1: Build rich system prompt
-    const systemPrompt = buildSystemPrompt(
-      request.persona,
-      request.template,
-      request
-    );
+  // Determine model priority order
+  const requestedModel = request.model || 'gemini-2.5-flash'; // Default to stable version
+  addLog('info', `Requested model: ${requestedModel}`);
 
-    // Step 2: Initialize Gemini model with function calling
-    const modelName = request.model || 'gemini-2.0-flash-exp';
-    addLog('info', `Initializing ${modelName} with function calling support`);
+  // Build fallback chain starting with requested model
+  const modelsToTry: GeminiModel[] = [requestedModel];
 
-    const model = genAI.getGenerativeModel({
-      model: modelName,
-      tools: [{ functionDeclarations: functionDeclarations as any }],
-    });
-
-    // Step 3: Generate content with autonomous agent workflow
-    addLog('info', 'Instructing AI agent to research keywords, analyze competitors, and find products...');
-
-    const chat = model.startChat({
-      history: [
-        {
-          role: 'user',
-          parts: [{ text: systemPrompt }],
-        },
-      ],
-    });
-
-    let result = await chat.sendMessage(
-      `START NOW: Follow the exact workflow described in your instructions:
-1. Call researchKeywords("${request.topic}") to get keyword suggestions
-2. Analyze the keywords and select the best one (state your choice explicitly)
-3. Call getTopRankingArticles("[selected keyword]") - this automatically scrapes ${request.articlesResearchCount || 3} articles!
-4. Call searchProducts() 3-5 times with different product queries
-5. Write the complete blog post with real product links
-
-Begin with researchKeywords now.`
-    );
-
-    // Step 4: Handle function calls iteratively
-    let functionCallCount = 0;
-    const maxFunctionCalls = 20; // Allow for keyword research + articles + product searches
-    const productLinksUsed: string[] = [];
-    let selectedKeyword = '';
-    let articlesAnalyzed = 0;
-
-    while (
-      result.response.candidates?.[0]?.content?.parts?.some(
-        part => part.functionCall
-      ) &&
-      functionCallCount < maxFunctionCalls
-    ) {
-      functionCallCount++;
-      addLog('info', `Processing function call batch ${functionCallCount}...`);
-
-      const functionCalls = result.response.candidates[0].content.parts.filter(
-        part => part.functionCall
-      );
-
-      // Execute all function calls
-      const functionResponseParts = await Promise.all(
-        functionCalls.map(async (fc: any) => {
-          // Log the function call
-          const argsStr = JSON.stringify(fc.functionCall.args);
-          addLog('function_call', `Calling ${fc.functionCall.name}(${argsStr})`);
-
-          const functionResult = await handleFunctionCall(
-            fc.functionCall.name,
-            fc.functionCall.args,
-            request
-          );
-
-          // Log any errors from the function call
-          if (functionResult.error) {
-            addLog('error', functionResult.error);
-          }
-
-          // Log any scraping errors
-          if (functionResult.scrapingErrors) {
-            functionResult.scrapingErrors.forEach(err => addLog('error', err));
-          }
-
-          // Log the function response and track data
-          if (fc.functionCall.name === 'researchKeywords') {
-            const keywords = functionResult.data;
-            if (Array.isArray(keywords) && keywords.length > 0) {
-              addLog('function_response', `Found ${keywords.length} keyword suggestions for "${fc.functionCall.args.topic}"`);
-            } else if (!functionResult.error) {
-              addLog('error', `No keywords found for "${fc.functionCall.args.topic}"`);
-            }
-          } else if (fc.functionCall.name === 'getTopRankingArticles') {
-            selectedKeyword = fc.functionCall.args.keyword;
-            const data = functionResult.data;
-            const totalArticles = data?.articles?.length || 0;
-            articlesAnalyzed = data?.scrapedContent?.length || 0;
-
-            if (totalArticles === 0) {
-              addLog('error', `Found 0 top-ranking articles for "${selectedKeyword}"`);
-            } else {
-              addLog('function_response', `Found ${totalArticles} top-ranking articles for "${selectedKeyword}" (automatically scraped top ${articlesAnalyzed})`);
-              const urls = data?.scrapedContent?.map((s: any) => s.url) || [];
-              urls.forEach((url: string) => addLog('function_response', `Scraped article: words: ${data?.scrapedContent?.find((s: any) => s.url === url)?.fullWordCount || 0} ${url}`));
-            }
-          } else if (fc.functionCall.name === 'searchProducts') {
-            const products = functionResult.data;
-            if (Array.isArray(products) && products.length > 0) {
-              addLog('function_response', `Found ${products.length} products for "${fc.functionCall.args.query}"`);
-            } else if (!functionResult.error) {
-              addLog('error', `No products found for "${fc.functionCall.args.query}"`);
-            }
-          }
-
-          // Track product handles
-          if (fc.functionCall.name === 'searchProducts' && Array.isArray(functionResult.data)) {
-            functionResult.data.forEach((p: any) => {
-              if (p.handle && !productLinksUsed.includes(p.handle)) {
-                productLinksUsed.push(p.handle);
-              }
-            });
-          }
-
-          // Return function response in the correct format for Gemini API
-          // Wrap array results in an object with a 'products' key
-          const wrappedResponse = Array.isArray(functionResult.data)
-            ? { products: functionResult.data }
-            : functionResult.data;
-
-          return {
-            functionResponse: {
-              name: fc.functionCall.name,
-              response: wrappedResponse as Record<string, unknown>,
-            },
-          };
-        })
-      );
-
-      // Send function responses back to Gemini
-      result = await chat.sendMessage(functionResponseParts);
+  // Add other models from fallback chain (excluding the requested one)
+  MODEL_FALLBACK_CHAIN.forEach(model => {
+    if (model !== requestedModel && !modelsToTry.includes(model)) {
+      modelsToTry.push(model);
     }
+  });
 
-    // Step 6: Extract final content
-    const finalText = result.response.text();
+  addLog('info', `Fallback chain: ${modelsToTry.join(' → ')}`);
 
-    if (!finalText || finalText.length < 500) {
-      throw new Error('Generated content is too short or empty');
-    }
+  // Try each model in order until one succeeds
+  let lastError: Error | null = null;
 
-    // Clean up any markdown code blocks if present
-    let cleanContent = finalText
-      .replace(/```html\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim();
-
-    // Validate no placeholder links
-    const hasPlaceholderLinks = /<a\s+href=["']#["']/.test(cleanContent) ||
-      /href=["']PRODUCT_URL["']/.test(cleanContent);
-    if (hasPlaceholderLinks) {
-      addLog('warning', `Content contains placeholder links - AI may not have used searchProducts correctly`);
-    }
-
-    // Validate product images are embedded (only if includeImages is enabled)
-    if (request.includeImages !== false) {
-      const hasProductImages = /<img[^>]+src=["'][^"']+["'][^>]*>/.test(cleanContent);
-      if (!hasProductImages) {
-        addLog('warning', `Content does not contain product images - AI may not have embedded images from searchProducts`);
-      } else {
-        const imageCount = (cleanContent.match(/<img[^>]+>/g) || []).length;
-        addLog('info', `Product images embedded: ${imageCount} images`);
-      }
-    } else {
-      addLog('info', `Product images disabled - text links only`);
-    }
-
-    // Validate HTML structure
-    const hasH2 = /<h2[^>]*>/.test(cleanContent);
-    const hasH3 = /<h3[^>]*>/.test(cleanContent);
-    const hasParagraphs = /<p[^>]*>/.test(cleanContent);
-
-    if (!hasH2) {
-      addLog('warning', `Content missing <h2> tag - should have main heading`);
-    }
-    if (!hasH3) {
-      addLog('warning', `Content missing <h3> tags - should have section headings`);
-    }
-    if (!hasParagraphs) {
-      addLog('warning', `Content missing <p> tags - paragraphs should be wrapped`);
-    }
-
-    if (hasH2 && hasH3 && hasParagraphs) {
-      addLog('info', `✓ HTML structure validated (h2, h3, p tags present)`);
-    }
-
-    // Step 5.5: Fetch and append related blog links from Shopify
-    addLog('info', `Fetching related blog articles from Shopify...`);
-    const linksResult = await generateRelatedBlogLinks(request.topic, 5);
-
-    if (linksResult.success && linksResult.data && linksResult.data.length > 0) {
-      addLog('success', `✓ Found ${linksResult.data.length} related articles`);
-
-      // Append related articles section in HTML
-      const relatedSection = `
-
-<h2>Related Articles</h2>
-
-<p>For more information about ${request.topic}, check out these articles:</p>
-
-<ul>
-${linksResult.data.map(link => `  <li><a href="${link.url}" target="_blank">${link.title}</a></li>`).join('\n')}
-</ul>
-      `.trim();
-
-      cleanContent += '\n\n' + relatedSection;
-      addLog('success', `✓ Related articles section added (${linksResult.data.length} links)`);
-    } else {
-      addLog('info', `No related articles found for "${request.topic}"`);
-    }
-
-    // Calculate word count
-    const wordCount = cleanContent.split(/\s+/).length;
-
-    addLog('success', `✓ Blog content generated successfully!`);
-    addLog('info', `Selected keyword: "${selectedKeyword}"`);
-    addLog('info', `Word count: ${wordCount} words`);
-    addLog('info', `Product links: ${productLinksUsed.length} products mentioned`);
-    addLog('info', `Articles analyzed: ${articlesAnalyzed}`);
-    addLog('info', `Function calls: ${functionCallCount} total calls made`);
-
-    // Step 7: Generate SEO meta title and description
-    addLog('info', 'Generating SEO meta title and description...');
-
-    let metaTitle = '';
-    let metaDescription = '';
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const modelName = modelsToTry[i];
 
     try {
-      const metaModel = genAI.getGenerativeModel({ model: modelName });
-      const metaPrompt = `Based on this blog content and primary keyword "${selectedKeyword || request.topic}", generate SEO-optimized meta tags.
-
-CONTENT:
-${cleanContent}
-
-REQUIREMENTS:
-- Meta Title: EXACTLY 50-60 characters (count carefully!), includes primary keyword naturally at the beginning, compelling and click-worthy
-- Meta Description: EXACTLY 140-160 characters (count carefully!), includes primary keyword, persuasive summary that encourages clicks
-
-Return ONLY valid JSON in this exact format (no markdown, no code blocks):
-{
-  "metaTitle": "Your SEO-optimized title here",
-  "metaDescription": "Your SEO-optimized description here"
-}`;
-
-      const metaResult = await metaModel.generateContent(metaPrompt);
-      const metaText = metaResult.response.text().trim();
-
-      // Extract JSON from response (handle potential markdown code blocks)
-      const jsonMatch = metaText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const metaData = JSON.parse(jsonMatch[0]);
-        metaTitle = metaData.metaTitle || '';
-        metaDescription = metaData.metaDescription || '';
-
-        addLog('success', `✓ Meta tags generated: "${metaTitle}" (${metaTitle.length} chars)`);
-        addLog('info', `Meta description: ${metaDescription.length} characters`);
-      } else {
-        throw new Error('Failed to parse meta data JSON');
+      if (i > 0) {
+        addLog('warning', `Attempting fallback model #${i}: ${modelName}`);
       }
-    } catch (metaError) {
-      addLog('warning', `Failed to generate meta tags: ${metaError instanceof Error ? metaError.message : 'Unknown error'}`);
-      // Fallback: create basic meta tags
-      metaTitle = `${selectedKeyword || request.topic} - ${request.persona.name}`;
-      metaDescription = `Comprehensive guide to ${selectedKeyword || request.topic}. Expert insights and recommendations.`;
-      addLog('info', `Using fallback meta tags`);
-    }
 
-    return {
-      success: true,
-      data: {
-        content: cleanContent,
-        markdown: cleanContent, // Gemini returns HTML, not markdown
-        wordCount,
-        productLinks: productLinksUsed,
-        articlesAnalyzed,
-        selectedKeyword: selectedKeyword || request.topic, // Fallback to topic if no keyword selected
-        metaTitle,
-        metaDescription,
-        processingLogs,
-      },
-      error: null,
-    };
-  } catch (error) {
-    addLog('warning', `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    return {
-      success: false,
-      data: null,
-      error: error as Error,
-    };
+      const result = await generateBlogWithModel(request, modelName, addLog);
+
+      // Success! Return the result with processing logs
+      addLog('success', `✓ Blog generated successfully with ${modelName}`);
+
+      return {
+        success: true,
+        data: {
+          ...result,
+          processingLogs, // Add processing logs to the result
+        },
+        error: null,
+      };
+
+    } catch (error) {
+      lastError = error as Error;
+
+      // Check if this is a rate limit error
+      if (isRateLimitError(error)) {
+        const message = getRateLimitMessage(modelName, error);
+        addLog('warning', message);
+
+        // If this is not the last model, continue to next one
+        if (i < modelsToTry.length - 1) {
+          addLog('info', `Trying next model in fallback chain...`);
+          continue;
+        } else {
+          addLog('error', `All models exhausted. All have quota limits.`);
+        }
+      } else {
+        // Non-rate-limit error - log and fail immediately
+        addLog('error', `Error with ${modelName}: ${lastError.message}`);
+        break;
+      }
+    }
   }
+
+  // All models failed
+  addLog('error', 'Failed to generate blog with any available model');
+
+  return {
+    success: false,
+    data: null,
+    error: lastError || new Error('Failed to generate blog content with any available model'),
+  };
 }
