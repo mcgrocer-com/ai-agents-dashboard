@@ -63,7 +63,7 @@ class ProductsService {
       }
 
       // Regular query for other sort fields
-      // Join with pending_products to get sync status
+      // Join with pending_products to get sync status and ai_title
       // Use 'planned' count for better performance with large datasets (estimates count from query planner)
       let query = supabase
         .from('scraped_products')
@@ -73,14 +73,16 @@ class ProductsService {
             erpnext_updated_at,
             failed_sync_at,
             failed_sync_error_message,
-            item_code
+            item_code,
+            ai_title
           )
         `, { count: 'planned' })
 
-      // Apply search filter
+      // Apply search filter on name, description, and ai_title
+      // ai_title is synced from pending_products to scraped_products after ERPNext sync
       if (filters.search) {
         query = query.or(
-          `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`
+          `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
         )
       }
 
@@ -559,15 +561,17 @@ class ProductsService {
             erpnext_updated_at,
             failed_sync_at,
             failed_sync_error_message,
-            item_code
+            item_code,
+            ai_title
           )
         `, { count: 'planned' })
         .eq('pinned', true)
 
-      // Apply search filter
+      // Apply search filter on name, description, and ai_title
+      // ai_title is synced from pending_products to scraped_products after ERPNext sync
       if (filters.search) {
         query = query.or(
-          `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%`
+          `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
         )
       }
 
