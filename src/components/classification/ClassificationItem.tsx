@@ -14,8 +14,6 @@ interface ClassificationItemProps {
 }
 
 export function ClassificationItem({ product, onClick }: ClassificationItemProps) {
-  const defaultImage = 'https://via.placeholder.com/80?text=No+Image';
-
   const handleClick = () => {
     onClick(product);
   };
