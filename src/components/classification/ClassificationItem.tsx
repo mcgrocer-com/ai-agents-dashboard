@@ -4,16 +4,25 @@
  * Opens dialog to change classification when clicked
  */
 
-import { Package, ExternalLink } from 'lucide-react';
+import { Package, ExternalLink, CheckCircle2, Circle } from 'lucide-react';
 import ClassificationBadge from './ClassificationBadge';
 import type { ClassifiedProduct } from '@/types/classification';
 
 interface ClassificationItemProps {
   product: ClassifiedProduct;
   onClick: (product: ClassifiedProduct) => void;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export function ClassificationItem({ product, onClick }: ClassificationItemProps) {
+export function ClassificationItem({
+  product,
+  onClick,
+  selectionMode = false,
+  isSelected = false,
+  onToggleSelect
+}: ClassificationItemProps) {
   const handleClick = () => {
     onClick(product);
   };
@@ -25,9 +34,30 @@ export function ClassificationItem({ product, onClick }: ClassificationItemProps
   return (
     <div
       onClick={handleClick}
-      className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg
-        hover:border-blue-300 hover:shadow-md cursor-pointer transition-all group"
+      className={`flex items-center gap-4 p-4 bg-white border rounded-lg
+        hover:shadow-md cursor-pointer transition-all group ${
+        isSelected
+          ? 'border-emerald-500 bg-emerald-50'
+          : 'border-gray-200 hover:border-blue-300'
+      }`}
     >
+      {/* Selection Checkbox */}
+      {selectionMode && (
+        <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onToggleSelect}
+            className="p-1 rounded hover:bg-gray-100 transition-colors"
+            aria-label={isSelected ? 'Deselect product' : 'Select product'}
+          >
+            {isSelected ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            ) : (
+              <Circle className="w-5 h-5 text-gray-400" />
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Product Image */}
       <div className="flex-shrink-0">
         {product.main_image ? (

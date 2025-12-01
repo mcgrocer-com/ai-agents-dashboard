@@ -124,10 +124,11 @@ export async function getClassificationStats(): Promise<ServiceResponse<Classifi
 
     if (rejectedError) throw rejectedError
 
-    // Get counts by classification type
+    // Get counts by classification type (only for classified products)
     const { data: byTypeData, error: byTypeError } = await supabase
       .from('scraped_products')
       .select('classification')
+      .not('classification', 'is', null)
 
     if (byTypeError) throw byTypeError
 
@@ -269,6 +270,7 @@ export async function rejectProduct(
 /**
  * Update product classification (manual override)
  * Can change any product's classification type and reason
+ * Automatically pushes to pending_products when changing from rejected to accepted
  */
 export async function updateClassification(
   productId: string,
@@ -276,6 +278,24 @@ export async function updateClassification(
   reason: string
 ): Promise<ServiceResponse<{ message: string }>> {
   try {
+    // First, get the current product state to check if it's currently rejected
+    const { data: currentProduct, error: fetchError } = await supabase
+      .from('scraped_products')
+      .select('id, rejected, classification')
+      .eq('id', productId)
+      .single()
+
+    if (fetchError) {
+      console.error('[Classification Service] Error fetching product:', fetchError)
+      return {
+        data: null,
+        error: new Error(fetchError.message),
+        success: false
+      }
+    }
+
+    const wasRejected = currentProduct?.rejected === true
+
     // Determine if the new classification should mark as rejected
     const isRejected = classification === 'pharmacy' || classification === 'pom' || classification === 'unclear'
 
@@ -299,6 +319,38 @@ export async function updateClassification(
       }
     }
 
+    // If changing from rejected to accepted, trigger manual-push-to-pending
+    if (wasRejected && !isRejected) {
+      console.log('[Classification Service] Product changed from rejected to accepted, triggering manual-push-to-pending')
+
+      // Call manual-push-to-pending edge function to re-add to pending_products with agent data preserved
+      const { data: pushData, error: pushError } = await supabase.functions.invoke('manual-push-to-pending', {
+        body: {
+          productId: productId
+        }
+      })
+
+      if (pushError) {
+        console.error('[Classification Service] Error pushing to pending:', pushError)
+        return {
+          data: null,
+          error: new Error(`Classification updated but failed to add to pending queue: ${pushError.message}`),
+          success: false
+        }
+      }
+
+      // Log preserved agent data
+      if (pushData?.agent_data_preserved) {
+        console.log('[Classification Service] Agent data preserved:', pushData.agent_data_preserved)
+      }
+
+      return {
+        data: { message: 'Classification updated successfully. Product has been added to the processing queue with preserved agent data.' },
+        error: null,
+        success: true
+      }
+    }
+
     // If rejected, remove from pending_products
     if (isRejected) {
       const { error: deleteError } = await supabase
@@ -308,6 +360,12 @@ export async function updateClassification(
 
       if (deleteError) {
         console.warn('[Classification Service] Warning: Failed to remove from pending_products:', deleteError)
+      }
+
+      return {
+        data: { message: 'Classification updated successfully. Product has been removed from the processing queue.' },
+        error: null,
+        success: true
       }
     }
 

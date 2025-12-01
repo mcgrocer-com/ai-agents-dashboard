@@ -4,10 +4,11 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Search, Package, ShieldCheck, X, RefreshCw } from 'lucide-react'
+import { Search, Package, ShieldCheck, X, RefreshCw, CheckSquare, Square } from 'lucide-react'
 import ClassificationStats from '@/components/classification/ClassificationStats'
 import { ClassificationItem } from '@/components/classification/ClassificationItem'
 import { ChangeClassificationDialog } from '@/components/classification/ChangeClassificationDialog'
+import { BulkClassificationDialog } from '@/components/classification/BulkClassificationDialog'
 import { Pagination } from '@/components/ui/Pagination'
 import { Toast, useToast } from '@/components/ui/Toast'
 import {
@@ -37,6 +38,12 @@ const ClassificationAgentPage = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [totalCount, setTotalCount] = useState(0)
+
+  // Multi-select state
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
+  const [bulkUpdateLoading, setBulkUpdateLoading] = useState(false)
 
   // Dialog state
   const [selectedProduct, setSelectedProduct] = useState<ClassifiedProduct | null>(null)
@@ -105,8 +112,45 @@ const ClassificationAgentPage = () => {
   }
 
   const handleCardClick = (product: ClassifiedProduct) => {
-    setSelectedProduct(product)
-    setChangeDialogOpen(true)
+    if (selectionMode) {
+      toggleProductSelection(product.id)
+    } else {
+      setSelectedProduct(product)
+      setChangeDialogOpen(true)
+    }
+  }
+
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProducts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(productId)) {
+        newSet.delete(productId)
+      } else {
+        newSet.add(productId)
+      }
+      return newSet
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedProducts.size === products.length) {
+      setSelectedProducts(new Set())
+    } else {
+      setSelectedProducts(new Set(products.map(p => p.id)))
+    }
+  }
+
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode)
+    setSelectedProducts(new Set())
+  }
+
+  const handleBulkUpdate = () => {
+    if (selectedProducts.size === 0) {
+      showToast('Please select at least one product', 'error')
+      return
+    }
+    setBulkDialogOpen(true)
   }
 
   const handleSaveClassification = async (
@@ -130,6 +174,40 @@ const ClassificationAgentPage = () => {
       showToast('An error occurred', 'error')
     } finally {
       setChangeDialogLoading(false)
+    }
+  }
+
+  const handleBulkSaveClassification = async (
+    classification: ClassificationType,
+    reason: string
+  ) => {
+    setBulkUpdateLoading(true)
+    try {
+      const productIds = Array.from(selectedProducts)
+
+      // Update products in parallel
+      const results = await Promise.all(
+        productIds.map(id => updateClassification(id, classification, reason))
+      )
+
+      const successCount = results.filter(r => r.success).length
+      const failCount = results.length - successCount
+
+      if (failCount === 0) {
+        showToast(`Successfully updated ${successCount} products`, 'success')
+      } else {
+        showToast(`Updated ${successCount} products, ${failCount} failed`, 'error')
+      }
+
+      setBulkDialogOpen(false)
+      setSelectedProducts(new Set())
+      setSelectionMode(false)
+      fetchData()
+    } catch (error) {
+      console.error('Error bulk updating:', error)
+      showToast('An error occurred during bulk update', 'error')
+    } finally {
+      setBulkUpdateLoading(false)
     }
   }
 
@@ -224,7 +302,18 @@ const ClassificationAgentPage = () => {
               Clear all filters
             </button>
           )}
-          <div className={hasActiveFilters ? '' : 'ml-auto'}>
+          <div className={`flex items-center gap-2 ${hasActiveFilters ? '' : 'ml-auto'}`}>
+            <button
+              onClick={toggleSelectionMode}
+              className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                selectionMode
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                  : 'text-secondary-700 bg-white border-secondary-300 hover:bg-secondary-50'
+              }`}
+            >
+              {selectionMode ? <CheckSquare className="w-4 h-4 mr-2" /> : <Square className="w-4 h-4 mr-2" />}
+              {selectionMode ? 'Exit Selection' : 'Select Multiple'}
+            </button>
             <button
               onClick={fetchData}
               disabled={loading}
@@ -237,9 +326,31 @@ const ClassificationAgentPage = () => {
         </div>
       </div>
 
-      {/* Results count */}
-      <div className="text-sm text-secondary-600">
-        Showing {products.length} of {totalCount.toLocaleString()} products
+      {/* Results count & Selection controls */}
+      <div className="flex justify-between items-center">
+        <div className="text-sm text-secondary-600">
+          Showing {products.length} of {totalCount.toLocaleString()} products
+        </div>
+        {selectionMode && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-secondary-600">
+              {selectedProducts.size} selected
+            </span>
+            <button
+              onClick={toggleSelectAll}
+              className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+            >
+              {selectedProducts.size === products.length ? 'Deselect All' : 'Select All'}
+            </button>
+            <button
+              onClick={handleBulkUpdate}
+              disabled={selectedProducts.size === 0}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Update Classification ({selectedProducts.size})
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Product Grid */}
@@ -274,6 +385,9 @@ const ClassificationAgentPage = () => {
                 key={product.id}
                 product={product}
                 onClick={handleCardClick}
+                selectionMode={selectionMode}
+                isSelected={selectedProducts.has(product.id)}
+                onToggleSelect={() => toggleProductSelection(product.id)}
               />
             ))}
           </div>
@@ -333,6 +447,17 @@ const ClassificationAgentPage = () => {
         }}
         onSave={handleSaveClassification}
         isLoading={changeDialogLoading}
+      />
+
+      {/* Bulk Classification Dialog */}
+      <BulkClassificationDialog
+        isOpen={bulkDialogOpen}
+        selectedCount={selectedProducts.size}
+        onClose={() => {
+          setBulkDialogOpen(false)
+        }}
+        onSave={handleBulkSaveClassification}
+        isLoading={bulkUpdateLoading}
       />
 
       {/* Toast */}
