@@ -124,14 +124,7 @@ export async function getClassificationStats(): Promise<ServiceResponse<Classifi
 
     if (rejectedError) throw rejectedError
 
-    // Get counts by classification type (only for classified products)
-    const { data: byTypeData, error: byTypeError } = await supabase
-      .from('scraped_products')
-      .select('classification')
-      .not('classification', 'is', null)
-
-    if (byTypeError) throw byTypeError
-
+    // Get counts by classification type using individual count queries (more efficient)
     const byType = {
       not_medicine: 0,
       gsl: 0,
@@ -140,11 +133,19 @@ export async function getClassificationStats(): Promise<ServiceResponse<Classifi
       unclear: 0
     }
 
-    byTypeData?.forEach(item => {
-      if (item.classification && item.classification in byType) {
-        byType[item.classification as keyof typeof byType]++
+    // Count each classification type separately using count queries
+    for (const classificationType of Object.keys(byType) as Array<keyof typeof byType>) {
+      const { count, error } = await supabase
+        .from('scraped_products')
+        .select('*', { count: 'exact', head: true })
+        .eq('classification', classificationType)
+
+      if (error) {
+        console.error(`[Classification Stats] Error counting ${classificationType}:`, error)
+      } else {
+        byType[classificationType] = count || 0
       }
-    })
+    }
 
     const stats: ClassificationStats = {
       total: total || 0,
