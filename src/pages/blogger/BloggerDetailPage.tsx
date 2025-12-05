@@ -135,7 +135,7 @@ export function BloggerDetailPage() {
         featuredImageUrl: blog.featured_image_url || undefined,
         featuredImageAlt: blog.featured_image_alt || undefined,
         author: blog.persona?.name || 'McGrocer Team',
-        tags: blog.primary_keyword ? [blog.primary_keyword.keyword] : [],
+        tags: blog.primary_keyword ? [blog.primary_keyword] : [],
         publishedAt: new Date().toISOString(),
       });
 
