@@ -7,9 +7,12 @@
 import { supabase } from '@/lib/supabase/client'
 import type { User } from '@/types/database'
 
+export type SyncDataSource = 'All' | 'Scrapper'
+
 export interface UserPreferences {
   sync_vendors?: string[]
   prioritize_copyright?: boolean
+  sync_data_source?: SyncDataSource
   [key: string]: any
 }
 
@@ -51,7 +54,8 @@ class UserService {
   async updateVendorSyncPreferences(
     userId: string,
     vendors: string[],
-    prioritizeCopyright?: boolean
+    prioritizeCopyright?: boolean,
+    dataSource?: SyncDataSource
   ): Promise<ServiceResponse<UserPreferences>> {
     try {
       // First get current preferences
@@ -62,6 +66,9 @@ class UserService {
       preferences.sync_vendors = vendors
       if (prioritizeCopyright !== undefined) {
         preferences.prioritize_copyright = prioritizeCopyright
+      }
+      if (dataSource !== undefined) {
+        preferences.sync_data_source = dataSource
       }
 
       // Save back to database

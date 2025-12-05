@@ -14,3 +14,4 @@ export { BlogCard } from './BlogCard';
 export { BlogPreview } from './BlogPreview';
 export { BlogList } from './BlogList';
 export { BlogGenerationSettingsDialog, type BlogGenerationSettings } from './BlogGenerationSettings';
+export { ContentGenerationChat, type ChatMessage } from './ContentGenerationChat';

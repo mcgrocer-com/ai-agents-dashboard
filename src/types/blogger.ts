@@ -392,3 +392,47 @@ export interface PaginatedResponse<T> {
   page_size: number;
   total_pages: number;
 }
+
+// ============================================================================
+// SEO Score Types
+// ============================================================================
+
+/**
+ * Individual criterion in SEO score breakdown
+ */
+export interface SeoScoreCriterion {
+  name: string;
+  passed: boolean;
+  points: number;
+  maxPoints: number;
+  message: string;
+}
+
+/**
+ * SEO score with criteria breakdown
+ */
+export interface SeoScoreBreakdown {
+  score: number;
+  maxScore: number;
+  criteria: SeoScoreCriterion[];
+}
+
+// ============================================================================
+// Context File Types
+// ============================================================================
+
+/**
+ * Supported context file types
+ */
+export type ContextFileType = 'txt' | 'json' | 'csv' | 'xlsx' | 'pdf' | 'docx';
+
+/**
+ * Imported context file for AI generation
+ */
+export interface ContextFile {
+  name: string;
+  type: ContextFileType;
+  size: number;
+  content: string;
+  uploadedAt: number;
+}

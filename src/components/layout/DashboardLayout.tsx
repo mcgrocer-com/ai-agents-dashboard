@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   Menu,
   PenTool,
+  ShoppingCart,
 } from 'lucide-react'
 
 export function DashboardLayout() {
@@ -47,6 +48,7 @@ export function DashboardLayout() {
     { name: 'Copyright', path: '/agents/copyright', icon: Shield },
     { name: 'Classification', path: '/agents/classification', icon: ShieldCheck },
     { name: 'Blogger', path: '/blogger', icon: PenTool },
+    { name: 'Shopping Assistant', path: '/shopping-assistant', icon: ShoppingCart },
   ]
 
   const toolItems = [

@@ -6,14 +6,30 @@
  * - Rich persona-driven content generation
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI, Type, type FunctionDeclaration } from '@google/genai';
 import { searchProducts, generateRelatedBlogLinks } from './shopify.service';
 import { getTopRankingArticles as getTopRankingArticlesService, scrapeArticlesBatch } from './ai.service';
 import { researchKeywords as researchKeywordsService } from './ai.service';
 import type { BloggerPersona, BloggerTemplate, ServiceResponse } from '@/types/blogger';
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+// Initialize Google GenAI with new SDK
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+
+/**
+ * Estimate token count from character count
+ * Approximately 4 characters per token for English text
+ */
+function estimateTokens(charCount: number): number {
+  return Math.round(charCount / 4);
+}
+
+/**
+ * Format token count for display (e.g., "12,500 tokens")
+ */
+function formatTokens(charCount: number): string {
+  const tokens = estimateTokens(charCount);
+  return `~${tokens.toLocaleString()} tokens`;
+}
 
 /**
  * Available Gemini models for blog generation
@@ -47,6 +63,8 @@ export interface GeminiBlogRequest {
   model?: GeminiModel;
   includeImages?: boolean;  // Include product images in content
   articlesResearchCount?: number;  // Number of top articles to scrape (3-10, default: 3)
+  contextFileContent?: string;  // Optional context file content to inject into prompt
+  userPrompt?: string;  // Optional user prompt for additional instructions
   onLogUpdate?: (logs: ProcessingLog[]) => void;  // Real-time log callback
 }
 
@@ -75,21 +93,21 @@ export interface GeminiBlogResponse {
 }
 
 /**
- * Function declarations for Gemini tool calling
+ * Function declarations for Gemini tool calling (new SDK format)
  */
-const functionDeclarations = [
+const functionDeclarations: FunctionDeclaration[] = [
   {
     name: 'researchKeywords',
     description: 'Research SEO keywords for a blog topic. Call this FIRST to discover high-value keywords with search volume, competition, and intent data. Returns keyword suggestions that you should analyze to select the best primary keyword for the blog post.',
     parameters: {
-      type: 'object',
+      type: Type.OBJECT,
       properties: {
         topic: {
-          type: 'string',
+          type: Type.STRING,
           description: 'Blog topic to research keywords for (e.g., "baby oil", "kitchen knives", "gluten free diet")',
         },
         limit: {
-          type: 'number',
+          type: Type.NUMBER,
           description: 'Maximum number of keyword suggestions to return (default: 10)',
         },
       },
@@ -100,10 +118,10 @@ const functionDeclarations = [
     name: 'getTopRankingArticles',
     description: 'COMPETITIVE INTELLIGENCE: Fetch top-ranking articles from UK Google search results for a keyword AND automatically scrape them in parallel. The number of articles to analyze is automatically configured based on user settings. Use this after selecting your primary keyword. Returns: (1) All ranking article titles/URLs/descriptions, (2) Full scraped content from top articles with word counts and headings. This single call gives you complete competitive intelligence!',
     parameters: {
-      type: 'object',
+      type: Type.OBJECT,
       properties: {
         keyword: {
-          type: 'string',
+          type: Type.STRING,
           description: 'The primary keyword to find top-ranking articles for (e.g., "best baby oil", "kitchen knife guide")',
         },
       },
@@ -114,18 +132,27 @@ const functionDeclarations = [
     name: 'searchProducts',
     description: 'CRITICAL: Call this function 3-5 times BEFORE writing blog content to find real McGrocer products with actual URLs and images. Returns product objects with title, url, handle, description, price, and image_url. You MUST use the returned URLs and images in your content - never use placeholder links like href="#". Call this for different product categories (e.g., "kitchen knives", "chef knife", "paring knife") to get variety.',
     parameters: {
-      type: 'object',
+      type: Type.OBJECT,
       properties: {
         query: {
-          type: 'string',
+          type: Type.STRING,
           description: 'Search query for products - be specific about product type or category (e.g., "kitchen knives", "organic olive oil", "baby formula")',
         },
         limit: {
-          type: 'number',
+          type: Type.NUMBER,
           description: 'Maximum number of products to return per search (default: 5, recommended: 3-5)',
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'getContextFile',
+    description: 'Retrieve the user-provided context file content. Call this when you need additional context, research data, guidelines, or reference material the user uploaded. Returns the full text content of the attached file. Only available when a context file has been attached.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+      required: [],
     },
   },
 ];
@@ -174,10 +201,30 @@ ${template.prompt_template || 'Write in a clear, engaging style that reflects yo
 ${template.notes ? `ADDITIONAL NOTES:\n${template.notes}` : ''}
 
 BLOG TOPIC: ${request.topic}
+${request.contextFileContent ? `
+CONTEXT FILE AVAILABLE:
+The user has attached a context file (${formatTokens(request.contextFileContent.length)}) with additional guidelines, research, or reference material.
+Call getContextFile() to retrieve this content when you need it - typically BEFORE writing the blog post.
+This allows you to incorporate user-provided information into your content.
+` : ''}${request.userPrompt ? `
+USER INSTRUCTIONS:
+The user has provided the following specific instructions for this content generation. Follow these instructions carefully:
 
+"${request.userPrompt}"
+
+---
+` : ''}
 YOUR TASK - FOLLOW THIS EXACT WORKFLOW:
+${request.contextFileContent ? `
+STEP 0: RETRIEVE CONTEXT FILE (RECOMMENDED)
+Call getContextFile() to retrieve the user-provided context file.
+Review this content BEFORE starting your research - it may contain:
+- Writing guidelines or style preferences
+- Research data or statistics to reference
+- Specific instructions or requirements
+- Background information on the topic
 
-STEP 1: KEYWORD RESEARCH (MANDATORY)
+` : ''}STEP 1: KEYWORD RESEARCH (MANDATORY)
 Call researchKeywords("${request.topic}") to discover high-value SEO keywords.
 Analyze the results and select the BEST primary keyword based on:
 - Search volume (higher is better for traffic potential)
@@ -399,6 +446,20 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
       }
       return { data: [], error: productsResult.error?.message || `No products found for "${args.query}"` };
 
+    case 'getContextFile':
+      // Return the context file content if available
+      // Note: File size is validated at upload time in ContentGenerationChat
+      if (request.contextFileContent) {
+        return {
+          data: {
+            content: request.contextFileContent,
+            tokenCount: estimateTokens(request.contextFileContent.length),
+            note: 'Context retrieved. NOW CONTINUE: Call researchKeywords() next.',
+          },
+        };
+      }
+      return { data: null, error: 'No context file was attached to this request' };
+
     default:
       throw new Error(`Unknown function: ${functionName}`);
   }
@@ -420,36 +481,32 @@ async function generateBlogWithModel(
     request
   );
 
-  // Step 2: Initialize Gemini model with function calling
+  // Step 2: Initialize chat with function calling (new SDK)
   addLog('info', `Initializing ${modelName} with function calling support`);
 
-  const model = genAI.getGenerativeModel({
+  const chat = ai.chats.create({
     model: modelName,
-    tools: [{ functionDeclarations: functionDeclarations as any }],
+    config: {
+      systemInstruction: systemPrompt,
+      tools: [{ functionDeclarations }],
+    },
   });
 
   // Step 3: Generate content with autonomous agent workflow
   addLog('info', 'Instructing AI agent to research keywords, analyze competitors, and find products...');
 
-  const chat = model.startChat({
-    history: [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt }],
-      },
-    ],
-  });
-
-  let result = await chat.sendMessage(
-    `START NOW: Follow the exact workflow described in your instructions:
+  let result = await chat.sendMessage({
+    message: `START NOW: Follow the exact workflow described in your instructions:
 1. Call researchKeywords("${request.topic}") to get keyword suggestions
 2. Analyze the keywords and select the best one (state your choice explicitly)
 3. Call getTopRankingArticles("[selected keyword]") - this automatically scrapes ${request.articlesResearchCount || 3} articles!
 4. Call searchProducts() 3-5 times with different product queries
 5. Write the complete blog post with real product links
 
-Begin with researchKeywords now.`
-  );
+CRITICAL: When you write the final blog post, output ONLY the HTML content. Do NOT include any preamble, explanation, or commentary like "I will now write..." or "Here is the blog post...". Start directly with the <h2> tag.
+
+Begin with researchKeywords now.`,
+  });
 
   // Step 4: Handle function calls iteratively
   let functionCallCount = 0;
@@ -459,16 +516,16 @@ Begin with researchKeywords now.`
   let articlesAnalyzed = 0;
 
   while (
-    result.response.candidates?.[0]?.content?.parts?.some(
-      part => part.functionCall
+    result.candidates?.[0]?.content?.parts?.some(
+      (part: any) => part.functionCall
     ) &&
     functionCallCount < maxFunctionCalls
   ) {
     functionCallCount++;
     addLog('info', `Processing function call batch ${functionCallCount}...`);
 
-    const functionCalls = result.response.candidates[0].content.parts.filter(
-      part => part.functionCall
+    const functionCalls = result.candidates[0].content.parts.filter(
+      (part: any) => part.functionCall
     );
 
     // Execute all function calls
@@ -522,6 +579,13 @@ Begin with researchKeywords now.`
           } else if (!functionResult.error) {
             addLog('error', `No products found for "${fc.functionCall.args.query}"`);
           }
+        } else if (fc.functionCall.name === 'getContextFile') {
+          const data = functionResult.data;
+          if (data?.content) {
+            addLog('function_response', `Retrieved context file (~${data.tokenCount.toLocaleString()} tokens)`);
+          } else if (!functionResult.error) {
+            addLog('warning', `No context file available`);
+          }
         }
 
         // Track product handles
@@ -533,7 +597,7 @@ Begin with researchKeywords now.`
           });
         }
 
-        // Return function response in the correct format for Gemini API
+        // Return function response in the correct format for new SDK
         // Wrap array results in an object with a 'products' key
         const wrappedResponse = Array.isArray(functionResult.data)
           ? { products: functionResult.data }
@@ -549,11 +613,11 @@ Begin with researchKeywords now.`
     );
 
     // Send function responses back to Gemini
-    result = await chat.sendMessage(functionResponseParts);
+    result = await chat.sendMessage({ message: functionResponseParts });
   }
 
   // Step 6: Extract final content
-  const finalText = result.response.text();
+  const finalText = result.text;
 
   if (!finalText || finalText.length < 500) {
     throw new Error('Generated content is too short or empty');
@@ -564,6 +628,35 @@ Begin with researchKeywords now.`
     .replace(/```html\n?/g, '')
     .replace(/```\n?/g, '')
     .trim();
+
+  // Strip any preamble text before the first HTML tag or markdown header
+  // This handles cases where the AI outputs "I will now write..." or similar
+  const firstHtmlTagMatch = cleanContent.match(/^[\s\S]*?(<h[1-6]|<p|<div|##\s)/i);
+  if (firstHtmlTagMatch && firstHtmlTagMatch.index && firstHtmlTagMatch.index > 0) {
+    // There's text before the first HTML tag/header - strip it
+    const preambleEndIndex = firstHtmlTagMatch.index;
+    const preamble = cleanContent.substring(0, preambleEndIndex).trim();
+    if (preamble.length > 0 && preamble.length < 1000) {
+      // Only strip if it looks like a preamble (not too long)
+      addLog('info', `Stripped preamble text (${preamble.length} chars)`);
+      cleanContent = cleanContent.substring(preambleEndIndex).trim();
+    }
+  }
+
+  // Convert markdown headers to HTML if present (## -> <h2>, ### -> <h3>, etc.)
+  cleanContent = cleanContent
+    .replace(/^######\s+(.+)$/gm, '<h6>$1</h6>')
+    .replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>')
+    .replace(/^####\s+(.+)$/gm, '<h4>$1</h4>')
+    .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+    .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
+    .replace(/^#\s+(.+)$/gm, '<h1>$1</h1>')
+    // Convert markdown bold **text** to <strong>text</strong>
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    // Convert markdown italic *text* to <em>text</em>
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    // Convert --- separators to <hr>
+    .replace(/^---+$/gm, '<hr>');
 
   // Validate no placeholder links
   const hasPlaceholderLinks = /<a\s+href=["']#["']/.test(cleanContent) ||
@@ -646,7 +739,6 @@ ${linksResult.data.map(link => `  <li><a href="${link.url}" target="_blank">${li
   let metaDescription = '';
 
   try {
-    const metaModel = genAI.getGenerativeModel({ model: modelName });
     const metaPrompt = `Based on this blog content and primary keyword "${selectedKeyword || request.topic}", generate SEO-optimized meta tags.
 
 CONTENT:
@@ -662,8 +754,11 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
   "metaDescription": "Your SEO-optimized description here"
 }`;
 
-    const metaResult = await metaModel.generateContent(metaPrompt);
-    const metaText = metaResult.response.text().trim();
+    const metaResult = await ai.models.generateContent({
+      model: modelName,
+      contents: metaPrompt,
+    });
+    const metaText = (metaResult.text || '').trim();
 
     // Extract JSON from response (handle potential markdown code blocks)
     const jsonMatch = metaText.match(/\{[\s\S]*\}/);
@@ -724,6 +819,12 @@ export async function generateBlogWithGemini(
   addLog('info', `Template: ${request.template.name}`);
   addLog('info', `Total Articles To Research: ${request.articlesResearchCount || 3}`);
   addLog('info', `Embed Product Images: ${request.includeImages || false}`);
+  if (request.contextFileContent) {
+    addLog('info', `Context file: ${formatTokens(request.contextFileContent.length)} of additional context provided`);
+  }
+  if (request.userPrompt) {
+    addLog('info', `User prompt: "${request.userPrompt.substring(0, 100)}${request.userPrompt.length > 100 ? '...' : ''}"`);
+  }
 
   // Determine model priority order
   const requestedModel = request.model || 'gemini-2.5-flash'; // Default to stable version

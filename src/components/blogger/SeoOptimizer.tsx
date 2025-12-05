@@ -1,18 +1,23 @@
 /**
  * SeoOptimizer Component
- * SEO meta fields with character counts and validation
+ * SEO meta fields with character counts, validation, and individual SEO scores
  */
 
 import { CheckCircle, AlertCircle, Upload, X } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { uploadBlogImage } from '@/services/blogger/images.service';
+import {
+  calculateMetaTitleScore,
+  calculateMetaDescriptionScore,
+} from '@/services/blogger/ai.service';
 
 interface SeoOptimizerProps {
   metaTitle: string;
   metaDescription: string;
   featuredImage?: string;
   featuredImageAlt?: string;
-  blogId: string; // Required blog ID for naming uploaded images
+  blogId: string;
+  primaryKeyword?: string;
   onMetaTitleChange: (value: string) => void;
   onMetaDescriptionChange: (value: string) => void;
   onFeaturedImageChange?: (url: string, alt: string) => void;
@@ -26,6 +31,7 @@ export function SeoOptimizer({
   featuredImage,
   featuredImageAlt,
   blogId,
+  primaryKeyword = '',
   onMetaTitleChange,
   onMetaDescriptionChange,
   onFeaturedImageChange,
@@ -39,8 +45,16 @@ export function SeoOptimizer({
 
   const titleLength = metaTitle.length;
   const descLength = metaDescription.length;
-  const idealTitleRange = titleLength >= 50 && titleLength <= 60;
-  const idealDescRange = descLength >= 140 && descLength <= 160;
+
+  // Calculate individual SEO scores with criteria breakdown
+  const titleScore = useMemo(
+    () => calculateMetaTitleScore(metaTitle, primaryKeyword),
+    [metaTitle, primaryKeyword]
+  );
+  const descScore = useMemo(
+    () => calculateMetaDescriptionScore(metaDescription, primaryKeyword),
+    [metaDescription, primaryKeyword]
+  );
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -82,9 +96,20 @@ export function SeoOptimizer({
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Meta Title
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Meta Title
+            </label>
+            <span
+              className={`text-sm font-semibold ${
+                titleScore.score === titleScore.maxScore
+                  ? 'text-green-600'
+                  : 'text-yellow-600'
+              }`}
+            >
+              Score: {titleScore.score}/{titleScore.maxScore}
+            </span>
+          </div>
           <input
             type="text"
             value={metaTitle}
@@ -96,28 +121,44 @@ export function SeoOptimizer({
               disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <div className="flex items-center justify-between mt-1">
-            <div className="flex items-center gap-2">
-              {idealTitleRange ? (
-                <CheckCircle className="w-4 h-4 text-green-600" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-yellow-600" />
-              )}
-              <span
-                className={`text-xs ${
-                  idealTitleRange ? 'text-green-600' : 'text-yellow-600'
-                }`}
-              >
-                {idealTitleRange ? 'Optimal length' : 'Aim for 50-60 characters'}
-              </span>
-            </div>
-            <span className="text-xs text-gray-500">{titleLength}/60</span>
+            <span className="text-xs text-gray-500">{titleLength}/60 characters</span>
+          </div>
+          {/* Criteria breakdown */}
+          <div className="mt-2 space-y-1">
+            {titleScore.criteria.map((criterion) => (
+              <div key={criterion.name} className="flex items-center gap-2">
+                {criterion.passed ? (
+                  <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                )}
+                <span
+                  className={`text-xs ${
+                    criterion.passed ? 'text-green-600' : 'text-red-500'
+                  }`}
+                >
+                  {criterion.message}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Meta Description
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Meta Description
+            </label>
+            <span
+              className={`text-sm font-semibold ${
+                descScore.score === descScore.maxScore
+                  ? 'text-green-600'
+                  : 'text-yellow-600'
+              }`}
+            >
+              Score: {descScore.score}/{descScore.maxScore}
+            </span>
+          </div>
           <textarea
             value={metaDescription}
             onChange={(e) => onMetaDescriptionChange(e.target.value)}
@@ -129,21 +170,26 @@ export function SeoOptimizer({
               disabled:opacity-50 disabled:cursor-not-allowed resize-none"
           />
           <div className="flex items-center justify-between mt-1">
-            <div className="flex items-center gap-2">
-              {idealDescRange ? (
-                <CheckCircle className="w-4 h-4 text-green-600" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-yellow-600" />
-              )}
-              <span
-                className={`text-xs ${
-                  idealDescRange ? 'text-green-600' : 'text-yellow-600'
-                }`}
-              >
-                {idealDescRange ? 'Optimal length' : 'Aim for 140-160 characters'}
-              </span>
-            </div>
-            <span className="text-xs text-gray-500">{descLength}/160</span>
+            <span className="text-xs text-gray-500">{descLength}/160 characters</span>
+          </div>
+          {/* Criteria breakdown */}
+          <div className="mt-2 space-y-1">
+            {descScore.criteria.map((criterion) => (
+              <div key={criterion.name} className="flex items-center gap-2">
+                {criterion.passed ? (
+                  <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                )}
+                <span
+                  className={`text-xs ${
+                    criterion.passed ? 'text-green-600' : 'text-red-500'
+                  }`}
+                >
+                  {criterion.message}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 

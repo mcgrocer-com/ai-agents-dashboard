@@ -14,6 +14,7 @@ import {
   SeoOptimizer,
   BlogPreview,
   BlogGenerationSettingsDialog,
+  ContentGenerationChat,
   type BlogGenerationSettings,
 } from '@/components/blogger';
 import { getAllPersonas } from '@/services/blogger/personas.service';
@@ -22,7 +23,7 @@ import { generateMetaData, calculateSeoScore, calculateReadabilityScore } from '
 import { generateBlogWithGemini, type ProcessingLog } from '@/services/blogger/gemini-content.service';
 import { createBlog, getBlogById, updateBlog } from '@/services/blogger/blogs.service';
 import { publishBlogToShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
-import type { BloggerPersona, BloggerTemplate, BlogWithRelations } from '@/types/blogger';
+import type { BloggerPersona, BloggerTemplate, BlogWithRelations, ContextFile } from '@/types/blogger';
 import Swal from 'sweetalert2';
 
 const TOTAL_STEPS = 6;
@@ -305,7 +306,11 @@ export function BloggerCreatePage() {
     }
   };
 
-  const handleGenerateBlog = async (settings?: BlogGenerationSettings) => {
+  const handleGenerateBlog = async (
+    settings?: BlogGenerationSettings,
+    userPrompt?: string,
+    contextFileContent?: string
+  ) => {
     if (!selectedPersona || !selectedTemplate) return;
 
     setIsLoading(true);
@@ -321,6 +326,8 @@ export function BloggerCreatePage() {
         model: settings?.model || generationSettings.model,
         includeImages: settings?.includeImages || generationSettings.includeImages,
         articlesResearchCount: settings?.articlesResearchCount || generationSettings.articlesResearchCount,
+        contextFileContent,
+        userPrompt,
         // Real-time log updates
         onLogUpdate: (logs) => {
           setProcessingLogs(logs);
@@ -373,6 +380,11 @@ export function BloggerCreatePage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleChatMessage = async (prompt: string, file: ContextFile | null) => {
+    // Generate content with the prompt and file context
+    await handleGenerateBlog(generationSettings, prompt, file?.content);
   };
 
   const calculateScores = () => {
@@ -659,15 +671,20 @@ export function BloggerCreatePage() {
     switch (currentStep) {
       case 1:
         return (
-          <div className="space-y-4">
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="Enter your blog topic..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-md
-                focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Blog Topic
+              </label>
+              <input
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder="Enter your blog topic..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-md
+                  focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
           </div>
         );
 
@@ -694,6 +711,20 @@ export function BloggerCreatePage() {
       case 4:
         return (
           <div className="space-y-6">
+            {/* Chat Input for Content Generation */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">
+                Generate Content
+              </h3>
+              <ContentGenerationChat
+                onSendMessage={handleChatMessage}
+                onSettingsClick={() => setShowSettingsDialog(true)}
+                isLoading={isLoading}
+                placeholder="e.g., Study this document and use the information to generate the blog..."
+              />
+            </div>
+
+            {/* Content Editor */}
             <ContentEditor
               content={content}
               markdownContent={markdownContent}
@@ -701,8 +732,6 @@ export function BloggerCreatePage() {
                 setContent(html);
                 setMarkdownContent(md);
               }}
-              onGenerate={handleGenerateBlog}
-              onSettingsClick={() => setShowSettingsDialog(true)}
               isLoading={isLoading}
               processingLogs={processingLogs}
             />
@@ -727,7 +756,8 @@ export function BloggerCreatePage() {
             metaDescription={metaDescription}
             featuredImage={featuredImage}
             featuredImageAlt={featuredImageAlt}
-            blogId={id || draftBlogId} // Use existing ID in edit mode, or generated UUID in create mode
+            blogId={id || draftBlogId}
+            primaryKeyword={selectedKeyword}
             onMetaTitleChange={setMetaTitle}
             onMetaDescriptionChange={setMetaDescription}
             onFeaturedImageChange={(url, alt) => {

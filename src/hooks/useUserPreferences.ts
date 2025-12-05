@@ -5,14 +5,18 @@
  */
 
 import { useState, useEffect } from 'react'
-import { userService, type UserPreferences } from '@/services/user.service'
+import { userService, type UserPreferences, type SyncDataSource } from '@/services/user.service'
 import { useAuth } from './useAuth'
 
 interface UseUserPreferencesReturn {
   preferences: UserPreferences | null
   loading: boolean
   error: Error | null
-  updateVendorSyncPreferences: (vendors: string[], prioritizeCopyright?: boolean) => Promise<boolean>
+  updateVendorSyncPreferences: (
+    vendors: string[],
+    prioritizeCopyright?: boolean,
+    dataSource?: SyncDataSource
+  ) => Promise<boolean>
   refreshPreferences: () => Promise<void>
 }
 
@@ -45,13 +49,18 @@ export function useUserPreferences(): UseUserPreferencesReturn {
     loadPreferences()
   }, [user?.id])
 
-  const updateVendorSyncPreferences = async (vendors: string[], prioritizeCopyright?: boolean): Promise<boolean> => {
+  const updateVendorSyncPreferences = async (
+    vendors: string[],
+    prioritizeCopyright?: boolean,
+    dataSource?: SyncDataSource
+  ): Promise<boolean> => {
     if (!user?.id) return false
 
     const { data, error: err } = await userService.updateVendorSyncPreferences(
       user.id,
       vendors,
-      prioritizeCopyright
+      prioritizeCopyright,
+      dataSource
     )
 
     if (err) {

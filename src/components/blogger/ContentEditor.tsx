@@ -4,15 +4,13 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Eye, Code, Sparkles, RefreshCw, Cpu, CheckCircle, AlertCircle, Info, Settings, XCircle } from 'lucide-react';
+import { Eye, Code, Cpu, CheckCircle, AlertCircle, Info, XCircle, RefreshCw } from 'lucide-react';
 import type { ProcessingLog } from '@/services/blogger/gemini-content.service';
 
 interface ContentEditorProps {
   content: string;
   markdownContent: string;
   onChange: (content: string, markdown: string) => void;
-  onGenerate?: () => void;
-  onSettingsClick?: () => void;
   isLoading?: boolean;
   processingLogs?: ProcessingLog[];
 }
@@ -21,13 +19,10 @@ export function ContentEditor({
   content,
   markdownContent,
   onChange,
-  onGenerate,
-  onSettingsClick,
   isLoading = false,
   processingLogs = [],
 }: ContentEditorProps) {
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
-  const hasContent = content.length > 0 && content !== 'zxzxz';
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new logs are added
@@ -73,81 +68,9 @@ export function ContentEditor({
 
   return (
     <div className="space-y-4">
-      {/* Generate Button - Prominent if no content */}
-      {onGenerate && !hasContent && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-6 text-center">
-          <Sparkles className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-          <h4 className="text-lg font-semibold text-gray-900 mb-2">
-            Ready to Generate Your Blog Content
-          </h4>
-          <p className="text-gray-600 mb-4 max-w-md mx-auto">
-            Click the button below to generate high-quality, SEO-optimized content using Gemini AI with your selected persona and template.
-          </p>
-
-          <div className="flex items-center justify-center gap-3">
-            {onSettingsClick && (
-              <button
-                onClick={onSettingsClick}
-                disabled={isLoading}
-                className="inline-flex items-center gap-2 px-5 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed text-base font-medium transition-all"
-              >
-                <Settings className="w-5 h-5" />
-                Settings
-              </button>
-            )}
-            <button
-              onClick={onGenerate}
-              disabled={isLoading}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed text-base font-medium shadow-md hover:shadow-lg transition-all"
-            >
-              {isLoading ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin" />
-                  Generating Content...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-5 h-5" />
-                  Generate Content with AI
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-900">Content Editor</h3>
         <div className="flex gap-2 items-center">
-          {onGenerate && hasContent && onSettingsClick && (
-            <button
-              onClick={onSettingsClick}
-              disabled={isLoading}
-              className="px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              Settings
-            </button>
-          )}
-          {onGenerate && hasContent && (
-            <button
-              onClick={onGenerate}
-              disabled={isLoading}
-              className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Regenerating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Regenerate
-                </>
-              )}
-            </button>
-          )}
           <button
             onClick={() => setViewMode(viewMode === 'edit' ? 'preview' : 'edit')}
             className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2

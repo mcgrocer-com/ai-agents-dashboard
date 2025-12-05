@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect } from 'react'
-import { X, Check } from 'lucide-react'
+import { X, Check, ChevronDown } from 'lucide-react'
+import type { SyncDataSource } from '@/services/user.service'
 
 interface VendorOption {
   name: string
@@ -19,9 +20,15 @@ interface VendorSelectionDialogProps {
   vendors: VendorOption[]
   selectedVendors: string[]
   prioritizeCopyright: boolean
-  onSave: (vendors: string[], prioritizeCopyright: boolean) => Promise<void>
+  dataSource: SyncDataSource
+  onSave: (vendors: string[], prioritizeCopyright: boolean, dataSource: SyncDataSource) => Promise<void>
   loading?: boolean
 }
+
+const DATA_SOURCE_OPTIONS: { value: SyncDataSource; label: string; description: string }[] = [
+  { value: 'All', label: 'All', description: 'Sync products regardless of ERPNext data source' },
+  { value: 'Scrapper', label: 'Scrapper', description: 'Only sync products where ERPNext data_source is Scrapper' },
+]
 
 export function VendorSelectionDialog({
   open,
@@ -29,17 +36,20 @@ export function VendorSelectionDialog({
   vendors,
   selectedVendors,
   prioritizeCopyright = false,
+  dataSource = 'All',
   onSave,
   loading = false,
 }: VendorSelectionDialogProps) {
   const [selected, setSelected] = useState<string[]>(selectedVendors)
   const [isPrioritizeCopyright, setIsPrioritizeCopyright] = useState(prioritizeCopyright)
+  const [selectedDataSource, setSelectedDataSource] = useState<SyncDataSource>(dataSource)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setSelected(selectedVendors)
     setIsPrioritizeCopyright(prioritizeCopyright)
-  }, [selectedVendors, prioritizeCopyright, open])
+    setSelectedDataSource(dataSource)
+  }, [selectedVendors, prioritizeCopyright, dataSource, open])
 
   if (!open) return null
 
@@ -62,7 +72,7 @@ export function VendorSelectionDialog({
   const handleSave = async () => {
     setSaving(true)
     try {
-      await onSave(selected, isPrioritizeCopyright)
+      await onSave(selected, isPrioritizeCopyright, selectedDataSource)
       onClose()
     } catch (error) {
       console.error('Failed to save vendor preferences:', error)
@@ -92,7 +102,7 @@ export function VendorSelectionDialog({
         </div>
 
         {/* Body */}
-        <div className="p-6">
+        <div className="p-6 max-h-[60vh] overflow-y-auto">
           <p className="text-sm text-gray-600 mb-4">
             Select which vendors to sync to ERPNext. Uncheck all to sync all vendors.
           </p>
@@ -117,7 +127,7 @@ export function VendorSelectionDialog({
           </div>
 
           {/* Vendor List */}
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="space-y-2">
             {vendors.map((vendor) => (
               <label
                 key={vendor.name}
@@ -155,6 +165,34 @@ export function VendorSelectionDialog({
               No vendors selected - all vendors will be synced
             </p>
           )}
+
+          {/* Data Source Dropdown */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <label className="block text-sm font-medium text-gray-900 mb-2">
+              ERPNext Data Source Filter
+            </label>
+            <p className="text-xs text-gray-500 mb-3">
+              Only update products where ERPNext item's data_source matches this setting
+            </p>
+            <div className="relative">
+              <select
+                value={selectedDataSource}
+                onChange={(e) => setSelectedDataSource(e.target.value as SyncDataSource)}
+                disabled={saving}
+                className="w-full appearance-none p-3 pr-10 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50"
+              >
+                {DATA_SOURCE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              {DATA_SOURCE_OPTIONS.find(o => o.value === selectedDataSource)?.description}
+            </p>
+          </div>
 
           {/* Prioritize Copyright Checkbox */}
           <div className="mt-4 pt-4 border-t border-gray-100">

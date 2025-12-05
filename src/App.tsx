@@ -29,6 +29,11 @@ import {
   BloggerCreatePage,
   BloggerDetailPage,
 } from '@/pages/blogger'
+import {
+  CredentialsDashboardPage,
+  QueueMonitorPage,
+  VendorDetailPage,
+} from '@/pages/shopping-assistant'
 
 function App() {
   const { message, type, hideToast } = useToast()
@@ -58,6 +63,10 @@ function App() {
             <Route path="/blogger/create" element={<BloggerCreatePage />} />
             <Route path="/blogger/:id" element={<BloggerDetailPage />} />
             <Route path="/blogger/:id/edit" element={<BloggerCreatePage />} />
+            <Route path="/shopping-assistant" element={<QueueMonitorPage />} />
+            <Route path="/shopping-assistant/queue" element={<QueueMonitorPage />} />
+            <Route path="/shopping-assistant/credentials" element={<CredentialsDashboardPage />} />
+            <Route path="/shopping-assistant/vendors/:vendorId" element={<VendorDetailPage />} />
           </Route>
         </Route>
 

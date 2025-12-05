@@ -17,6 +17,7 @@ import { VendorSelectionDialog } from '@/components/scraper/VendorSelectionDialo
 import { ProductActionsMenu } from '@/components/scraper/ProductActionsMenu'
 import { useToast } from '@/hooks/useToast'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
+import type { SyncDataSource } from '@/services/user.service'
 import type { ScrapedProduct, ProductFilters } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
@@ -329,8 +330,12 @@ export function ScraperAgentPage() {
   }, [selectedProductIds, showToast, clearSelection, fetchProducts])
 
   // Handler for saving vendor sync preferences
-  const handleSaveVendorPreferences = async (vendors: string[], prioritizeCopyright: boolean) => {
-    const success = await updateVendorSyncPreferences(vendors, prioritizeCopyright)
+  const handleSaveVendorPreferences = async (
+    vendors: string[],
+    prioritizeCopyright: boolean,
+    dataSource: SyncDataSource
+  ) => {
+    const success = await updateVendorSyncPreferences(vendors, prioritizeCopyright, dataSource)
     if (success) {
       showToast(
         vendors.length === 0
@@ -613,6 +618,7 @@ export function ScraperAgentPage() {
         vendors={vendorsList}
         selectedVendors={preferences?.sync_vendors || []}
         prioritizeCopyright={preferences?.prioritize_copyright || false}
+        dataSource={preferences?.sync_data_source || 'All'}
         onSave={handleSaveVendorPreferences}
       />
     </div>

@@ -35,6 +35,7 @@ interface JobQueue {
   batch_size: number
   max_batches: number | null
   max_concurrent: number
+  force_sync: boolean
   request: 'start' | 'stop' | null
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   created_at: string
@@ -53,6 +54,7 @@ interface JobFormData {
   batch_size: number
   max_batches: number | null
   max_concurrent: number
+  force_sync: boolean
 }
 
 const AGENT_OPTIONS = [
@@ -159,6 +161,7 @@ export function JobQueueManager() {
         batch_size: formData.batch_size,
         max_batches: formData.max_batches,
         max_concurrent: formData.max_concurrent,
+        force_sync: formData.force_sync,
         status: 'pending',
         products_processed: 0,
         products_successful: 0,
@@ -188,6 +191,7 @@ export function JobQueueManager() {
           batch_size: formData.batch_size,
           max_batches: formData.max_batches,
           max_concurrent: formData.max_concurrent,
+          force_sync: formData.force_sync,
         })
         .eq('id', editingJob.id)
 
@@ -529,6 +533,7 @@ export function JobQueueManager() {
             batch_size: editingJob.batch_size,
             max_batches: editingJob.max_batches,
             max_concurrent: editingJob.max_concurrent,
+            force_sync: editingJob.force_sync,
           }}
           onSubmit={handleUpdateJob}
           onClose={() => {
@@ -767,6 +772,7 @@ function JobFormDialog({
       batch_size: 10,
       max_batches: null,
       max_concurrent: 10,
+      force_sync: false,
     }
   )
   const [vendors, setVendors] = useState<{ name: string; count: number }[]>([])
@@ -969,6 +975,28 @@ function JobFormDialog({
           <p className="text-xs text-gray-500 mt-1">
             Maximum concurrent tasks (1-30, default: 10)
           </p>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.force_sync}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  force_sync: e.target.checked,
+                })
+              }
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700">Force Sync</span>
+              <p className="text-xs text-gray-500">
+                Force sync server products with supabase
+              </p>
+            </div>
+          </label>
         </div>
 
         {/* Job Summary Footer */}

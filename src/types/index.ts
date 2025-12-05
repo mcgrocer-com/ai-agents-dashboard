@@ -37,3 +37,32 @@ export {
   generateFilterId,
   updateVendorEnumValues,
 } from './filters'
+
+// Export shopping assistant types
+export type {
+  Vendor,
+  VendorSelectors,
+  VendorWithStats,
+  VendorAccount,
+  VendorAccountWithVendor,
+  CreateVendorAccountInput,
+  UpdateVendorAccountInput,
+  CartQueue,
+  CartQueueStatus,
+  CartQueueWithDetails,
+  CreateCartQueueInput,
+  CartQueueStats,
+  UserCartItem,
+  UserCartItemWithDetails,
+  AccountMigration,
+  MigratedItem,
+  CreateMigrationInput,
+  AddToCartResponse,
+  TestAccountResponse,
+  MigrateAccountResponse,
+  ServiceResponse,
+  CartQueueFilters,
+  VendorAccountFilters,
+  PaginationParams,
+  PaginatedResponse,
+} from './shopping-assistant'
