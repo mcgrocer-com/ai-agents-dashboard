@@ -1152,7 +1152,7 @@ export function BloggerCreatePage() {
           updated_at: new Date().toISOString(),
           persona: selectedPersona || undefined,
           template: selectedTemplate || undefined,
-          primary_keyword: undefined, // Keyword stored as string in selectedKeyword state
+          primary_keyword: selectedKeyword || null,
         };
         return <BlogPreview blog={previewBlog} />;
 
