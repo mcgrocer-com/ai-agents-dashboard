@@ -9,6 +9,8 @@ import {
   BlogWizard,
   PersonaSelector,
   TemplateSelector,
+  PersonaFormModal,
+  TemplateFormModal,
   ContentEditor,
   AgentInsights,
   SeoOptimizer,
@@ -17,13 +19,32 @@ import {
   ContentGenerationChat,
   type BlogGenerationSettings,
 } from '@/components/blogger';
-import { getAllPersonas } from '@/services/blogger/personas.service';
-import { getAllTemplates } from '@/services/blogger/templates.service';
+import {
+  getAllPersonas,
+  createPersona,
+  updatePersona,
+  deletePersona,
+} from '@/services/blogger/personas.service';
+import {
+  getAllTemplates,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+} from '@/services/blogger/templates.service';
 import { generateMetaData, calculateSeoScore, calculateReadabilityScore } from '@/services/blogger/ai.service';
 import { generateBlogWithGemini, type ProcessingLog } from '@/services/blogger/gemini-content.service';
 import { createBlog, getBlogById, updateBlog } from '@/services/blogger/blogs.service';
 import { publishBlogToShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
-import type { BloggerPersona, BloggerTemplate, BlogWithRelations, ContextFile } from '@/types/blogger';
+import type {
+  BloggerPersona,
+  BloggerTemplate,
+  BlogWithRelations,
+  ContextFile,
+  PersonaFormData,
+  TemplateFormData,
+  CreatePersonaInput,
+  CreateTemplateInput,
+} from '@/types/blogger';
 import Swal from 'sweetalert2';
 
 const TOTAL_STEPS = 6;
@@ -54,6 +75,16 @@ export function BloggerCreatePage() {
   const [templates, setTemplates] = useState<BloggerTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<BloggerTemplate | null>(null);
 
+  // Persona/Template CRUD Modals
+  const [isPersonaModalOpen, setIsPersonaModalOpen] = useState(false);
+  const [editingPersona, setEditingPersona] = useState<BloggerPersona | null>(null);
+  const [isSavingPersona, setIsSavingPersona] = useState(false);
+  const [isPersonaReadOnly, setIsPersonaReadOnly] = useState(false);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<BloggerTemplate | null>(null);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [isTemplateReadOnly, setIsTemplateReadOnly] = useState(false);
+
   // Step 4: Content Preview (AI selects keyword autonomously)
   const [content, setContent] = useState('');
   const [markdownContent, setMarkdownContent] = useState('');
@@ -62,6 +93,7 @@ export function BloggerCreatePage() {
   const [articlesAnalyzed, setArticlesAnalyzed] = useState<number>(0);
   const [productLinks, setProductLinks] = useState<string[]>([]);
   const [wordCount, setWordCount] = useState<number>(0);
+  const [aiSummary, setAiSummary] = useState<string>(''); // AI's summary of decisions
 
   // Generation Settings Dialog
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
@@ -306,6 +338,34 @@ export function BloggerCreatePage() {
     }
   };
 
+  const handleRegenerateMetaTitle = async () => {
+    if (!selectedKeyword && !topic) return;
+
+    try {
+      // Pass content for context-aware meta generation
+      const result = await generateMetaData(topic, selectedKeyword ? [selectedKeyword] : [], content);
+      if (result.success && result.data?.title) {
+        setMetaTitle(result.data.title);
+      }
+    } catch (error) {
+      console.error('Error regenerating meta title:', error);
+    }
+  };
+
+  const handleRegenerateMetaDescription = async () => {
+    if (!selectedKeyword && !topic) return;
+
+    try {
+      // Pass content for context-aware meta generation
+      const result = await generateMetaData(topic, selectedKeyword ? [selectedKeyword] : [], content);
+      if (result.success && result.data?.description) {
+        setMetaDescription(result.data.description);
+      }
+    } catch (error) {
+      console.error('Error regenerating meta description:', error);
+    }
+  };
+
   const handleGenerateBlog = async (
     settings?: BlogGenerationSettings,
     userPrompt?: string,
@@ -341,6 +401,7 @@ export function BloggerCreatePage() {
         setArticlesAnalyzed(result.data.articlesAnalyzed || 0);
         setProductLinks(result.data.productLinks || []);
         setWordCount(result.data.wordCount || 0);
+        setAiSummary(result.data.summary || ''); // Capture AI's summary of decisions
 
         // Auto-populate SEO meta tags from AI generation
         setMetaTitle(result.data.metaTitle || '');
@@ -655,6 +716,257 @@ export function BloggerCreatePage() {
     // If cancelled, do nothing
   };
 
+  // ============================================================================
+  // Persona CRUD Handlers
+  // ============================================================================
+
+  const handleCreatePersonaClick = () => {
+    setEditingPersona(null);
+    setIsPersonaReadOnly(false);
+    setIsPersonaModalOpen(true);
+  };
+
+  const handleEditPersonaClick = (persona: BloggerPersona) => {
+    setEditingPersona(persona);
+    setIsPersonaReadOnly(false);
+    setIsPersonaModalOpen(true);
+  };
+
+  const handlePreviewPersonaClick = (persona: BloggerPersona) => {
+    setEditingPersona(persona);
+    setIsPersonaReadOnly(true);
+    setIsPersonaModalOpen(true);
+  };
+
+  const handleSavePersona = async (data: PersonaFormData) => {
+    setIsSavingPersona(true);
+    try {
+      const input: CreatePersonaInput = {
+        name: data.name,
+        role: data.role,
+        bio: data.bio,
+        expertise: data.expertise,
+        context_data: {
+          years_experience: data.years_experience,
+          location: data.location,
+          background: data.background,
+          credentials: data.credentials,
+          writing_style: data.writing_style,
+          specialty: data.specialty,
+          methodology: data.methodology,
+          purpose: data.purpose,
+          career_milestone: data.career_milestone,
+          best_templates: data.best_templates,
+        },
+      };
+
+      let result;
+      if (editingPersona) {
+        result = await updatePersona(editingPersona.id, input);
+      } else {
+        result = await createPersona(input);
+      }
+
+      if (result.success) {
+        Swal.fire({
+          icon: 'success',
+          title: editingPersona ? 'Persona Updated' : 'Persona Created',
+          timer: 1500,
+          showConfirmButton: false,
+        });
+        setIsPersonaModalOpen(false);
+        // Refresh personas list
+        const personasResult = await getAllPersonas();
+        if (personasResult.success && personasResult.data) {
+          setPersonas(personasResult.data);
+        }
+      } else {
+        throw result.error;
+      }
+    } catch (error) {
+      console.error('Error saving persona:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Save Failed',
+        text: 'Failed to save persona. Please try again.',
+      });
+    } finally {
+      setIsSavingPersona(false);
+    }
+  };
+
+  const handleDeletePersona = async (id: string) => {
+    setIsSavingPersona(true);
+    try {
+      const result = await deletePersona(id);
+      if (result.success) {
+        Swal.fire({
+          icon: 'success',
+          title: 'Persona Deleted',
+          timer: 1500,
+          showConfirmButton: false,
+        });
+        setIsPersonaModalOpen(false);
+        // Clear selection if deleted persona was selected
+        if (selectedPersona?.id === id) {
+          setSelectedPersona(null);
+        }
+        // Refresh personas list
+        const personasResult = await getAllPersonas();
+        if (personasResult.success && personasResult.data) {
+          setPersonas(personasResult.data);
+        }
+      } else {
+        // Check for foreign key violation
+        const errorMsg = result.error?.message || '';
+        if (errorMsg.includes('foreign key') || errorMsg.includes('violates')) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Cannot Delete',
+            text: 'This persona is used by existing blog posts. Remove those references first.',
+          });
+        } else {
+          throw result.error;
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting persona:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Delete Failed',
+        text: 'Failed to delete persona. Please try again.',
+      });
+    } finally {
+      setIsSavingPersona(false);
+    }
+  };
+
+  // ============================================================================
+  // Template CRUD Handlers
+  // ============================================================================
+
+  const handleCreateTemplateClick = () => {
+    setEditingTemplate(null);
+    setIsTemplateReadOnly(false);
+    setIsTemplateModalOpen(true);
+  };
+
+  const handleEditTemplateClick = (template: BloggerTemplate) => {
+    setEditingTemplate(template);
+    setIsTemplateReadOnly(false);
+    setIsTemplateModalOpen(true);
+  };
+
+  const handlePreviewTemplateClick = (template: BloggerTemplate) => {
+    setEditingTemplate(template);
+    setIsTemplateReadOnly(true);
+    setIsTemplateModalOpen(true);
+  };
+
+  const handleSaveTemplate = async (data: TemplateFormData) => {
+    setIsSavingTemplate(true);
+    try {
+      const input: CreateTemplateInput = {
+        name: data.name,
+        description: data.description,
+        h1_template: data.h1_template,
+        content_structure: data.content_structure,
+        seo_rules: data.seo_rules,
+        prompt_template: data.prompt_template,
+        notes: data.notes || null,
+      };
+
+      let result;
+      if (editingTemplate) {
+        result = await updateTemplate(editingTemplate.id, input);
+      } else {
+        result = await createTemplate(input);
+      }
+
+      if (result.success) {
+        Swal.fire({
+          icon: 'success',
+          title: editingTemplate ? 'Template Updated' : 'Template Created',
+          timer: 1500,
+          showConfirmButton: false,
+        });
+        setIsTemplateModalOpen(false);
+        // Refresh templates list
+        const templatesResult = await getAllTemplates();
+        if (templatesResult.success && templatesResult.data) {
+          setTemplates(templatesResult.data);
+        }
+      } else {
+        // Check for unique constraint violation
+        const errorMsg = result.error?.message || '';
+        if (errorMsg.includes('unique') || errorMsg.includes('duplicate')) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Name Already Exists',
+            text: 'A template with this name already exists. Please use a different name.',
+          });
+        } else {
+          throw result.error;
+        }
+      }
+    } catch (error) {
+      console.error('Error saving template:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Save Failed',
+        text: 'Failed to save template. Please try again.',
+      });
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    setIsSavingTemplate(true);
+    try {
+      const result = await deleteTemplate(id);
+      if (result.success) {
+        Swal.fire({
+          icon: 'success',
+          title: 'Template Deleted',
+          timer: 1500,
+          showConfirmButton: false,
+        });
+        setIsTemplateModalOpen(false);
+        // Clear selection if deleted template was selected
+        if (selectedTemplate?.id === id) {
+          setSelectedTemplate(null);
+        }
+        // Refresh templates list
+        const templatesResult = await getAllTemplates();
+        if (templatesResult.success && templatesResult.data) {
+          setTemplates(templatesResult.data);
+        }
+      } else {
+        // Check for foreign key violation
+        const errorMsg = result.error?.message || '';
+        if (errorMsg.includes('foreign key') || errorMsg.includes('violates')) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Cannot Delete',
+            text: 'This template is used by existing blog posts. Remove those references first.',
+          });
+        } else {
+          throw result.error;
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Delete Failed',
+        text: 'Failed to delete template. Please try again.',
+      });
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
   const canGoNext = () => {
     switch (currentStep) {
       case 1: return topic.trim().length > 0;
@@ -694,6 +1006,9 @@ export function BloggerCreatePage() {
             personas={personas}
             selectedPersonaId={selectedPersona?.id || null}
             onSelect={setSelectedPersona}
+            onCreateClick={handleCreatePersonaClick}
+            onEditClick={handleEditPersonaClick}
+            onPreviewClick={handlePreviewPersonaClick}
             isLoading={isLoading}
           />
         );
@@ -704,6 +1019,9 @@ export function BloggerCreatePage() {
             templates={templates}
             selectedTemplateId={selectedTemplate?.id || null}
             onSelect={setSelectedTemplate}
+            onCreateClick={handleCreateTemplateClick}
+            onEditClick={handleEditTemplateClick}
+            onPreviewClick={handlePreviewTemplateClick}
             isLoading={isLoading}
           />
         );
@@ -723,6 +1041,23 @@ export function BloggerCreatePage() {
                 placeholder="e.g., Study this document and use the information to generate the blog..."
               />
             </div>
+
+            {/* AI Summary - Shows AI's reasoning and decisions */}
+            {aiSummary && !isLoading && (
+              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-purple-900 mb-1">AI Summary</h4>
+                    <p className="text-sm text-purple-800 leading-relaxed">{aiSummary}</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Content Editor */}
             <ContentEditor
@@ -768,6 +1103,8 @@ export function BloggerCreatePage() {
               setFeaturedImage('');
               setFeaturedImageAlt('');
             }}
+            onRegenerateMetaTitle={handleRegenerateMetaTitle}
+            onRegenerateMetaDescription={handleRegenerateMetaDescription}
             isLoading={isLoading}
           />
         );
@@ -831,6 +1168,29 @@ export function BloggerCreatePage() {
         }}
         initialSettings={generationSettings}
         isLoading={isLoading}
+      />
+
+      {/* Persona Create/Edit/Preview Modal */}
+      <PersonaFormModal
+        open={isPersonaModalOpen}
+        onClose={() => setIsPersonaModalOpen(false)}
+        onSave={handleSavePersona}
+        onDelete={editingPersona && !isPersonaReadOnly ? handleDeletePersona : undefined}
+        persona={editingPersona}
+        availableTemplates={templates.map((t) => t.name)}
+        saving={isSavingPersona}
+        readOnly={isPersonaReadOnly}
+      />
+
+      {/* Template Create/Edit/Preview Modal */}
+      <TemplateFormModal
+        open={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        onSave={handleSaveTemplate}
+        onDelete={editingTemplate && !isTemplateReadOnly ? handleDeleteTemplate : undefined}
+        template={editingTemplate}
+        saving={isSavingTemplate}
+        readOnly={isTemplateReadOnly}
       />
     </>
   );

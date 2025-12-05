@@ -6,6 +6,8 @@
 export { BlogWizard } from './BlogWizard';
 export { PersonaSelector } from './PersonaSelector';
 export { TemplateSelector } from './TemplateSelector';
+export { PersonaFormModal } from './PersonaFormModal';
+export { TemplateFormModal } from './TemplateFormModal';
 export { ContentEditor } from './ContentEditor';
 export { AgentInsights } from './AgentInsights';
 export { SeoOptimizer } from './SeoOptimizer';

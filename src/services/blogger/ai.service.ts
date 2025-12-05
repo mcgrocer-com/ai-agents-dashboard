@@ -3,6 +3,7 @@
  * Wraps external API calls for AI-powered content generation
  */
 
+import { GoogleGenAI } from '@google/genai';
 import type {
   KeywordResearchResponse,
   MetaDataResponse,
@@ -14,6 +15,9 @@ import type {
 } from '@/types/blogger';
 import { generateRelatedBlogLinks } from './shopify.service';
 import { supabase } from '@/lib/supabase/client';
+
+// Initialize Google GenAI
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 // Cache configuration
 const CACHE_TTL_DAYS = 7; // Default TTL: 7 days
@@ -320,34 +324,72 @@ export async function researchKeywords(
 }
 
 /**
- * Generate SEO meta data (title and description)
+ * Generate SEO meta data (title and description) using Gemini
+ * When content is provided, generates meta data based on the actual blog content
+ * Otherwise falls back to topic-based generation
  */
 export async function generateMetaData(
   topic: string,
-  keywords: string[]
+  keywords: string[],
+  content?: string
 ): Promise<ServiceResponse<MetaDataResponse>> {
   try {
-    const res = await fetch(`${API_URL}/meta-data/generate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        topic: topic,
-        primary_keyword: keywords[0] || topic
-      }),
-    });
+    const primaryKeyword = keywords[0] || topic;
 
-    if (!res.ok) {
-      throw new Error("Failed to generate meta data");
+    // Build prompt based on whether content is available
+    let prompt: string;
+
+    if (content && content.length > 100) {
+      // Extract first ~2000 chars of content for context (keeps prompt size reasonable)
+      const contentPreview = content.substring(0, 2000);
+
+      prompt = `Generate SEO-optimized meta title and meta description for this blog post.
+
+Topic: ${topic}
+Primary Keyword: ${primaryKeyword}
+
+Blog Content Preview:
+${contentPreview}${content.length > 2000 ? '...' : ''}
+
+Requirements:
+- Meta Title: 50-60 characters, include the primary keyword naturally, compelling and click-worthy, accurately reflect the content
+- Meta Description: 140-160 characters, include the primary keyword, summarize the main value/takeaway from the content, include a call to action
+
+Respond ONLY with a JSON object in this exact format (no markdown, no explanation):
+{"title": "Your meta title here", "description": "Your meta description here"}`;
+    } else {
+      prompt = `Generate SEO-optimized meta title and meta description for a blog post.
+
+Topic: ${topic}
+Primary Keyword: ${primaryKeyword}
+
+Requirements:
+- Meta Title: 50-60 characters, include the primary keyword naturally, compelling and click-worthy
+- Meta Description: 140-160 characters, include the primary keyword, summarize the value proposition, include a call to action
+
+Respond ONLY with a JSON object in this exact format (no markdown, no explanation):
+{"title": "Your meta title here", "description": "Your meta description here"}`;
     }
 
-    const data = await res.json();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: prompt,
+    });
+
+    const text = response.text || '';
+
+    // Parse the JSON response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Invalid response format from Gemini');
+    }
+
+    const data = JSON.parse(jsonMatch[0]);
 
     return {
       data: {
-        title: data.meta_data?.meta_title || "",
-        description: data.meta_data?.meta_description || "",
+        title: data.title || '',
+        description: data.description || '',
         keywords: keywords
       },
       error: null,

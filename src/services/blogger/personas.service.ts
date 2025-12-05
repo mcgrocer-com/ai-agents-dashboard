@@ -4,7 +4,12 @@
  */
 
 import { supabase } from '@/lib/supabase/client';
-import type { BloggerPersona, ServiceResponse } from '@/types/blogger';
+import type {
+  BloggerPersona,
+  ServiceResponse,
+  CreatePersonaInput,
+  UpdatePersonaInput,
+} from '@/types/blogger';
 
 /**
  * Get all personas
@@ -84,6 +89,104 @@ export async function getPersonasByTemplate(
     return { data: data || [], error: null, success: true };
   } catch (error) {
     console.error('Unexpected error fetching personas by template:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Create a new persona
+ * Automatically sets user_id from current authenticated user
+ */
+export async function createPersona(
+  input: CreatePersonaInput
+): Promise<ServiceResponse<BloggerPersona>> {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        data: null,
+        error: new Error('User not authenticated'),
+        success: false,
+      };
+    }
+
+    const { data, error } = await supabase
+      .from('blogger_personas')
+      .insert({ ...input, user_id: user.id })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating persona:', error);
+      return { data: null, error, success: false };
+    }
+
+    return { data, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error creating persona:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Update an existing persona
+ * Only user-created personas can be updated (enforced by RLS)
+ */
+export async function updatePersona(
+  id: string,
+  input: UpdatePersonaInput
+): Promise<ServiceResponse<BloggerPersona>> {
+  try {
+    const { data, error } = await supabase
+      .from('blogger_personas')
+      .update(input)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating persona:', error);
+      return { data: null, error, success: false };
+    }
+
+    return { data, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error updating persona:', error);
+    return {
+      data: null,
+      error: error as Error,
+      success: false,
+    };
+  }
+}
+
+/**
+ * Delete a persona by ID
+ * Only user-created personas can be deleted (enforced by RLS)
+ */
+export async function deletePersona(id: string): Promise<ServiceResponse<null>> {
+  try {
+    const { error } = await supabase.from('blogger_personas').delete().eq('id', id);
+
+    if (error) {
+      console.error('Error deleting persona:', error);
+      return { data: null, error, success: false };
+    }
+
+    return { data: null, error: null, success: true };
+  } catch (error) {
+    console.error('Unexpected error deleting persona:', error);
     return {
       data: null,
       error: error as Error,

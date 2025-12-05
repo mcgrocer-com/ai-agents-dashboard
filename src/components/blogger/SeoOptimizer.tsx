@@ -3,7 +3,7 @@
  * SEO meta fields with character counts, validation, and individual SEO scores
  */
 
-import { CheckCircle, AlertCircle, Upload, X } from 'lucide-react';
+import { CheckCircle, AlertCircle, Upload, X, RefreshCw } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { uploadBlogImage } from '@/services/blogger/images.service';
 import {
@@ -22,6 +22,8 @@ interface SeoOptimizerProps {
   onMetaDescriptionChange: (value: string) => void;
   onFeaturedImageChange?: (url: string, alt: string) => void;
   onImageRemove?: () => void;
+  onRegenerateMetaTitle?: () => Promise<void>;
+  onRegenerateMetaDescription?: () => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -36,12 +38,36 @@ export function SeoOptimizer({
   onMetaDescriptionChange,
   onFeaturedImageChange,
   onImageRemove,
+  onRegenerateMetaTitle,
+  onRegenerateMetaDescription,
   isLoading = false,
 }: SeoOptimizerProps) {
   const [imageAlt, setImageAlt] = useState('');
   const [showImageInput, setShowImageInput] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
+  const [isRegeneratingDescription, setIsRegeneratingDescription] = useState(false);
+
+  const handleRegenerateTitle = async () => {
+    if (!onRegenerateMetaTitle || isRegeneratingTitle) return;
+    setIsRegeneratingTitle(true);
+    try {
+      await onRegenerateMetaTitle();
+    } finally {
+      setIsRegeneratingTitle(false);
+    }
+  };
+
+  const handleRegenerateDescription = async () => {
+    if (!onRegenerateMetaDescription || isRegeneratingDescription) return;
+    setIsRegeneratingDescription(true);
+    try {
+      await onRegenerateMetaDescription();
+    } finally {
+      setIsRegeneratingDescription(false);
+    }
+  };
 
   const titleLength = metaTitle.length;
   const descLength = metaDescription.length;
@@ -122,6 +148,19 @@ export function SeoOptimizer({
           />
           <div className="flex items-center justify-between mt-1">
             <span className="text-xs text-gray-500">{titleLength}/60 characters</span>
+            {onRegenerateMetaTitle && (
+              <button
+                type="button"
+                onClick={handleRegenerateTitle}
+                disabled={isLoading || isRegeneratingTitle}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800
+                  hover:bg-blue-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Regenerate meta title"
+              >
+                <RefreshCw className={`w-3 h-3 ${isRegeneratingTitle ? 'animate-spin' : ''}`} />
+                <span>{isRegeneratingTitle ? 'Regenerating...' : 'Regenerate'}</span>
+              </button>
+            )}
           </div>
           {/* Criteria breakdown */}
           <div className="mt-2 space-y-1">
@@ -171,6 +210,19 @@ export function SeoOptimizer({
           />
           <div className="flex items-center justify-between mt-1">
             <span className="text-xs text-gray-500">{descLength}/160 characters</span>
+            {onRegenerateMetaDescription && (
+              <button
+                type="button"
+                onClick={handleRegenerateDescription}
+                disabled={isLoading || isRegeneratingDescription}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-800
+                  hover:bg-blue-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Regenerate meta description"
+              >
+                <RefreshCw className={`w-3 h-3 ${isRegeneratingDescription ? 'animate-spin' : ''}`} />
+                <span>{isRegeneratingDescription ? 'Regenerating...' : 'Regenerate'}</span>
+              </button>
+            )}
           </div>
           {/* Criteria breakdown */}
           <div className="mt-2 space-y-1">

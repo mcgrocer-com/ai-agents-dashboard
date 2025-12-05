@@ -36,6 +36,7 @@ export interface BloggerPersona {
   tone?: string;
   writing_style?: string;
   context_data?: PersonaContextData;
+  user_id?: string | null; // null = system persona, UUID = user-created
   created_at: string;
   updated_at: string;
 }
@@ -52,9 +53,16 @@ export interface BloggerTemplate {
   seo_rules?: string;
   prompt_template?: string;
   notes?: string | null;
+  user_id?: string | null; // null = system template, UUID = user-created
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Helper to check if a persona or template is user-created (editable)
+ */
+export const isUserCreated = (item: { user_id?: string | null }): boolean =>
+  item.user_id !== null && item.user_id !== undefined;
 
 /**
  * Keyword competition level
@@ -435,4 +443,76 @@ export interface ContextFile {
   size: number;
   content: string;
   uploadedAt: number;
+}
+
+// ============================================================================
+// Persona & Template Form Types (for Create/Edit Modals)
+// ============================================================================
+
+/**
+ * Input type for creating a persona (omits auto-generated fields)
+ */
+export interface CreatePersonaInput {
+  name: string;
+  role: string;
+  bio: string;
+  expertise: string;
+  context_data: PersonaContextData;
+}
+
+/**
+ * Input type for updating a persona (all fields optional)
+ */
+export type UpdatePersonaInput = Partial<CreatePersonaInput>;
+
+/**
+ * Flattened form data for persona create/edit modal
+ */
+export interface PersonaFormData {
+  name: string;
+  role: string;
+  bio: string;
+  expertise: string;
+  // Context data fields (flattened for form)
+  years_experience: number;
+  location: string;
+  background: string;
+  credentials: string;
+  writing_style: string;
+  specialty: string;
+  methodology: string;
+  purpose: string;
+  career_milestone: string;
+  best_templates: string[];
+}
+
+/**
+ * Input type for creating a template (omits auto-generated fields)
+ */
+export interface CreateTemplateInput {
+  name: string;
+  description: string;
+  h1_template: string;
+  content_structure: string;
+  seo_rules: string;
+  prompt_template: string;
+  notes?: string | null;
+}
+
+/**
+ * Input type for updating a template (all fields optional)
+ */
+export type UpdateTemplateInput = Partial<CreateTemplateInput>;
+
+/**
+ * Form data for template create/edit modal
+ */
+export interface TemplateFormData {
+  name: string;
+  description: string;
+  h1_template: string;
+  content_structure: string;
+  seo_rules: string;
+  prompt_template: string;
+  notes: string;
 }
