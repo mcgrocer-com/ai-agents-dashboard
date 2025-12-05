@@ -20,6 +20,7 @@ interface SeoOptimizerProps {
   primaryKeyword?: string;
   onMetaTitleChange: (value: string) => void;
   onMetaDescriptionChange: (value: string) => void;
+  onPrimaryKeywordChange?: (value: string) => void;
   onFeaturedImageChange?: (url: string, alt: string) => void;
   onImageRemove?: () => void;
   onRegenerateMetaTitle?: () => Promise<void>;
@@ -36,6 +37,7 @@ export function SeoOptimizer({
   primaryKeyword = '',
   onMetaTitleChange,
   onMetaDescriptionChange,
+  onPrimaryKeywordChange,
   onFeaturedImageChange,
   onImageRemove,
   onRegenerateMetaTitle,
@@ -121,6 +123,26 @@ export function SeoOptimizer({
       </div>
 
       <div className="space-y-4">
+        {/* Primary Keyword Input */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Primary Keyword
+          </label>
+          <input
+            type="text"
+            value={primaryKeyword}
+            onChange={(e) => onPrimaryKeywordChange?.(e.target.value)}
+            disabled={isLoading || !onPrimaryKeywordChange}
+            placeholder="Enter primary keyword for SEO scoring..."
+            className="w-full px-4 py-2 border border-gray-300 rounded-md
+              focus:ring-2 focus:ring-blue-500 focus:border-transparent
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            This keyword is used to score your meta title and description. It's auto-selected during content generation.
+          </p>
+        </div>
+
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">

@@ -144,7 +144,8 @@ export function BloggerDashboardPage() {
   };
 
   const handleCreateNew = () => {
-    navigate('/blogger/create');
+    // Pass fresh flag to clear any previous autosave and start with a blank wizard
+    navigate('/blogger/create', { state: { fresh: true } });
   };
 
   return (

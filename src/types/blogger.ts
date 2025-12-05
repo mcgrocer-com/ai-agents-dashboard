@@ -103,6 +103,7 @@ export interface BloggerBlog {
   persona_id: string;
   template_id: string;
   primary_keyword_id: string | null;
+  primary_keyword: string | null; // Primary keyword stored directly as text
   title: string;
   slug: string;
   content: string;
@@ -146,7 +147,7 @@ export interface BloggerBlogProduct {
 export interface BlogWithRelations extends BloggerBlog {
   persona?: BloggerPersona;
   template?: BloggerTemplate;
-  primary_keyword?: BloggerKeyword;
+  // Note: primary_keyword is now a TEXT column on BloggerBlog, not a relation
   products?: BloggerBlogProduct[];
 }
 

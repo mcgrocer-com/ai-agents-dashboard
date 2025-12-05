@@ -336,6 +336,11 @@ export async function generateMetaData(
   try {
     const primaryKeyword = keywords[0] || topic;
 
+    // If keyword is very long (likely a title), extract core terms for the description
+    const keywordForDescription = primaryKeyword.length > 30
+      ? `the key terms from "${primaryKeyword}" (e.g., the main 2-3 word phrase)`
+      : `"${primaryKeyword}"`;
+
     // Build prompt based on whether content is available
     let prompt: string;
 
@@ -346,14 +351,16 @@ export async function generateMetaData(
       prompt = `Generate SEO-optimized meta title and meta description for this blog post.
 
 Topic: ${topic}
-Primary Keyword: ${primaryKeyword}
+Primary Keyword/Phrase: ${primaryKeyword}
 
 Blog Content Preview:
 ${contentPreview}${content.length > 2000 ? '...' : ''}
 
 Requirements:
 - Meta Title: 50-60 characters, include the primary keyword naturally, compelling and click-worthy, accurately reflect the content
-- Meta Description: 140-160 characters, include the primary keyword, summarize the main value/takeaway from the content, include a call to action
+- Meta Description: 140-160 characters, MUST include ${keywordForDescription} naturally, summarize the main value/takeaway from the content, include a call to action
+
+IMPORTANT: The meta description MUST contain the primary keyword phrase (or its core terms if the keyword is long). This is critical for SEO scoring.
 
 Respond ONLY with a JSON object in this exact format (no markdown, no explanation):
 {"title": "Your meta title here", "description": "Your meta description here"}`;
@@ -361,11 +368,13 @@ Respond ONLY with a JSON object in this exact format (no markdown, no explanatio
       prompt = `Generate SEO-optimized meta title and meta description for a blog post.
 
 Topic: ${topic}
-Primary Keyword: ${primaryKeyword}
+Primary Keyword/Phrase: ${primaryKeyword}
 
 Requirements:
 - Meta Title: 50-60 characters, include the primary keyword naturally, compelling and click-worthy
-- Meta Description: 140-160 characters, include the primary keyword, summarize the value proposition, include a call to action
+- Meta Description: 140-160 characters, MUST include ${keywordForDescription} naturally, summarize the value proposition, include a call to action
+
+IMPORTANT: The meta description MUST contain the primary keyword phrase (or its core terms if the keyword is long). This is critical for SEO scoring.
 
 Respond ONLY with a JSON object in this exact format (no markdown, no explanation):
 {"title": "Your meta title here", "description": "Your meta description here"}`;
@@ -1059,6 +1068,53 @@ export function calculateReadabilityScore(content: string): number {
 }
 
 /**
+ * Helper function to check keyword presence with smart matching for long keywords
+ * For short keywords (<=30 chars): exact substring match
+ * For long keywords (>30 chars): check if significant words are present
+ */
+function checkKeywordPresence(
+  text: string,
+  keyword: string
+): { found: boolean; matchType: 'exact' | 'partial' | 'none'; matchedTerms?: string[] } {
+  const textLower = text.toLowerCase();
+  const keywordLower = keyword.toLowerCase();
+
+  // Short keyword - require exact match
+  if (keyword.length <= 30) {
+    const found = textLower.includes(keywordLower);
+    return { found, matchType: found ? 'exact' : 'none' };
+  }
+
+  // Long keyword - first try exact match
+  if (textLower.includes(keywordLower)) {
+    return { found: true, matchType: 'exact' };
+  }
+
+  // Long keyword - check for significant words (3+ chars, not stop words)
+  const stopWords = new Set(['the', 'and', 'for', 'your', 'with', 'that', 'this', 'from', 'are', 'was', 'were', 'been', 'being', 'have', 'has', 'had', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can']);
+  const keywordWords = keywordLower
+    .split(/[\s:,\-|]+/)
+    .filter(w => w.length >= 3 && !stopWords.has(w));
+
+  const matchedTerms: string[] = [];
+  for (const word of keywordWords) {
+    if (textLower.includes(word)) {
+      matchedTerms.push(word);
+    }
+  }
+
+  // Consider it a match if at least 50% of significant words are found (min 2)
+  const threshold = Math.max(2, Math.floor(keywordWords.length * 0.5));
+  const found = matchedTerms.length >= threshold;
+
+  return {
+    found,
+    matchType: found ? 'partial' : 'none',
+    matchedTerms: found ? matchedTerms : undefined
+  };
+}
+
+/**
  * Calculate SEO score for meta title with criteria breakdown
  */
 export function calculateMetaTitleScore(
@@ -1079,17 +1135,41 @@ export function calculateMetaTitleScore(
       : `Length: ${metaTitle.length} chars (aim for 50-60)`,
   });
 
-  // Keyword inclusion (10 points)
-  const hasKeyword =
-    primaryKeyword.length > 0 &&
-    metaTitle.toLowerCase().includes(primaryKeyword.toLowerCase());
-  criteria.push({
-    name: 'keyword',
-    passed: hasKeyword,
-    points: hasKeyword ? 10 : 0,
-    maxPoints: 10,
-    message: hasKeyword ? 'Primary keyword included' : 'Missing primary keyword',
-  });
+  // Keyword inclusion (10 points) - with smart matching for long keywords
+  const trimmedKeyword = primaryKeyword.trim();
+  if (trimmedKeyword.length === 0) {
+    criteria.push({
+      name: 'keyword',
+      passed: false,
+      points: 0,
+      maxPoints: 10,
+      message: 'No primary keyword set',
+    });
+  } else {
+    const keywordCheck = checkKeywordPresence(metaTitle, trimmedKeyword);
+    const displayKeyword = trimmedKeyword.length > 40
+      ? trimmedKeyword.substring(0, 40) + '...'
+      : trimmedKeyword;
+
+    let message: string;
+    if (keywordCheck.found) {
+      if (keywordCheck.matchType === 'exact') {
+        message = `Primary keyword "${displayKeyword}" included`;
+      } else {
+        message = `Key terms found: ${keywordCheck.matchedTerms?.join(', ')}`;
+      }
+    } else {
+      message = `Missing keyword: "${displayKeyword}"`;
+    }
+
+    criteria.push({
+      name: 'keyword',
+      passed: keywordCheck.found,
+      points: keywordCheck.found ? 10 : 0,
+      maxPoints: 10,
+      message,
+    });
+  }
 
   return {
     score: criteria.reduce((sum, c) => sum + c.points, 0),
@@ -1120,17 +1200,41 @@ export function calculateMetaDescriptionScore(
       : `Length: ${metaDescription.length} chars (aim for 140-160)`,
   });
 
-  // Keyword inclusion (10 points)
-  const hasKeyword =
-    primaryKeyword.length > 0 &&
-    metaDescription.toLowerCase().includes(primaryKeyword.toLowerCase());
-  criteria.push({
-    name: 'keyword',
-    passed: hasKeyword,
-    points: hasKeyword ? 10 : 0,
-    maxPoints: 10,
-    message: hasKeyword ? 'Primary keyword included' : 'Missing primary keyword',
-  });
+  // Keyword inclusion (10 points) - with smart matching for long keywords
+  const trimmedKeyword = primaryKeyword.trim();
+  if (trimmedKeyword.length === 0) {
+    criteria.push({
+      name: 'keyword',
+      passed: false,
+      points: 0,
+      maxPoints: 10,
+      message: 'No primary keyword set',
+    });
+  } else {
+    const keywordCheck = checkKeywordPresence(metaDescription, trimmedKeyword);
+    const displayKeyword = trimmedKeyword.length > 40
+      ? trimmedKeyword.substring(0, 40) + '...'
+      : trimmedKeyword;
+
+    let message: string;
+    if (keywordCheck.found) {
+      if (keywordCheck.matchType === 'exact') {
+        message = `Primary keyword "${displayKeyword}" included`;
+      } else {
+        message = `Key terms found: ${keywordCheck.matchedTerms?.join(', ')}`;
+      }
+    } else {
+      message = `Missing keyword: "${displayKeyword}"`;
+    }
+
+    criteria.push({
+      name: 'keyword',
+      passed: keywordCheck.found,
+      points: keywordCheck.found ? 10 : 0,
+      maxPoints: 10,
+      message,
+    });
+  }
 
   return {
     score: criteria.reduce((sum, c) => sum + c.points, 0),

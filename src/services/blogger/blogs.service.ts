@@ -81,14 +81,15 @@ export async function getUserBlogs(
     }
 
     // Build query
+    // Note: We don't alias blogger_keywords as 'primary_keyword' since that would
+    // overwrite the primary_keyword TEXT column. Use keyword_relation instead.
     let query = supabase
       .from('blogger_blogs')
       .select(
         `
         *,
         persona:blogger_personas(*),
-        template:blogger_templates(*),
-        primary_keyword:blogger_keywords(*)
+        template:blogger_templates(*)
       `,
         { count: 'exact' }
       )
@@ -160,6 +161,8 @@ export async function getBlogById(
   id: string
 ): Promise<ServiceResponse<BlogWithRelations>> {
   try {
+    // Note: We don't alias blogger_keywords as 'primary_keyword' since that would
+    // overwrite the primary_keyword TEXT column on the blog.
     const { data, error } = await supabase
       .from('blogger_blogs')
       .select(
@@ -167,7 +170,6 @@ export async function getBlogById(
         *,
         persona:blogger_personas(*),
         template:blogger_templates(*),
-        primary_keyword:blogger_keywords(*),
         products:blogger_blog_products(*)
       `
       )

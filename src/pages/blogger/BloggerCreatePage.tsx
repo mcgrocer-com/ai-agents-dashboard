@@ -56,6 +56,7 @@ export function BloggerCreatePage() {
   const { id } = useParams<{ id: string }>();
   const isEditMode = Boolean(id);
   const passedBlog = location.state?.blog as BlogWithRelations | undefined;
+  const isFreshStart = location.state?.fresh === true;
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState(1);
@@ -115,7 +116,12 @@ export function BloggerCreatePage() {
   useEffect(() => {
     loadInitialData();
     if (!isEditMode) {
-      loadAutoSave(); // Only load autosave in create mode, not edit mode
+      if (isFreshStart) {
+        // Clear autosave when starting fresh from dashboard
+        localStorage.removeItem(AUTOSAVE_KEY);
+      } else {
+        loadAutoSave(); // Only load autosave when resuming a draft
+      }
     }
   }, []);
 
@@ -190,6 +196,13 @@ export function BloggerCreatePage() {
           setSeoScore(blog.seo_score);
           setReadabilityScore(blog.readability_score);
           setWordCount(blog.word_count || 0);
+
+          // Set the primary keyword directly from the blog
+          setSelectedKeyword(blog.primary_keyword || '');
+
+          // Set featured image fields
+          setFeaturedImage(blog.featured_image_url || '');
+          setFeaturedImageAlt(blog.featured_image_alt || '');
 
           // Find and set the persona
           if (blog.persona_id && personasResult.data) {
@@ -468,6 +481,7 @@ export function BloggerCreatePage() {
           persona_id: selectedPersona.id,
           template_id: selectedTemplate.id,
           primary_keyword_id: null,
+          primary_keyword: selectedKeyword || null,
           title: metaTitle,
           content,
           markdown_content: markdownContent,
@@ -492,6 +506,7 @@ export function BloggerCreatePage() {
           persona_id: selectedPersona.id,
           template_id: selectedTemplate.id,
           primary_keyword_id: null,
+          primary_keyword: selectedKeyword || null,
           title: metaTitle,
           slug: uniqueSlug,
           content,
@@ -614,6 +629,7 @@ export function BloggerCreatePage() {
         persona_id: selectedPersona.id,
         template_id: selectedTemplate!.id,
         primary_keyword_id: null,
+        primary_keyword: selectedKeyword || null,
         title: metaTitle,
         slug: uniqueSlug,
         content,
@@ -1095,6 +1111,7 @@ export function BloggerCreatePage() {
             primaryKeyword={selectedKeyword}
             onMetaTitleChange={setMetaTitle}
             onMetaDescriptionChange={setMetaDescription}
+            onPrimaryKeywordChange={setSelectedKeyword}
             onFeaturedImageChange={(url, alt) => {
               setFeaturedImage(url);
               setFeaturedImageAlt(alt);
