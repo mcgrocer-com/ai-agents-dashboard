@@ -112,26 +112,60 @@ export function BloggerCreatePage() {
   const [seoScore, setSeoScore] = useState<number | null>(null);
   const [readabilityScore, setReadabilityScore] = useState<number | null>(null);
 
+  // Flag to prevent auto-save immediately after loading from localStorage
+  const [isLoadingFromAutoSave, setIsLoadingFromAutoSave] = useState(false);
+
   // Load personas and templates on mount
   useEffect(() => {
     loadInitialData();
+  }, []);
+
+  // Handle autosave loading/clearing based on navigation state
+  useEffect(() => {
     if (!isEditMode) {
       if (isFreshStart) {
         // Clear autosave when starting fresh from dashboard
         localStorage.removeItem(AUTOSAVE_KEY);
       } else {
+        // Set flag to prevent auto-save during load
+        setIsLoadingFromAutoSave(true);
         loadAutoSave(); // Only load autosave when resuming a draft
+        // Allow auto-save after a delay
+        setTimeout(() => setIsLoadingFromAutoSave(false), 1500);
       }
     }
-  }, []);
+  }, [isFreshStart, isEditMode]);
 
-  // Auto-save on state changes
+  // Auto-save on state changes (debounced)
   useEffect(() => {
+    // Skip auto-save if we're currently loading from localStorage or in edit mode
+    if (isLoadingFromAutoSave || isEditMode) return;
+
     const timer = setTimeout(() => {
       saveToLocalStorage();
     }, 1000);
     return () => clearTimeout(timer);
-  }, [topic, selectedPersona, selectedTemplate, selectedKeyword, metaTitle, metaDescription, content, markdownContent, articlesAnalyzed, productLinks, wordCount, processingLogs, generationSettings]);
+  }, [topic, selectedPersona, selectedTemplate, selectedKeyword, metaTitle, metaDescription, content, markdownContent, articlesAnalyzed, productLinks, wordCount, processingLogs, generationSettings, isLoadingFromAutoSave, isEditMode]);
+
+  // Save immediately on navigation/tab switch/page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!isEditMode) {
+        saveToLocalStorage();
+      }
+    };
+
+    // Save on browser close/refresh
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Save on component unmount (navigation away)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (!isEditMode) {
+        saveToLocalStorage();
+      }
+    };
+  }, [topic, selectedPersona, selectedTemplate, selectedKeyword, metaTitle, metaDescription, content, markdownContent, articlesAnalyzed, productLinks, wordCount, processingLogs, generationSettings, featuredImage, featuredImageAlt, currentStep, isEditMode]);
 
   const loadInitialData = async () => {
     setIsLoading(true);
@@ -230,6 +264,17 @@ export function BloggerCreatePage() {
   };
 
   const saveToLocalStorage = () => {
+    // Only save if user has entered some data (prevent saving empty initial state)
+    const hasUserData = topic.trim() !== '' ||
+                        selectedPersona !== null ||
+                        selectedTemplate !== null ||
+                        content.trim() !== '' ||
+                        currentStep > 1;
+
+    if (!hasUserData) {
+      return;
+    }
+
     const draft = {
       topic,
       selectedPersona,
@@ -534,7 +579,7 @@ export function BloggerCreatePage() {
           showConfirmButton: false,
         });
         clearAutoSave();
-        navigate('/blogger');
+        navigate('/blogger', { state: { draftCleared: true } });
       } else {
         const errorMessage = result.error?.message || 'Failed to save blog. Please try again.';
         Swal.fire({
@@ -691,7 +736,7 @@ export function BloggerCreatePage() {
         });
 
         clearAutoSave();
-        navigate('/blogger');
+        navigate('/blogger', { state: { draftCleared: true } });
       } else {
         throw new Error(publishResult.error?.message || 'Failed to save to Shopify');
       }

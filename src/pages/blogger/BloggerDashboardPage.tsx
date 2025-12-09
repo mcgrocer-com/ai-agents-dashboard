@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, RefreshCw, ExternalLink, FileImage } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Plus, Search, Filter, RefreshCw, ExternalLink, FileImage, Edit3 } from 'lucide-react';
 import { BlogList } from '@/components/blogger';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader';
@@ -16,6 +16,7 @@ import type { BlogWithRelations, BlogFilters, BlogStatus, ShopifyBlogArticle } f
 
 export function BloggerDashboardPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [activeTab, setActiveTab] = useState<'my-blogs' | 'shopify'>('my-blogs');
   const [blogs, setBlogs] = useState<BlogWithRelations[]>([]);
@@ -29,6 +30,39 @@ export function BloggerDashboardPage() {
   const [blogToDelete, setBlogToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [hasDraft, setHasDraft] = useState(false);
+
+  // Helper function to check for draft
+  const checkForDraft = () => {
+    const draftString = localStorage.getItem('blogger_draft');
+    if (draftString) {
+      try {
+        const draft = JSON.parse(draftString);
+        // Only show "Continue Draft" if there's actual user data
+        const hasUserData = draft.topic?.trim() !== '' ||
+                            draft.selectedPersona !== null ||
+                            draft.selectedTemplate !== null ||
+                            draft.content?.trim() !== '' ||
+                            draft.currentStep > 1;
+        setHasDraft(hasUserData);
+      } catch {
+        setHasDraft(false);
+      }
+    } else {
+      setHasDraft(false);
+    }
+  };
+
+  // Check for draft on mount and when location changes (e.g., navigating back from create page)
+  // Using location.hash for hash router and location.key for navigation detection
+  useEffect(() => {
+    checkForDraft();
+
+    // If navigating back with draftCleared flag, ensure button is hidden
+    if (location.state?.draftCleared) {
+      setHasDraft(false);
+    }
+  }, [location.hash, location.key, location.state]);
 
   useEffect(() => {
     if (activeTab === 'my-blogs') {
@@ -146,6 +180,12 @@ export function BloggerDashboardPage() {
   const handleCreateNew = () => {
     // Pass fresh flag to clear any previous autosave and start with a blank wizard
     navigate('/blogger/create', { state: { fresh: true } });
+    setHasDraft(false);
+  };
+
+  const handleContinueDraft = () => {
+    // Navigate with fresh: false to explicitly load autosaved draft
+    navigate('/blogger/create', { state: { fresh: false }, replace: true });
   };
 
   return (
@@ -159,14 +199,26 @@ export function BloggerDashboardPage() {
               Create and manage AI-powered blog posts
             </p>
           </div>
-          <button
-            onClick={handleCreateNew}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700
-              flex items-center gap-2 font-medium"
-          >
-            <Plus className="w-5 h-5" />
-            Create New Blog
-          </button>
+          <div className="flex items-center gap-3">
+            {hasDraft && (
+              <button
+                onClick={handleContinueDraft}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700
+                  flex items-center gap-2 font-medium"
+              >
+                <Edit3 className="w-5 h-5" />
+                Continue Draft
+              </button>
+            )}
+            <button
+              onClick={handleCreateNew}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700
+                flex items-center gap-2 font-medium"
+            >
+              <Plus className="w-5 h-5" />
+              Create New Blog
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}

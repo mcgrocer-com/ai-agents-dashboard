@@ -34,7 +34,7 @@ ${template.content_structure}
 
 SEO REQUIREMENTS (Target Score: 80+/100):
 ${template.seo_rules || 'Include primary keyword naturally, use semantic HTML, add internal links'}
-- Content Length: Write 1500+ words for maximum SEO impact (20 points)
+- Content Length: Write 600-1000 words for optimal engagement and SEO (20 points)
 - Keyword Usage: Include primary keyword 1-2% of total words (optimal density for 20 points)
 - Heading Structure: Use both <h2> and <h3> tags with keyword in H2 (10 points)
 - Internal Links: Include 3+ product links from searchProducts() (10 points)
@@ -101,7 +101,7 @@ Examples:
 Collect real product URLs ${request.includeImages !== false ? 'AND image URLs' : ''} that you will use in your content. NEVER use placeholder links${request.includeImages !== false ? ' or images' : ''}.
 
 STEP 4: WRITE COMPREHENSIVE BLOG POST
-Write a complete, SEO-optimized blog post (1500+ words) with PROPER HTML FORMATTING and EXCELLENT READABILITY:
+Write a complete, SEO-optimized blog post (600-1000 words) with PROPER HTML FORMATTING and EXCELLENT READABILITY:
 
 REQUIRED HTML STRUCTURE:
    - Start with <h2> tag containing your primary keyword (e.g., <h2>How to Use Baby Oil for Skin: A Comprehensive Guide</h2>)
@@ -127,7 +127,14 @@ CONTENT REQUIREMENTS:
        </a>
      </p>
      <p>The <a href="[ACTUAL URL]"><strong>[ACTUAL PRODUCT TITLE]</strong></a> is an excellent choice because...</p>
-   - Embed product images naturally within the content flow (e.g., in product recommendations, comparison sections)` : `- Includes REAL product links (text links only, NO images) from searchProducts results:
+   - Embed product images naturally within the content flow (e.g., in product recommendations, comparison sections)
+   - You MAY also use relevant images from researched articles with proper attribution:
+     <figure style="margin: 20px 0; text-align: center;">
+       <img src="[IMAGE_URL_FROM_ARTICLE]" alt="[DESCRIPTIVE ALT TEXT]" style="max-width: 100%; height: auto; border-radius: 8px;" />
+       <figcaption style="font-size: 12px; color: #666; margin-top: 8px;">Image source: [Article Title or Website Name]</figcaption>
+     </figure>
+   - Use article images for educational/informational content (e.g., infographics, diagrams, how-to visuals)
+   - Prioritize product images for product recommendations, article images for educational sections` : `- Includes REAL product links (text links only, NO images) from searchProducts results:
      <p>The <a href="[ACTUAL URL]"><strong>[ACTUAL PRODUCT TITLE]</strong></a> is an excellent choice because...</p>`}
    - CRITICAL: NO external links to competitor websites, brands, or external resources (NO "Further Reading", NO "Learn More" with external URLs)
    - ONLY link to McGrocer products - these are the ONLY permitted <a> tags in your content
@@ -158,9 +165,10 @@ CRITICAL RULES:
 - ABSOLUTELY NO EXTERNAL LINKS: Do NOT include ANY links to external websites (NO competitor sites, NO "Further Reading", NO "Learn More" sections with external URLs)
 - ONLY link to McGrocer products from searchProducts() results - these are the ONLY permitted links
 - If you want to reference external information, write about it WITHOUT linking (e.g., "According to industry experts..." instead of linking to expert sites)
-${request.includeImages !== false ? `- NEVER use placeholder images or omit images - ALWAYS use real image_url from searchProducts results
-- ALL product images MUST use real image_url from searchProducts results
-- Embed 3-5 product images throughout the blog post to enrich visual appeal` : `- DO NOT include any <img> tags - text links only`}
+${request.includeImages !== false ? `- NEVER use placeholder images - use real image URLs only
+- Product images MUST use real image_url from searchProducts results
+- You may also include relevant images from researched articles with proper attribution using <figure> and <figcaption>
+- Embed 2-4 images throughout the blog post (mix of product images and educational images from articles)` : `- DO NOT include any <img> tags - text links only`}
 - ALL product links MUST use real URLs from searchProducts results
 - Do NOT copy content from top-ranking articles - add unique insights and value
 - Make product mentions feel natural, not forced or salesy

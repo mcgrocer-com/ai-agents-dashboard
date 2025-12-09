@@ -5,6 +5,7 @@
 
 import { Calendar, User, FileText, TrendingUp, FileImage } from 'lucide-react';
 import type { BlogWithRelations } from '@/types/blogger';
+import { addTargetBlankToLinks } from '@/utils/blogger';
 
 interface BlogPreviewProps {
   blog: BlogWithRelations;
@@ -86,7 +87,7 @@ export function BlogPreview({ blog }: BlogPreviewProps) {
       <div className="px-6 py-8">
         <div
           className="prose prose-sm md:prose-base lg:prose-lg max-w-none"
-          dangerouslySetInnerHTML={{ __html: blog.content }}
+          dangerouslySetInnerHTML={{ __html: addTargetBlankToLinks(blog.content) }}
         />
       </div>
     </div>

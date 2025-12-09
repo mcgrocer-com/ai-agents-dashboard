@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Eye, Code, Cpu, CheckCircle, AlertCircle, Info, XCircle, RefreshCw } from 'lucide-react';
 import type { ProcessingLog } from '@/services/blogger/gemini-content.service';
+import { addTargetBlankToLinks } from '@/utils/blogger';
 
 interface ContentEditorProps {
   content: string;
@@ -151,7 +152,7 @@ export function ContentEditor({
         <div className="border border-gray-300 rounded-md p-6 bg-white min-h-[500px]">
           <div
             className="prose prose-lg max-w-none prose-headings:font-bold prose-a:text-blue-600"
-            dangerouslySetInnerHTML={{ __html: content || '<p>No content to preview</p>' }}
+            dangerouslySetInnerHTML={{ __html: addTargetBlankToLinks(content || '<p>No content to preview</p>') }}
           />
         </div>
       )}
