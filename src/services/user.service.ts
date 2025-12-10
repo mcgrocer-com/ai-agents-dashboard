@@ -13,6 +13,7 @@ export interface UserPreferences {
   sync_vendors?: string[]
   prioritize_copyright?: boolean
   sync_data_source?: SyncDataSource
+  sync_to_erpnext?: boolean // Master toggle for ERPNext sync
   [key: string]: any
 }
 
@@ -117,6 +118,38 @@ class UserService {
       }
     } catch (error) {
       console.error('Error fetching current user:', error)
+      return {
+        data: null,
+        error: error as Error,
+      }
+    }
+  }
+
+  /**
+   * Toggle the sync_to_erpnext preference
+   */
+  async toggleSyncToErpnext(userId: string, enabled: boolean): Promise<ServiceResponse<UserPreferences>> {
+    try {
+      const { data: currentData } = await this.getUserPreferences(userId)
+      const preferences = currentData || {}
+
+      preferences.sync_to_erpnext = enabled
+
+      const { data, error } = await supabase
+        .from('users')
+        .update({ preferences, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+        .select('preferences')
+        .single()
+
+      if (error) throw error
+
+      return {
+        data: (data?.preferences || preferences) as UserPreferences,
+        error: null,
+      }
+    } catch (error) {
+      console.error('Error toggling sync_to_erpnext:', error)
       return {
         data: null,
         error: error as Error,

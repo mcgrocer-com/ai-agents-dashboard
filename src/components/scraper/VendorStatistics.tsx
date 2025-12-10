@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw, RotateCcw, Settings } from 'lucide-react'
+import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw, RotateCcw, Settings, Power } from 'lucide-react'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/useToast'
@@ -16,9 +16,11 @@ import type { VendorStatistics as VendorStats } from '@/types/statistics'
 interface VendorStatisticsProps {
   vendor: string
   onConfigureClick?: () => void
+  syncEnabled?: boolean
+  onSyncToggle?: (enabled: boolean) => Promise<boolean>
 }
 
-export function VendorStatistics({ vendor, onConfigureClick }: VendorStatisticsProps) {
+export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSyncToggle }: VendorStatisticsProps) {
   const { showToast } = useToast()
   const [stats, setStats] = useState<VendorStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -26,6 +28,7 @@ export function VendorStatistics({ vendor, onConfigureClick }: VendorStatisticsP
   const [isPushing, setIsPushing] = useState(false)
   const [isResyncing, setIsResyncing] = useState(false)
   const [isSendingToCopyright, setIsSendingToCopyright] = useState(false)
+  const [isTogglingSync, setIsTogglingSync] = useState(false)
   const [showCopyrightConfirm, setShowCopyrightConfirm] = useState(false)
   const [showResyncConfirm, setShowResyncConfirm] = useState(false)
   const [showPushToQueueConfirm, setShowPushToQueueConfirm] = useState(false)
@@ -158,6 +161,26 @@ export function VendorStatistics({ vendor, onConfigureClick }: VendorStatisticsP
     }
   }
 
+  const handleToggleSync = async () => {
+    if (!onSyncToggle) return
+
+    setIsTogglingSync(true)
+    try {
+      const newValue = !syncEnabled
+      const success = await onSyncToggle(newValue)
+      if (success) {
+        showToast(newValue ? 'ERPNext sync enabled' : 'ERPNext sync disabled', 'success')
+      } else {
+        showToast('Failed to update sync setting', 'error')
+      }
+    } catch (err) {
+      console.error('Error toggling sync:', err)
+      showToast('An error occurred while updating sync setting', 'error')
+    } finally {
+      setIsTogglingSync(false)
+    }
+  }
+
   // Loading skeleton
   if (isLoading) {
     return (
@@ -254,15 +277,41 @@ export function VendorStatistics({ vendor, onConfigureClick }: VendorStatisticsP
           </p>
         </div>
 
-        {/* Configure Sync Vendors Button - Only show for all vendors */}
-        {vendor === 'all' && onConfigureClick && (
-          <button
-            onClick={onConfigureClick}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            Configure Sync Vendors
-          </button>
+        {/* Sync Controls - Only show for all vendors */}
+        {vendor === 'all' && (
+          <div className="flex items-center gap-3">
+            {/* Sync Power Toggle Button */}
+            {onSyncToggle && (
+              <button
+                onClick={handleToggleSync}
+                disabled={isTogglingSync}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  syncEnabled
+                    ? 'text-green-700 bg-green-50 border border-green-200 hover:bg-green-100'
+                    : 'text-red-700 bg-red-50 border border-red-200 hover:bg-red-100'
+                }`}
+                title={syncEnabled ? 'Click to disable ERPNext sync' : 'Click to enable ERPNext sync'}
+              >
+                {isTogglingSync ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Power className="w-4 h-4" />
+                )}
+                {syncEnabled ? 'Sync Active' : 'Sync Paused'}
+              </button>
+            )}
+
+            {/* Configure Sync Vendors Button */}
+            {onConfigureClick && (
+              <button
+                onClick={onConfigureClick}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                Configure Sync Vendors
+              </button>
+            )}
+          </div>
         )}
 
         {/* Send to Queue and Resync Buttons - Only show for specific vendors */}

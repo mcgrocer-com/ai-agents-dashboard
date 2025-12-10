@@ -80,7 +80,7 @@ const formatRelativeTime = (timestamp: string | null): string => {
 
 export function ScraperAgentPage() {
   const { showToast } = useToast()
-  const { preferences, updateVendorSyncPreferences } = useUserPreferences()
+  const { preferences, updateVendorSyncPreferences, toggleSyncToErpnext } = useUserPreferences()
   const [activeTab, setActiveTab] = useState<TabType>('all')
   const [products, setProducts] = useState<ScrapedProduct[]>([])
   const [count, setCount] = useState(0)
@@ -394,6 +394,8 @@ export function ScraperAgentPage() {
           <VendorStatistics
             vendor={defaultVendor}
             onConfigureClick={() => setShowVendorDialog(true)}
+            syncEnabled={preferences?.sync_to_erpnext ?? true}
+            onSyncToggle={toggleSyncToErpnext}
           />
         </div>
       )}

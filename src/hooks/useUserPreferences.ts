@@ -17,6 +17,7 @@ interface UseUserPreferencesReturn {
     prioritizeCopyright?: boolean,
     dataSource?: SyncDataSource
   ) => Promise<boolean>
+  toggleSyncToErpnext: (enabled: boolean) => Promise<boolean>
   refreshPreferences: () => Promise<void>
 }
 
@@ -72,11 +73,26 @@ export function useUserPreferences(): UseUserPreferencesReturn {
     return true
   }
 
+  const toggleSyncToErpnext = async (enabled: boolean): Promise<boolean> => {
+    if (!user?.id) return false
+
+    const { data, error: err } = await userService.toggleSyncToErpnext(user.id, enabled)
+
+    if (err) {
+      setError(err)
+      return false
+    }
+
+    setPreferences(data)
+    return true
+  }
+
   return {
     preferences,
     loading,
     error,
     updateVendorSyncPreferences,
+    toggleSyncToErpnext,
     refreshPreferences: loadPreferences,
   }
 }

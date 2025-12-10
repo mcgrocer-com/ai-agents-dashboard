@@ -72,7 +72,7 @@ ${request.includeImages !== false ? `
    WRONG: Just 1 header image for entire article with no section images
 
    Image format (with caption):
-   <img src="[IMAGE_URL]" alt="[DESCRIPTION]" style="display:block;max-width:100%;margin:20px auto;border-radius:8px"/>
+   <img src="[IMAGE_URL]" alt="[DESCRIPTION]" style="display:block;max-width:100%;max-height:400px;width:auto;margin:20px auto;border-radius:8px;object-fit:contain"/>
    <p style="text-align:center;font-size:13px;color:#666;margin-top:5px"><em>[Caption describing image] - [Source]</em></p>
 ` : ''}
 5. Return JSON (no markdown backticks):
