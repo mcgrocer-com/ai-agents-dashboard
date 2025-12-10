@@ -37,6 +37,7 @@ export function formatTokens(charCount: number): string {
  * Available Gemini models for blog generation
  */
 export type GeminiModel =
+  | 'gemini-3-pro-preview'      // Most powerful, 1M token context (Nov 2025)
   | 'gemini-2.5-flash'          // Stable, fast, recommended (default)
   | 'gemini-2.5-pro'            // More powerful, slower
   | 'gemini-2.0-flash'          // Alternative stable version
@@ -48,6 +49,7 @@ export type GeminiModel =
  * If primary model fails due to quota, automatically try these in order
  */
 const MODEL_FALLBACK_CHAIN: GeminiModel[] = [
+  'gemini-3-pro-preview',  // Most powerful (Nov 2025) - default
   'gemini-2.5-flash',      // Best balance of speed and quality
   'gemini-2.0-flash',      // Proven stable alternative
   'gemini-2.5-pro',        // More powerful if needed

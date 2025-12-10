@@ -15,7 +15,7 @@ interface BlogGenerationSettingsProps {
 }
 
 export interface BlogGenerationSettings {
-  model: 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash' | 'gemini-2.0-flash-exp' | 'gemini-flash-latest';
+  model: 'gemini-3-pro-preview' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash' | 'gemini-2.0-flash-exp' | 'gemini-flash-latest';
   includeImages: boolean;
   articlesResearchCount: number;
 }
@@ -33,14 +33,19 @@ export function BlogGenerationSettingsDialog({
 
   const modelOptions = [
     {
+      value: 'gemini-3-pro-preview',
+      label: 'Gemini 3 Pro Preview (Recommended)',
+      description: 'Most powerful, 1M token context, highest quality output'
+    },
+    {
       value: 'gemini-2.5-flash',
-      label: 'Gemini 2.5 Flash (Recommended)',
+      label: 'Gemini 2.5 Flash',
       description: 'Fast, stable, best balance of speed and quality'
     },
     {
       value: 'gemini-2.5-pro',
       label: 'Gemini 2.5 Pro',
-      description: 'Most powerful, slower but higher quality output'
+      description: 'Powerful with slower but higher quality output'
     },
     {
       value: 'gemini-2.0-flash',
