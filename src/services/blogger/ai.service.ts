@@ -41,6 +41,7 @@ interface CachedArticle {
   expires_at: string;
   hit_count: number;
   last_accessed_at: string;
+  images: ExtractedImage[] | null;
 }
 
 /**
@@ -108,6 +109,7 @@ async function storeInCache(
     htmlSize?: number;
     scrapeDurationMs?: number;
     extractDurationMs?: number;
+    images?: ExtractedImage[];
   }
 ): Promise<void> {
   try {
@@ -133,6 +135,7 @@ async function storeInCache(
           expires_at: expiresAt.toISOString(),
           hit_count: 0,
           last_accessed_at: new Date().toISOString(),
+          images: article.images || [],
         },
         {
           onConflict: 'url',
@@ -213,7 +216,7 @@ const DECODO_PROXY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/deco
  * Helper to call Decodo API via Supabase Edge Function proxy
  * This avoids CORS issues when calling from the browser
  */
-async function callDecodoProxy(body: Record<string, unknown>): Promise<Response> {
+export async function callDecodoProxy(body: Record<string, unknown>): Promise<Response> {
   return fetch(DECODO_PROXY_URL, {
     method: 'POST',
     headers: {
@@ -527,7 +530,8 @@ export async function formatBlogContent(
  */
 export async function getTopRankingArticles(
   keyword: string,
-  limit: number = 10
+  limit: number = 10,
+  dateFilter: 'h' | 'd' | 'w' | 'm' | 'y' | null = 'y' // Default to past year for recent articles
 ): Promise<ServiceResponse<Array<{
   position: number;
   title: string;
@@ -540,11 +544,13 @@ export async function getTopRankingArticles(
     const articleQuery = `${keyword} article`;
 
     // Use proxy to avoid CORS issues
+    // Date filter: qdr:h (hour), qdr:d (day), qdr:w (week), qdr:m (month), qdr:y (year)
     const response = await callDecodoProxy({
       target: 'google_search',
       query: articleQuery,
       parse: true,
       limit,
+      ...(dateFilter && { google_tbs: `qdr:${dateFilter}` }),
     });
 
     if (!response.ok) {
@@ -595,6 +601,90 @@ export async function getTopRankingArticles(
 }
 
 /**
+ * Article image extracted from HTML
+ */
+export interface ExtractedImage {
+  src: string;
+  alt: string;
+  caption?: string;
+}
+
+/**
+ * Extract images from HTML before LLM processing
+ * LLM tends to miss images, so we extract them separately with regex
+ */
+function extractImagesFromHtml(html: string, baseUrl: string): ExtractedImage[] {
+  const images: ExtractedImage[] = [];
+  const seenUrls = new Set<string>();
+
+  // Parse base URL for constructing absolute URLs
+  let baseOrigin = '';
+  try {
+    const url = new URL(baseUrl);
+    baseOrigin = url.origin;
+  } catch {
+    baseOrigin = '';
+  }
+
+  // Extract images from <figure> tags (usually article images with captions)
+  const figureRegex = /<figure[^>]*>[\s\S]*?<\/figure>/gi;
+  const figures = html.match(figureRegex) || [];
+
+  for (const figure of figures) {
+    const srcMatch = figure.match(/src=["']([^"']+)["']/i);
+    const altMatch = figure.match(/alt=["']([^"']*)["']/i);
+    const captionMatch = figure.match(/<figcaption[^>]*>([^<]+)/i);
+
+    if (srcMatch) {
+      let src = srcMatch[1];
+      // Convert relative URLs to absolute
+      if (src.startsWith('/') && baseOrigin) {
+        src = baseOrigin + src;
+      }
+      // Skip tiny images, icons, logos
+      if (src.includes('logo') || src.includes('icon') || src.includes('avatar')) continue;
+      // Skip already seen URLs
+      if (seenUrls.has(src)) continue;
+      seenUrls.add(src);
+
+      images.push({
+        src: src.split('?')[0], // Remove query params for cleaner URLs
+        alt: altMatch?.[1] || '',
+        caption: captionMatch?.[1]?.trim() || undefined,
+      });
+    }
+  }
+
+  // If no figure images found, try standalone img tags (less reliable)
+  if (images.length === 0) {
+    const imgRegex = /<img[^>]*src=["']([^"']+)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi;
+    let match;
+    while ((match = imgRegex.exec(html)) !== null && images.length < 10) {
+      let src = match[1];
+      const alt = match[2];
+
+      // Skip tiny images, icons, logos, tracking pixels
+      if (src.includes('logo') || src.includes('icon') || src.includes('avatar') ||
+          src.includes('pixel') || src.includes('tracking') || src.length < 20) continue;
+
+      // Convert relative URLs to absolute
+      if (src.startsWith('/') && baseOrigin) {
+        src = baseOrigin + src;
+      }
+      if (seenUrls.has(src)) continue;
+      seenUrls.add(src);
+
+      images.push({
+        src: src.split('?')[0],
+        alt: alt || '',
+      });
+    }
+  }
+
+  return images.slice(0, 10); // Limit to 10 images max
+}
+
+/**
  * Extract clean article content from raw HTML using Gemini LLM
  * This provides much better content extraction than regex-based parsing
  */
@@ -606,6 +696,7 @@ async function extractArticleWithLLM(
   text: string;
   headings: string[];
   summary: string;
+  images: ExtractedImage[];
 }> {
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -731,11 +822,15 @@ Return ONLY valid JSON (no markdown code blocks) in this exact format:
     };
   }
 
+  // Extract images from raw HTML (before LLM cleaning strips them)
+  const images = extractImagesFromHtml(html, url);
+
   return {
     title: extracted.title || '',
     text: extracted.text || '',
     headings: extracted.headings || [],
     summary: extracted.summary || '',
+    images,
   };
 }
 
@@ -749,6 +844,7 @@ async function scrapeWithDecodo(url: string): Promise<{
   text: string;
   wordCount: number;
   headings: string[];
+  images: ExtractedImage[];
   success: boolean;
   cached?: boolean;
   error?: string;
@@ -763,6 +859,7 @@ async function scrapeWithDecodo(url: string): Promise<{
         text: cached.text,
         wordCount: cached.word_count,
         headings: cached.headings || [],
+        images: cached.images || [],
         success: true,
         cached: true,
       };
@@ -813,6 +910,7 @@ async function scrapeWithDecodo(url: string): Promise<{
       htmlSize: html.length,
       scrapeDurationMs,
       extractDurationMs,
+      images: extracted.images,
     }).catch(err => console.warn('[Cache] Background store failed:', err));
 
     return {
@@ -821,6 +919,7 @@ async function scrapeWithDecodo(url: string): Promise<{
       text: extracted.text,
       wordCount,
       headings: extracted.headings.slice(0, 20),
+      images: extracted.images,
       success: true,
       cached: false,
     };
@@ -832,6 +931,7 @@ async function scrapeWithDecodo(url: string): Promise<{
       text: '',
       wordCount: 0,
       headings: [],
+      images: [],
       success: false,
       cached: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -852,6 +952,7 @@ export async function scrapeArticlesBatch(
   text: string;
   wordCount: number;
   headings: string[];
+  images: ExtractedImage[];
   success: boolean;
 }>>> {
   try {
@@ -922,6 +1023,7 @@ export async function scrapeArticlesBatch(
               text: '',
               wordCount: 0,
               headings: [],
+              images: [],
               success: false,
             });
           }

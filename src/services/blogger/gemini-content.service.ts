@@ -8,10 +8,11 @@
 
 import { GoogleGenAI, Type, type FunctionDeclaration } from '@google/genai';
 import { searchProducts, generateRelatedBlogLinks } from './shopify.service';
-import { getTopRankingArticles as getTopRankingArticlesService, scrapeArticlesBatch } from './ai.service';
+import { getTopRankingArticles as getTopRankingArticlesService, scrapeArticlesBatch, callDecodoProxy } from './ai.service';
 import { researchKeywords as researchKeywordsService } from './ai.service';
 import type { BloggerPersona, BloggerTemplate, ServiceResponse } from '@/types/blogger';
 import { buildSystemPrompt } from './system-prompt';
+import { supabase } from '@/lib/supabase/client';
 
 // Initialize Google GenAI with new SDK
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
@@ -132,7 +133,7 @@ const functionDeclarations: FunctionDeclaration[] = [
   },
   {
     name: 'searchProducts',
-    description: 'CRITICAL: Call this function 3-5 times BEFORE writing blog content to find real McGrocer products with actual URLs and images. Returns product objects with title, url, handle, description, price, and image_url. You MUST use the returned URLs and images in your content - never use placeholder links like href="#". Call this for different product categories (e.g., "kitchen knives", "chef knife", "paring knife") to get variety.',
+    description: 'Find McGrocer products. Returns: title, url, handle, image_url. Call 3-5 times with varied queries. Use returned URLs in content - never use placeholders.',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -155,6 +156,21 @@ const functionDeclarations: FunctionDeclaration[] = [
       type: Type.OBJECT,
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: 'viewArticleImages',
+    description: 'Analyze article images using AI vision. Pass image URLs from getTopRankingArticles(). Returns: url, usable (boolean), summary (AI description of image content). Use the summary to decide which images fit your blog topic. REQUIRED before using article images.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        imageUrls: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Array of image URLs to analyze (max 5)',
+        },
+      },
+      required: ['imageUrls'],
     },
   },
 ];
@@ -254,6 +270,7 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
               fullWordCount: scraped.wordCount,
               condensedWordCount: Math.min(2000, words.length),
               headings: scraped.headings.slice(0, 20),
+              images: scraped.images || [],
             });
           } else {
             // Track scraping failures
@@ -282,12 +299,10 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
       const productsResult = await searchProducts(args.query, args.limit || 5);
       if (productsResult.success && productsResult.data) {
         return {
-          data: productsResult.data.products.map(p => ({
+          data: productsResult.data.products.map((p: any) => ({
             title: p.title,
             url: p.url,
             handle: p.handle,
-            description: p.description || '',
-            price: p.price || 'Price varies',
             image_url: p.image_url || '',
           })),
         };
@@ -307,6 +322,144 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
         };
       }
       return { data: null, error: 'No context file was attached to this request' };
+
+    case 'viewArticleImages':
+      // Fetch and analyze article images via proxy with vision subagent
+      // Summaries cached in scraped_articles_cache.images JSONB
+      const imageUrls: string[] = (args.imageUrls || []).slice(0, 5);
+      if (imageUrls.length === 0) {
+        return { data: [], error: 'No image URLs provided' };
+      }
+
+      // Check scraped_articles_cache for images with existing summaries
+      const { data: articlesWithImages } = await supabase
+        .from('scraped_articles_cache')
+        .select('url, images')
+        .not('images', 'is', null);
+
+      // Build map of image URL -> cached summary from articles
+      const cachedMap = new Map<string, { url: string; success: boolean; sizeKB: number; usable: boolean; summary: string; cached: boolean }>();
+      (articlesWithImages || []).forEach((article: { url: string; images: any[] }) => {
+        (article.images || []).forEach((img: any) => {
+          if (img.src && img.summary && imageUrls.includes(img.src)) {
+            cachedMap.set(img.src, {
+              url: img.src,
+              success: true,
+              sizeKB: img.size_kb || 0,
+              usable: img.usable !== false,
+              summary: img.summary,
+              cached: true,
+            });
+          }
+        });
+      });
+
+      // Only process URLs not in cache
+      const uncachedUrls = imageUrls.filter((url) => !cachedMap.has(url));
+      console.log(`[viewArticleImages] ${cachedMap.size} cached, ${uncachedUrls.length} to analyze`);
+
+      const newResults = await Promise.all(
+        uncachedUrls.map(async (imgUrl: string) => {
+          try {
+            // Step 1: Fetch image via proxy
+            const proxyResponse = await callDecodoProxy({ url: imgUrl, proxy_image: true });
+            if (!proxyResponse.ok) {
+              return { url: imgUrl, success: false, error: `Fetch failed: ${proxyResponse.status}` };
+            }
+            const result = await proxyResponse.json();
+
+            if (!result.success || !result.data) {
+              return { url: imgUrl, success: false, error: result.error || 'Unknown error' };
+            }
+
+            const sizeKB = Math.round(result.size / 1024);
+            const usable = result.size > 5000 && result.size < 2000000;
+
+            if (!usable) {
+              return {
+                url: imgUrl,
+                success: true,
+                sizeKB,
+                usable: false,
+                note: result.size < 5000 ? 'Too small (icon/thumbnail)' : 'Too large',
+              };
+            }
+
+            // Step 2: Use vision subagent to analyze the image
+            try {
+              const visionResponse = await ai.models.generateContent({
+                model: 'gemini-2.0-flash',
+                contents: [{
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: result.mimeType,
+                        data: result.data
+                      }
+                    },
+                    {
+                      text: `Describe this image in 1 sentence (max 100 chars). Focus on: what product/food/item is shown. Be specific and factual. Example: "A stack of chocolate digestive biscuits on a white plate"`
+                    }
+                  ]
+                }]
+              });
+
+              const summary = visionResponse.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Image content unclear';
+              const trimmedSummary = summary.slice(0, 150);
+
+              // Update scraped_articles_cache with summary for this image
+              // Find articles containing this image and update the images array
+              const { data: matchingArticles } = await supabase
+                .from('scraped_articles_cache')
+                .select('url, images')
+                .not('images', 'is', null);
+
+              for (const article of matchingArticles || []) {
+                const images = article.images || [];
+                const imgIndex = images.findIndex((i: any) => i.src === imgUrl);
+                if (imgIndex >= 0) {
+                  images[imgIndex] = { ...images[imgIndex], summary: trimmedSummary, usable: true, size_kb: sizeKB };
+                  await supabase
+                    .from('scraped_articles_cache')
+                    .update({ images })
+                    .eq('url', article.url);
+                }
+              }
+
+              return { url: imgUrl, success: true, sizeKB, usable: true, summary: trimmedSummary };
+            } catch (visionErr) {
+              console.warn(`[viewArticleImages] Vision analysis failed for ${imgUrl}:`, visionErr);
+              return {
+                url: imgUrl,
+                success: true,
+                sizeKB,
+                usable: true,
+                summary: 'Image available (analysis unavailable)',
+              };
+            }
+          } catch (err) {
+            return { url: imgUrl, success: false, error: err instanceof Error ? err.message : 'Fetch error' };
+          }
+        })
+      );
+
+      // Combine cached + new results in original order
+      type ImageResult = { url: string; success: boolean; usable?: boolean; sizeKB?: number; summary?: string; error?: string; note?: string; cached?: boolean };
+      const imageResults: ImageResult[] = imageUrls.map(
+        (url) => cachedMap.get(url) || newResults.find((r) => r.url === url) || { url, success: false, error: 'Unknown' }
+      );
+
+      const usableImages = imageResults.filter((r) => r.success && r.usable);
+      return {
+        data: {
+          images: imageResults,
+          usableCount: usableImages.length,
+          cachedCount: cachedMap.size,
+          note: usableImages.length > 0
+            ? `Found ${usableImages.length} analyzed images (${cachedMap.size} cached). Use URLs marked as usable.`
+            : 'No usable images found. Use product images instead.',
+        },
+      };
 
     default:
       throw new Error(`Unknown function: ${functionName}`);
@@ -422,8 +575,16 @@ Begin with researchKeywords now.`,
             addLog('error', `Found 0 top-ranking articles for "${selectedKeyword}"`);
           } else {
             addLog('function_response', `Found ${totalArticles} top-ranking articles for "${selectedKeyword}" (automatically scraped top ${articlesAnalyzed})`);
-            const urls = data?.scrapedContent?.map((s: any) => s.url) || [];
-            urls.forEach((url: string) => addLog('function_response', `Scraped article: words: ${data?.scrapedContent?.find((s: any) => s.url === url)?.fullWordCount || 0} ${url}`));
+            // Log details for each scraped article
+            data?.scrapedContent?.forEach((s: any) => {
+              const textChars = s.text?.length || 0;
+              const imageCount = s.images?.length || 0;
+              addLog('function_response', `Scraped: ${s.fullWordCount} words, ${Math.round(textChars/1024)}KB text, ${imageCount} images → ${s.url}`);
+            });
+            // Total content size being passed to AI
+            const totalChars = data?.scrapedContent?.reduce((sum: number, s: any) => sum + (s.text?.length || 0), 0) || 0;
+            const totalImages = data?.scrapedContent?.reduce((sum: number, s: any) => sum + (s.images?.length || 0), 0) || 0;
+            addLog('info', `Total context: ${Math.round(totalChars/1024)}KB text, ${totalImages} images available for AI`);
           }
         } else if (fc.functionCall.name === 'searchProducts') {
           const products = functionResult.data;
