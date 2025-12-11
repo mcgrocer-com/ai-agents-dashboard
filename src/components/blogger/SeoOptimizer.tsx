@@ -3,9 +3,10 @@
  * SEO meta fields with character counts, validation, and individual SEO scores
  */
 
-import { CheckCircle, AlertCircle, Upload, X, RefreshCw } from 'lucide-react';
+import { CheckCircle, AlertCircle, Upload, X, RefreshCw, Sparkles, Eye } from 'lucide-react';
 import { useState, useMemo } from 'react';
-import { uploadBlogImage } from '@/services/blogger/images.service';
+import { createPortal } from 'react-dom';
+import { uploadBlogImage, generateFeaturedImage } from '@/services/blogger/images.service';
 import {
   calculateMetaTitleScore,
   calculateMetaDescriptionScore,
@@ -17,6 +18,7 @@ interface SeoOptimizerProps {
   featuredImage?: string;
   featuredImageAlt?: string;
   blogId: string;
+  topic?: string;
   primaryKeyword?: string;
   onMetaTitleChange: (value: string) => void;
   onMetaDescriptionChange: (value: string) => void;
@@ -34,6 +36,7 @@ export function SeoOptimizer({
   featuredImage,
   featuredImageAlt,
   blogId,
+  topic = '',
   primaryKeyword = '',
   onMetaTitleChange,
   onMetaDescriptionChange,
@@ -47,9 +50,12 @@ export function SeoOptimizer({
   const [imageAlt, setImageAlt] = useState('');
   const [showImageInput, setShowImageInput] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
   const [isRegeneratingDescription, setIsRegeneratingDescription] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(true);
 
   const handleRegenerateTitle = async () => {
     if (!onRegenerateMetaTitle || isRegeneratingTitle) return;
@@ -83,6 +89,31 @@ export function SeoOptimizer({
     () => calculateMetaDescriptionScore(metaDescription, primaryKeyword),
     [metaDescription, primaryKeyword]
   );
+
+  const handleGenerateImage = async () => {
+    if (!onFeaturedImageChange || isGenerating) return;
+
+    setIsGenerating(true);
+    setUploadError(null);
+
+    try {
+      const result = await generateFeaturedImage(topic || metaTitle, metaTitle, blogId);
+
+      if (result.success && result.data) {
+        onFeaturedImageChange(result.data.url, metaTitle);
+        // Auto-show preview dialog when image generation completes
+        setIsPreviewLoading(true);
+        setShowPreview(true);
+      } else {
+        setUploadError(result.error?.message || 'Failed to generate image');
+      }
+    } catch (error) {
+      console.error('Error generating image:', error);
+      setUploadError(error instanceof Error ? error.message : 'Failed to generate image');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -281,11 +312,34 @@ export function SeoOptimizer({
                 className="w-full h-48 object-cover"
               />
               <div className="absolute top-2 right-2 flex gap-2">
+                <button
+                  onClick={() => {
+                    setIsPreviewLoading(true);
+                    setShowPreview(true);
+                  }}
+                  className="p-2 bg-gray-800 text-white rounded-md hover:bg-gray-900 shadow-lg"
+                  title="Preview full image"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleGenerateImage}
+                  disabled={isLoading || isGenerating || !onFeaturedImageChange}
+                  className="p-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 shadow-lg
+                    disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Regenerate with AI"
+                >
+                  {isGenerating ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                  ) : (
+                    <Sparkles className="w-4 h-4" />
+                  )}
+                </button>
                 {onImageRemove && (
                   <button
                     onClick={onImageRemove}
                     className="p-2 bg-red-600 text-white rounded-md hover:bg-red-700 shadow-lg"
-                    disabled={isLoading}
+                    disabled={isLoading || isGenerating}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -369,18 +423,49 @@ export function SeoOptimizer({
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => setShowImageInput(true)}
-              disabled={isLoading}
-              className="w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-md
-                hover:border-blue-500 hover:bg-blue-50 transition-colors
-                flex flex-col items-center gap-2 text-gray-600 hover:text-blue-600
-                disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Upload className="w-8 h-8" />
-              <span className="text-sm font-medium">Upload Featured Image</span>
-              <span className="text-xs text-gray-500">Click to select an image file</span>
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setShowImageInput(true)}
+                disabled={isLoading || isGenerating}
+                className="px-4 py-6 border-2 border-dashed border-gray-300 rounded-md
+                  hover:border-blue-500 hover:bg-blue-50 transition-colors
+                  flex flex-col items-center gap-2 text-gray-600 hover:text-blue-600
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Upload className="w-6 h-6" />
+                <span className="text-sm font-medium">Upload Image</span>
+                <span className="text-xs text-gray-500">Select from device</span>
+              </button>
+              <button
+                onClick={handleGenerateImage}
+                disabled={isLoading || isGenerating || !onFeaturedImageChange}
+                className="px-4 py-6 border-2 border-dashed border-purple-300 rounded-md
+                  hover:border-purple-500 hover:bg-purple-50 transition-colors
+                  flex flex-col items-center gap-2 text-purple-600 hover:text-purple-700
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-purple-600 border-t-transparent" />
+                    <span className="text-sm font-medium">Generating...</span>
+                    <span className="text-xs text-purple-500">Please wait</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-6 h-6" />
+                    <span className="text-sm font-medium">Generate with AI</span>
+                    <span className="text-xs text-purple-500">Gemini Nano Banana</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Error message for generation (shown when no upload input visible) */}
+          {uploadError && !showImageInput && (
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-800">{uploadError}</p>
+            </div>
           )}
 
           <p className="text-xs text-gray-500 mt-2">
@@ -388,6 +473,52 @@ export function SeoOptimizer({
           </p>
         </div>
       </div>
+
+      {/* Image Preview Modal - Portal to body for proper fixed positioning */}
+      {showPreview && featuredImage && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setShowPreview(false)}
+        >
+          <div
+            className="relative min-w-[320px] min-h-[320px] max-w-4xl max-h-[90vh] bg-white rounded-lg overflow-hidden shadow-2xl flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute top-2 right-2 z-10">
+              <button
+                onClick={() => setShowPreview(false)}
+                className="p-2 bg-gray-800 text-white rounded-full hover:bg-gray-900 shadow-lg"
+                title="Close preview"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Loading spinner */}
+            {isPreviewLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="animate-spin rounded-full h-10 w-10 border-3 border-purple-600 border-t-transparent" />
+                  <span className="text-sm text-gray-600 font-medium">Loading image...</span>
+                </div>
+              </div>
+            )}
+            <img
+              src={featuredImage}
+              alt={featuredImageAlt || 'Featured image preview'}
+              className={`max-w-full max-h-[85vh] object-contain ${isPreviewLoading ? 'opacity-0' : 'opacity-100'}`}
+              onLoad={() => setIsPreviewLoading(false)}
+            />
+            {featuredImageAlt && !isPreviewLoading && (
+              <div className="w-full p-3 bg-gray-50 border-t border-gray-200">
+                <p className="text-sm text-gray-700 text-center">
+                  <strong>Alt text:</strong> {featuredImageAlt}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

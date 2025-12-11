@@ -6,6 +6,7 @@
  */
 
 import { AlertTriangle, AlertCircle, Info } from 'lucide-react'
+import { createPortal } from 'react-dom'
 
 interface ConfirmationDialogProps {
   open: boolean
@@ -72,9 +73,9 @@ export function ConfirmationDialog({
     }
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]"
       onClick={!loading ? handleCancel : undefined}
       onKeyDown={handleKeyDown}
     >
@@ -113,6 +114,7 @@ export function ConfirmationDialog({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

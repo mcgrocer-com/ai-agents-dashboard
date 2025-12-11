@@ -6,6 +6,7 @@
 
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 interface DialogProps {
   open: boolean
@@ -40,8 +41,8 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
 
   if (!open) return null
 
-  return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto">
       {/* Backdrop with animation */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -73,6 +74,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
           <div className="flex-1 overflow-y-auto p-6">{children}</div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

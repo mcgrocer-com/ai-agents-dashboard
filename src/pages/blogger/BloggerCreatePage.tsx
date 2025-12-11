@@ -1153,6 +1153,7 @@ export function BloggerCreatePage() {
             featuredImage={featuredImage}
             featuredImageAlt={featuredImageAlt}
             blogId={id || draftBlogId}
+            topic={topic}
             primaryKeyword={selectedKeyword}
             onMetaTitleChange={setMetaTitle}
             onMetaDescriptionChange={setMetaDescription}

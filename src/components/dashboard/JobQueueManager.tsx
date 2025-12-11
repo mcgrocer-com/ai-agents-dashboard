@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase/client'
 import {
   Plus,
@@ -307,8 +308,8 @@ export function JobQueueManager() {
       </button>
 
       {/* Main Job Queue Dialog */}
-      {showMainDialog && (
-        <div className="fixed inset-0 z-[100] overflow-y-auto">
+      {showMainDialog && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto">
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -511,7 +512,8 @@ export function JobQueueManager() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Add Job Dialog */}

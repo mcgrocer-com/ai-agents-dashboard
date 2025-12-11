@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 export interface FileUploadModalProps {
@@ -219,9 +220,9 @@ export default function FileUploadModal({
         );
     };
 
-    return (
+    return createPortal(
         <div
-            className="fixed inset-0 z-50 overflow-y-auto bg-black/60"
+            className="fixed inset-0 z-[9999] overflow-y-auto bg-black/60"
             role="dialog"
             aria-modal="true"
         >
@@ -290,6 +291,7 @@ export default function FileUploadModal({
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

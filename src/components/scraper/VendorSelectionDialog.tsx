@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Check, ChevronDown } from 'lucide-react'
 import type { SyncDataSource } from '@/services/user.service'
 
@@ -84,8 +85,8 @@ export function VendorSelectionDialog({
   const allSelected = selected.length === vendors.length
   const noneSelected = selected.length === 0
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
@@ -246,6 +247,7 @@ export function VendorSelectionDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

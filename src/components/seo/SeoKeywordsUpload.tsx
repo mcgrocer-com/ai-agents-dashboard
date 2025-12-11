@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase/client'
 import { Dialog } from '@/components/ui/Dialog'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -973,7 +974,7 @@ Natural Toddler Milk,toddler milk,organic toddler,natural milk,baby milk,
       </Dialog>
 
       {/* Clear All Confirmation Dialog */}
-      {showClearConfirm && (
+      {showClearConfirm && createPortal(
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
             <div className="flex items-start gap-3">
@@ -1016,7 +1017,8 @@ Natural Toddler Milk,toddler milk,organic toddler,natural milk,baby milk,
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {toast && (

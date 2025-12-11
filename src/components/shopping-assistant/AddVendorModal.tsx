@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   getScrapedVendors,
   createVendor,
@@ -78,8 +79,8 @@ export const AddVendorModal: React.FC<AddVendorModalProps> = ({
 
   const alreadyAddedCount = vendors.filter((v) => v.already_added).length;
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
@@ -183,6 +184,7 @@ export const AddVendorModal: React.FC<AddVendorModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

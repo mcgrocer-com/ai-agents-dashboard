@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import type { ClassificationType } from '@/types/classification'
 
@@ -38,8 +39,8 @@ const ManualOverrideDialog = ({
     setClassification('unclear')
   }
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
         {/* Overlay */}
         <div
@@ -125,7 +126,8 @@ const ManualOverrideDialog = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

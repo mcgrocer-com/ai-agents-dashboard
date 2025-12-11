@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createAccount } from '@/services/shopping-assistant';
 import { X, Loader2, Eye, EyeOff } from 'lucide-react';
 
@@ -52,8 +53,8 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
     setSaving(false);
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+  return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
@@ -136,6 +137,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

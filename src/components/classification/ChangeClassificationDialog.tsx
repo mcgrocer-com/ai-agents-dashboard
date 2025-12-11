@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Package, ExternalLink, AlertTriangle } from 'lucide-react';
 import ClassificationBadge from './ClassificationBadge';
 import type { ClassifiedProduct, ClassificationType } from '@/types/classification';
@@ -50,8 +51,8 @@ export function ChangeClassificationDialog({
 
   const hasChanged = classification !== product.classification;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 py-8">
         {/* Overlay */}
         <div
@@ -208,7 +209,8 @@ export function ChangeClassificationDialog({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

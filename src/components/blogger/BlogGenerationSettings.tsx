@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Settings, Sparkles } from 'lucide-react';
 
 interface BlogGenerationSettingsProps {
@@ -69,8 +70,8 @@ export function BlogGenerationSettingsDialog({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50"
@@ -198,6 +199,7 @@ export function BlogGenerationSettingsDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
