@@ -12,5 +12,4 @@ export * from './ai.service';
 export * from './shopify.service';
 export * from './images.service';
 export * from './seo-validator.service';
-export * from './image-validator.service';
 export * from './gemini-content.service';

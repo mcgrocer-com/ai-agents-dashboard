@@ -34,7 +34,7 @@ import {
 import { generateMetaData, calculateSeoScore, calculateReadabilityScore } from '@/services/blogger/ai.service';
 import { generateBlogWithGemini, type ProcessingLog } from '@/services/blogger/gemini-content.service';
 import { createBlog, getBlogById, updateBlog } from '@/services/blogger/blogs.service';
-import { publishBlogToShopify, updateBlogOnShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
+import { pushBlogToShopify, updateBlogOnShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
 import type {
   BloggerPersona,
   BloggerTemplate,
@@ -125,7 +125,6 @@ export function BloggerCreatePage() {
   const [blogExcerpt, setBlogExcerpt] = useState<string>(''); // Blog excerpt for listing pages
   const [blogTags, setBlogTags] = useState<string[]>([]); // SEO tags for blog
   const [existingShopifyArticleId, setExistingShopifyArticleId] = useState<number | null>(null); // Existing Shopify article ID for updates
-  const [existingShopifyBlogId, setExistingShopifyBlogId] = useState<number | null>(null); // Existing Shopify blog ID for updates
 
   // Generation Settings Dialog
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
@@ -262,7 +261,6 @@ export function BloggerCreatePage() {
           setBlogExcerpt(blog.excerpt || '');
           setBlogTags(blog.tags || []);
           setExistingShopifyArticleId(blog.shopify_article_id || null);
-          setExistingShopifyBlogId(blog.shopify_blog_id || null);
           setSeoScore(blog.seo_score);
           setReadabilityScore(blog.readability_score);
           setWordCount(blog.word_count || 0);
@@ -653,7 +651,7 @@ export function BloggerCreatePage() {
     }
   };
 
-  const handleDirectPublishToShopify = async () => {
+  const handleDirectPushToShopify = async () => {
     if (!selectedPersona) return;
 
     setIsLoading(true);
@@ -695,7 +693,7 @@ export function BloggerCreatePage() {
         inputOptions: blogOptions,
         inputValue: shopifyBlogs[0].id,
         showCancelButton: true,
-        confirmButtonText: 'Publish',
+        confirmButtonText: 'Push to Shopify',
         cancelButtonText: 'Cancel',
         confirmButtonColor: '#10b981',
         cancelButtonColor: '#6b7280',
@@ -733,8 +731,8 @@ export function BloggerCreatePage() {
       };
 
       if (isUpdatingExisting) {
-        // Update existing blog in database
-        await updateBlog(id, {
+        // Update existing blog in database (this rehosts external images)
+        const dbUpdateResult = await updateBlog(id, {
           persona_id: selectedPersona.id,
           template_id: selectedTemplate!.id,
           primary_keyword: selectedKeyword || null,
@@ -752,7 +750,12 @@ export function BloggerCreatePage() {
           word_count: wordCount,
         });
 
-        // Update on Shopify
+        // Use rehosted content for Shopify (if available)
+        const rehostedContent = dbUpdateResult.data?.content || content;
+        const processedRehostedContent = stripLeadingTitleH2(rehostedContent, metaTitle);
+        shopifyRequest.content = processedRehostedContent;
+
+        // Update on Shopify with rehosted images
         const updateResult = await updateBlogOnShopify(existingShopifyArticleId, shopifyRequest);
 
         if (updateResult.success) {
@@ -810,12 +813,17 @@ export function BloggerCreatePage() {
 
         const blogId = createResult.data.id;
 
-        // Publish to Shopify
-        const publishResult = await publishBlogToShopify(shopifyRequest);
+        // Use rehosted content for Shopify (createBlog rehosts images internally)
+        const rehostedContent = createResult.data.content || content;
+        const processedRehostedContent = stripLeadingTitleH2(rehostedContent, metaTitle);
+        shopifyRequest.content = processedRehostedContent;
 
-        if (publishResult.success && publishResult.data) {
+        // Push to Shopify with rehosted images
+        const pushResult = await pushBlogToShopify(shopifyRequest);
+
+        if (pushResult.success && pushResult.data) {
           // Extract numeric ID from Shopify GID
-          const articleIdMatch = publishResult.data.article.id.match(/\/(\d+)$/);
+          const articleIdMatch = pushResult.data.article.id.match(/\/(\d+)$/);
           const shopifyArticleId = articleIdMatch ? parseInt(articleIdMatch[1]) : null;
 
           // Update blog with Shopify article ID and status
@@ -839,15 +847,15 @@ export function BloggerCreatePage() {
           clearAutoSave();
           navigate('/blogger', { state: { draftCleared: true } });
         } else {
-          throw new Error(publishResult.error?.message || 'Failed to save to Shopify');
+          throw new Error(pushResult.error?.message || 'Failed to push to Shopify');
         }
       }
     } catch (error) {
-      console.error('Error saving to Shopify:', error);
+      console.error('Error pushing to Shopify:', error);
       Swal.fire({
         icon: 'error',
-        title: 'Save to Shopify Failed',
-        text: error instanceof Error ? error.message : 'Failed to save blog to Shopify. The blog has been saved locally as a draft.',
+        title: 'Push to Shopify Failed',
+        text: error instanceof Error ? error.message : 'Failed to push blog to Shopify. The blog has been saved locally as a draft.',
       });
     } finally {
       setIsLoading(false);
@@ -873,8 +881,8 @@ export function BloggerCreatePage() {
       // Save as draft
       await handleSaveBlog();
     } else if (result.isDenied) {
-      // Publish to Shopify
-      await handleDirectPublishToShopify();
+      // Push to Shopify
+      await handleDirectPushToShopify();
     }
     // If cancelled, do nothing
   };

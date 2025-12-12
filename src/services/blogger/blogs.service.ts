@@ -334,8 +334,8 @@ export async function deleteBlogWithShopify(
     // If blog is published to Shopify, delete from Shopify first
     if (blog?.shopify_article_id) {
       try {
-        const { unpublishBlogFromShopify } = await import('./shopify.service');
-        const shopifyResult = await unpublishBlogFromShopify(blog.shopify_article_id);
+        const { removeBlogFromShopify } = await import('./shopify.service');
+        const shopifyResult = await removeBlogFromShopify(blog.shopify_article_id);
 
         if (shopifyResult.success) {
           shopifyDeleted = true;

@@ -6,6 +6,7 @@
 import { supabase } from '@/lib/supabase/client';
 import { GoogleGenAI } from '@google/genai';
 import type { ServiceResponse } from '@/types/blogger';
+import { callDecodoProxy } from './ai.service';
 
 // Initialize Google GenAI for image generation
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
@@ -289,7 +290,8 @@ Requirements:
 }
 
 /**
- * Download an external image and upload to Supabase storage
+ * Download an external image via proxy and upload to Supabase storage
+ * Uses Decodo proxy to bypass CORS restrictions
  * Returns the new Supabase URL or original URL if download fails
  */
 export async function rehostExternalImage(
@@ -297,44 +299,74 @@ export async function rehostExternalImage(
   blogId: string,
   imageIndex: number
 ): Promise<{ success: boolean; url: string; error?: string }> {
+  const logPrefix = `[Image Rehost ${imageIndex}]`;
+
   try {
+    // Parse URL for logging
+    let hostname = 'unknown';
+    try {
+      hostname = new URL(imageUrl).hostname;
+    } catch {
+      // Invalid URL
+    }
+
+    console.log(`${logPrefix} Processing: ${hostname} - ${imageUrl.substring(0, 100)}...`);
+
     // Skip if already hosted on our infrastructure
     if (isHostedUrl(imageUrl)) {
+      console.log(`${logPrefix} SKIP: Already hosted on ${hostname}`);
       return { success: true, url: imageUrl };
     }
 
     // Skip data URLs
     if (imageUrl.startsWith('data:')) {
+      console.log(`${logPrefix} SKIP: Data URL`);
       return { success: true, url: imageUrl };
     }
 
     // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
+      console.error(`${logPrefix} FAIL: User not authenticated`);
       return { success: false, url: imageUrl, error: 'User not authenticated' };
     }
 
-    console.log(`[Image Rehost] Downloading: ${imageUrl}`);
+    console.log(`${logPrefix} DOWNLOAD: Fetching via proxy from ${hostname}...`);
 
-    // Download the image
-    const response = await fetch(imageUrl, {
-      mode: 'cors',
-      headers: {
-        'Accept': 'image/*',
-      },
-    });
+    // Download the image via Decodo proxy (bypasses CORS)
+    const proxyResponse = await callDecodoProxy({ url: imageUrl, proxy_image: true });
 
-    if (!response.ok) {
-      return { success: false, url: imageUrl, error: `HTTP ${response.status}` };
+    if (!proxyResponse.ok) {
+      console.error(`${logPrefix} DOWNLOAD FAIL: Proxy returned ${proxyResponse.status}`);
+      return { success: false, url: imageUrl, error: `Proxy error: ${proxyResponse.status}` };
     }
 
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const blob = await response.blob();
+    const result = await proxyResponse.json();
+
+    if (!result.success || !result.data) {
+      console.error(`${logPrefix} DOWNLOAD FAIL: ${result.error || 'No image data returned'}`);
+      return { success: false, url: imageUrl, error: result.error || 'No image data' };
+    }
+
+    const sizeKB = Math.round(result.size / 1024);
+    const mimeType = result.mimeType || 'image/jpeg';
+
+    console.log(`${logPrefix} DOWNLOAD OK: ${sizeKB}KB, type: ${mimeType}`);
 
     // Validate size
-    if (blob.size > MAX_FILE_SIZE) {
+    if (result.size > MAX_FILE_SIZE) {
+      console.error(`${logPrefix} FAIL: Image too large (${sizeKB}KB > 5MB)`);
       return { success: false, url: imageUrl, error: 'Image too large (>5MB)' };
     }
+
+    // Convert base64 to blob
+    const byteCharacters = atob(result.data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mimeType });
 
     // Determine file extension
     const extMap: Record<string, string> = {
@@ -344,10 +376,10 @@ export async function rehostExternalImage(
       'image/webp': 'webp',
       'image/gif': 'gif',
     };
-    const fileExt = extMap[contentType] || 'jpg';
+    const fileExt = extMap[mimeType] || 'jpg';
     const fileName = `${user.id}/${blogId}-img${imageIndex}.${fileExt}`;
 
-    console.log(`[Image Rehost] Uploading to storage: ${fileName}`);
+    console.log(`${logPrefix} UPLOAD: Starting upload to Supabase: ${fileName}`);
 
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -355,11 +387,11 @@ export async function rehostExternalImage(
       .upload(fileName, blob, {
         cacheControl: '31536000', // 1 year cache
         upsert: true,
-        contentType,
+        contentType: mimeType,
       });
 
     if (uploadError) {
-      console.error('[Image Rehost] Upload failed:', uploadError);
+      console.error(`${logPrefix} UPLOAD FAIL:`, uploadError.message);
       return { success: false, url: imageUrl, error: uploadError.message };
     }
 
@@ -368,15 +400,16 @@ export async function rehostExternalImage(
       .from(BUCKET_NAME)
       .getPublicUrl(uploadData.path);
 
-    console.log(`[Image Rehost] Success: ${publicUrl}`);
+    console.log(`${logPrefix} SUCCESS: ${hostname} → ${publicUrl}`);
     return { success: true, url: publicUrl };
 
   } catch (error) {
-    console.error('[Image Rehost] Error:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`${logPrefix} ERROR:`, errorMsg);
     return {
       success: false,
       url: imageUrl,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMsg,
     };
   }
 }
@@ -391,6 +424,10 @@ export async function rehostAllImages(
   content: string,
   blogId: string
 ): Promise<{ content: string; rehostedCount: number; failedCount: number }> {
+  console.log(`\n========== IMAGE REHOST START ==========`);
+  console.log(`Blog ID: ${blogId}`);
+  console.log(`Content length: ${content.length} chars`);
+
   // Extract all image URLs
   const imgPattern = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
   const images: { fullTag: string; url: string }[] = [];
@@ -400,23 +437,36 @@ export async function rehostAllImages(
     images.push({ fullTag: match[0], url: match[1] });
   }
 
+  console.log(`Found ${images.length} images in content`);
+
   if (images.length === 0) {
+    console.log(`========== IMAGE REHOST END (no images) ==========\n`);
     return { content, rehostedCount: 0, failedCount: 0 };
   }
 
-  console.log(`[Image Rehost] Processing ${images.length} images...`);
+  // Log all image URLs found
+  images.forEach((img, i) => {
+    try {
+      const hostname = new URL(img.url).hostname;
+      const isHosted = isHostedUrl(img.url);
+      console.log(`  [${i}] ${hostname} ${isHosted ? '(HOSTED - will skip)' : '(EXTERNAL - will rehost)'}`);
+    } catch {
+      console.log(`  [${i}] Invalid URL: ${img.url.substring(0, 50)}...`);
+    }
+  });
 
   let updatedContent = content;
   let rehostedCount = 0;
   let failedCount = 0;
+  let skippedCount = 0;
 
   // Process images sequentially to avoid rate limits
   for (let i = 0; i < images.length; i++) {
     const { fullTag, url } = images[i];
 
-    // Skip if already hosted
+    // Skip if already hosted (check again for clarity in logs)
     if (isHostedUrl(url)) {
-      console.log(`[Image Rehost] Skipping (already hosted): ${url.substring(0, 50)}...`);
+      skippedCount++;
       continue;
     }
 
@@ -428,11 +478,16 @@ export async function rehostAllImages(
       updatedContent = updatedContent.replace(fullTag, newTag);
       rehostedCount++;
     } else if (!result.success) {
-      console.warn(`[Image Rehost] Failed: ${url} - ${result.error}`);
       failedCount++;
     }
   }
 
-  console.log(`[Image Rehost] Complete: ${rehostedCount} rehosted, ${failedCount} failed`);
+  console.log(`\n========== IMAGE REHOST SUMMARY ==========`);
+  console.log(`  Total images: ${images.length}`);
+  console.log(`  Skipped (already hosted): ${skippedCount}`);
+  console.log(`  Rehosted successfully: ${rehostedCount}`);
+  console.log(`  Failed: ${failedCount}`);
+  console.log(`========== IMAGE REHOST END ==========\n`);
+
   return { content: updatedContent, rehostedCount, failedCount };
 }

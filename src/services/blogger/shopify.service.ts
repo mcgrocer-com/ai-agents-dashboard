@@ -111,13 +111,13 @@ export async function getProductByHandle(
 }
 
 /**
- * Publish blog to Shopify using Supabase Edge Function
+ * Push blog to Shopify using Supabase Edge Function (saves as draft)
  */
-export async function publishBlogToShopify(
+export async function pushBlogToShopify(
   request: ShopifyPublishRequest
 ): Promise<ServiceResponse<ShopifyPublishResponse>> {
   try {
-    const edgeFunctionUrl = `${SUPABASE_EDGE_FUNCTION_URL}/shopify-publish-blog`;
+    const edgeFunctionUrl = `${SUPABASE_EDGE_FUNCTION_URL}/shopify-push-blog`;
 
     const response = await fetch(edgeFunctionUrl, {
       method: 'POST',
@@ -140,7 +140,7 @@ export async function publishBlogToShopify(
       success: true
     };
   } catch (error) {
-    console.error('Error publishing blog to Shopify:', error);
+    console.error('Error pushing blog to Shopify:', error);
     return {
       data: null,
       error: error as Error,
@@ -157,7 +157,7 @@ export async function updateBlogOnShopify(
   request: ShopifyPublishRequest
 ): Promise<ServiceResponse<ShopifyPublishResponse>> {
   try {
-    const edgeFunctionUrl = `${SUPABASE_EDGE_FUNCTION_URL}/shopify-publish-blog`;
+    const edgeFunctionUrl = `${SUPABASE_EDGE_FUNCTION_URL}/shopify-push-blog`;
 
     const response = await fetch(edgeFunctionUrl, {
       method: 'PUT',
@@ -190,13 +190,13 @@ export async function updateBlogOnShopify(
 }
 
 /**
- * Unpublish/delete blog from Shopify using Supabase Edge Function
+ * Remove blog from Shopify using Supabase Edge Function
  */
-export async function unpublishBlogFromShopify(
+export async function removeBlogFromShopify(
   articleId: number
 ): Promise<ServiceResponse<void>> {
   try {
-    const edgeFunctionUrl = `${SUPABASE_EDGE_FUNCTION_URL}/shopify-publish-blog`;
+    const edgeFunctionUrl = `${SUPABASE_EDGE_FUNCTION_URL}/shopify-push-blog`;
 
     const response = await fetch(edgeFunctionUrl, {
       method: 'DELETE',
@@ -218,7 +218,7 @@ export async function unpublishBlogFromShopify(
       success: true
     };
   } catch (error) {
-    console.error('Error unpublishing blog from Shopify:', error);
+    console.error('Error removing blog from Shopify:', error);
     return {
       data: null,
       error: error as Error,

@@ -6,12 +6,12 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, ExternalLink, Search } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, ExternalLink, Search, RefreshCw } from 'lucide-react';
 import { BlogPreview } from '@/components/blogger';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Toast } from '@/components/ui/Toast';
 import { getBlogById, deleteBlogWithShopify, updateBlogStatus, updateBlog } from '@/services/blogger/blogs.service';
-import { publishBlogToShopify, unpublishBlogFromShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
+import { pushBlogToShopify, updateBlogOnShopify, removeBlogFromShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
 import type { BlogWithRelations, ShopifyBlog } from '@/types/blogger';
 
 export function BloggerDetailPage() {
@@ -126,8 +126,8 @@ export function BloggerDetailPage() {
 
     setIsPublishing(true);
     try {
-      // Publish to Shopify
-      const result = await publishBlogToShopify({
+      // Push to Shopify (content should already be rehosted from wizard save)
+      const result = await pushBlogToShopify({
         blogId: selectedBlogId,
         title: blog.title,
         content: blog.content,
@@ -154,11 +154,11 @@ export function BloggerDetailPage() {
         loadBlog();
         setToast({ message: 'Blog saved to Shopify as draft!', type: 'success' });
       } else {
-        setToast({ message: `Failed to publish blog: ${result.error?.message || 'Unknown error'}`, type: 'error' });
+        setToast({ message: `Failed to push blog: ${result.error?.message || 'Unknown error'}`, type: 'error' });
       }
     } catch (error) {
-      console.error('Error publishing blog:', error);
-      setToast({ message: `Error publishing blog: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
+      console.error('Error pushing blog:', error);
+      setToast({ message: `Error pushing blog: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
     } finally {
       setIsPublishing(false);
       setShowPublishDialog(false);
@@ -170,7 +170,7 @@ export function BloggerDetailPage() {
 
     setIsPublishing(true);
     try {
-      const result = await unpublishBlogFromShopify(blog.shopify_article_id);
+      const result = await removeBlogFromShopify(blog.shopify_article_id);
 
       if (result.success) {
         // Update blog status and clear Shopify article ID
@@ -184,6 +184,38 @@ export function BloggerDetailPage() {
     } catch (error) {
       console.error('Error removing blog from Shopify:', error);
       setToast({ message: `Error removing blog from Shopify: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleSyncToShopify = async () => {
+    if (!id || !blog?.shopify_article_id) return;
+
+    setIsPublishing(true);
+    try {
+      // Update existing article on Shopify with latest content from database
+      const result = await updateBlogOnShopify(blog.shopify_article_id, {
+        blogId: '', // Not needed for updates
+        title: blog.title,
+        content: blog.content,
+        summary: `<p>${blog.meta_description}</p>`,
+        metaTitle: blog.meta_title,
+        metaDescription: blog.meta_description,
+        featuredImageUrl: blog.featured_image_url || undefined,
+        featuredImageAlt: blog.featured_image_alt || undefined,
+        author: blog.persona?.name || 'McGrocer Team',
+        tags: blog.primary_keyword ? [blog.primary_keyword] : [],
+      });
+
+      if (result.success) {
+        setToast({ message: 'Shopify article synced with latest content!', type: 'success' });
+      } else {
+        setToast({ message: `Failed to sync: ${result.error?.message || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (error) {
+      console.error('Error syncing to Shopify:', error);
+      setToast({ message: `Error syncing: ${error instanceof Error ? error.message : 'Unknown error'}`, type: 'error' });
     } finally {
       setIsPublishing(false);
     }
@@ -286,6 +318,19 @@ export function BloggerDetailPage() {
                 <ExternalLink className="w-4 h-4" />
                 View on Shopify
               </a>
+            )}
+
+            {blog.shopify_article_id && (
+              <button
+                onClick={handleSyncToShopify}
+                disabled={isPublishing}
+                className="px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700
+                  flex items-center gap-2 disabled:opacity-50"
+                title="Update Shopify article with latest content from database"
+              >
+                <RefreshCw className={`w-4 h-4 ${isPublishing ? 'animate-spin' : ''}`} />
+                {isPublishing ? 'Syncing...' : 'Sync to Shopify'}
+              </button>
             )}
 
             {blog.shopify_article_id && (
