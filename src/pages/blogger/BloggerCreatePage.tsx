@@ -711,7 +711,9 @@ export function BloggerCreatePage() {
       }
 
       // Step 3: Save/Update blog in database and publish/update on Shopify
-      const isUpdatingExisting = isEditMode && id && existingShopifyArticleId;
+      // Separate concerns: database update vs Shopify push
+      const isUpdatingDatabase = isEditMode && id; // Update existing DB record
+      const isUpdatingShopify = Boolean(existingShopifyArticleId); // Update vs create on Shopify
 
       // Strip leading H2 title if it duplicates the blog title (Shopify renders title as H1)
       const processedContent = stripLeadingTitleH2(content, metaTitle);
@@ -730,7 +732,11 @@ export function BloggerCreatePage() {
         publishedAt: new Date().toISOString(),
       };
 
-      if (isUpdatingExisting) {
+      let blogId: string;
+      let rehostedContent: string;
+
+      // Step 3a: Save or update in database
+      if (isUpdatingDatabase) {
         // Update existing blog in database (this rehosts external images)
         const dbUpdateResult = await updateBlog(id, {
           persona_id: selectedPersona.id,
@@ -750,30 +756,8 @@ export function BloggerCreatePage() {
           word_count: wordCount,
         });
 
-        // Use rehosted content for Shopify (if available)
-        const rehostedContent = dbUpdateResult.data?.content || content;
-        const processedRehostedContent = stripLeadingTitleH2(rehostedContent, metaTitle);
-        shopifyRequest.content = processedRehostedContent;
-
-        // Update on Shopify with rehosted images
-        const updateResult = await updateBlogOnShopify(existingShopifyArticleId, shopifyRequest);
-
-        if (updateResult.success) {
-          Swal.fire({
-            icon: 'success',
-            title: 'Updated on Shopify!',
-            html: `
-              <p>Your blog has been updated on Shopify.</p>
-              <p style="margin-top: 12px;">Changes are now live.</p>
-            `,
-            confirmButtonText: 'View Dashboard',
-          });
-
-          clearAutoSave();
-          navigate('/blogger', { state: { draftCleared: true } });
-        } else {
-          throw new Error(updateResult.error?.message || 'Failed to update on Shopify');
-        }
+        blogId = id;
+        rehostedContent = dbUpdateResult.data?.content || content;
       } else {
         // Create new blog
         const baseSlug = metaTitle
@@ -811,14 +795,37 @@ export function BloggerCreatePage() {
           throw new Error('Failed to save blog to database');
         }
 
-        const blogId = createResult.data.id;
+        blogId = createResult.data.id;
+        rehostedContent = createResult.data.content || content;
+      }
 
-        // Use rehosted content for Shopify (createBlog rehosts images internally)
-        const rehostedContent = createResult.data.content || content;
-        const processedRehostedContent = stripLeadingTitleH2(rehostedContent, metaTitle);
-        shopifyRequest.content = processedRehostedContent;
+      // Use rehosted content for Shopify
+      const processedRehostedContent = stripLeadingTitleH2(rehostedContent, metaTitle);
+      shopifyRequest.content = processedRehostedContent;
 
-        // Push to Shopify with rehosted images
+      // Step 3b: Push or update on Shopify
+      if (isUpdatingShopify) {
+        // Update existing article on Shopify
+        const updateResult = await updateBlogOnShopify(existingShopifyArticleId!, shopifyRequest);
+
+        if (updateResult.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Updated on Shopify!',
+            html: `
+              <p>Your blog has been updated on Shopify.</p>
+              <p style="margin-top: 12px;">Changes are now live.</p>
+            `,
+            confirmButtonText: 'View Dashboard',
+          });
+
+          clearAutoSave();
+          navigate('/blogger', { state: { draftCleared: true } });
+        } else {
+          throw new Error(updateResult.error?.message || 'Failed to update on Shopify');
+        }
+      } else {
+        // Push new article to Shopify
         const pushResult = await pushBlogToShopify(shopifyRequest);
 
         if (pushResult.success && pushResult.data) {
