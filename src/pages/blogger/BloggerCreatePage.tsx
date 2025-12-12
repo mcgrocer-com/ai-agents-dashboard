@@ -710,10 +710,12 @@ export function BloggerCreatePage() {
         return;
       }
 
-      // Step 3: Save/Update blog in database and publish/update on Shopify
+      // Step 3: Save/Update blog in database and push to Shopify
       // Separate concerns: database update vs Shopify push
-      const isUpdatingDatabase = isEditMode && id; // Update existing DB record
-      const isUpdatingShopify = Boolean(existingShopifyArticleId); // Update vs create on Shopify
+      // - isUpdatingDatabase: true when editing an existing blog (prevents duplicates)
+      // - isUpdatingShopify: true when article already exists on Shopify (update vs create)
+      const isUpdatingDatabase = isEditMode && id;
+      const isUpdatingShopify = Boolean(existingShopifyArticleId);
 
       // Strip leading H2 title if it duplicates the blog title (Shopify renders title as H1)
       const processedContent = stripLeadingTitleH2(content, metaTitle);
@@ -992,7 +994,7 @@ export function BloggerCreatePage() {
         // Refresh personas list
         const personasResult = await getAllPersonas();
         if (personasResult.success && personasResult.data) {
-          setPersonas(personasResult.data);
+          setPersonas(personasResult.data); 
         }
       } else {
         // Check for foreign key violation
