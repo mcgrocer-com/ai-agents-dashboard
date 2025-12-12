@@ -15,6 +15,8 @@ import {
 interface SeoOptimizerProps {
   metaTitle: string;
   metaDescription: string;
+  excerpt?: string;
+  tags?: string[];
   featuredImage?: string;
   featuredImageAlt?: string;
   blogId: string;
@@ -22,6 +24,8 @@ interface SeoOptimizerProps {
   primaryKeyword?: string;
   onMetaTitleChange: (value: string) => void;
   onMetaDescriptionChange: (value: string) => void;
+  onExcerptChange?: (value: string) => void;
+  onTagsChange?: (tags: string[]) => void;
   onPrimaryKeywordChange?: (value: string) => void;
   onFeaturedImageChange?: (url: string, alt: string) => void;
   onImageRemove?: () => void;
@@ -33,6 +37,8 @@ interface SeoOptimizerProps {
 export function SeoOptimizer({
   metaTitle,
   metaDescription,
+  excerpt = '',
+  tags = [],
   featuredImage,
   featuredImageAlt,
   blogId,
@@ -40,6 +46,8 @@ export function SeoOptimizer({
   primaryKeyword = '',
   onMetaTitleChange,
   onMetaDescriptionChange,
+  onExcerptChange,
+  onTagsChange,
   onPrimaryKeywordChange,
   onFeaturedImageChange,
   onImageRemove,
@@ -51,6 +59,28 @@ export function SeoOptimizer({
   const [showImageInput, setShowImageInput] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [newTag, setNewTag] = useState('');
+
+  const handleAddTag = () => {
+    const trimmedTag = newTag.trim().toLowerCase();
+    if (trimmedTag && !tags.includes(trimmedTag) && onTagsChange) {
+      onTagsChange([...tags, trimmedTag]);
+      setNewTag('');
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    if (onTagsChange) {
+      onTagsChange(tags.filter(tag => tag !== tagToRemove));
+    }
+  };
+
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddTag();
+    }
+  };
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
   const [isRegeneratingDescription, setIsRegeneratingDescription] = useState(false);
@@ -295,6 +325,173 @@ export function SeoOptimizer({
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Excerpt / Summary Section */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Excerpt / Summary
+            </label>
+            <span
+              className={`text-sm font-semibold ${
+                excerpt.length >= 100 && excerpt.length <= 200
+                  ? 'text-green-600'
+                  : excerpt.length > 0
+                    ? 'text-yellow-600'
+                    : 'text-gray-400'
+              }`}
+            >
+              {excerpt.length}/200 chars
+            </span>
+          </div>
+          <textarea
+            value={excerpt}
+            onChange={(e) => onExcerptChange?.(e.target.value)}
+            disabled={isLoading || !onExcerptChange}
+            placeholder="A brief summary shown on listing pages..."
+            rows={2}
+            className="w-full px-4 py-2 border border-gray-300 rounded-md
+              focus:ring-2 focus:ring-blue-500 focus:border-transparent
+              disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+          />
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-xs text-gray-500">
+              Ideal: 100-200 characters. Shown on Shopify blog listing pages.
+            </span>
+          </div>
+          {/* Criteria breakdown for excerpt */}
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center gap-2">
+              {excerpt.length >= 100 ? (
+                <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+              )}
+              <span className={`text-xs ${excerpt.length >= 100 ? 'text-green-600' : 'text-red-500'}`}>
+                {excerpt.length >= 100 ? 'Minimum length met (100+ chars)' : `Too short (${excerpt.length}/100 chars minimum)`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {excerpt.length <= 200 ? (
+                <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+              )}
+              <span className={`text-xs ${excerpt.length <= 200 ? 'text-green-600' : 'text-yellow-600'}`}>
+                {excerpt.length <= 200 ? 'Within max length (≤200 chars)' : `Exceeds recommended length (${excerpt.length}/200 chars)`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {excerpt !== metaDescription ? (
+                <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+              )}
+              <span className={`text-xs ${excerpt !== metaDescription ? 'text-green-600' : 'text-yellow-600'}`}>
+                {excerpt !== metaDescription ? 'Unique from meta description' : 'Should differ from meta description'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tags Section */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Tags
+            </label>
+            <span
+              className={`text-sm font-semibold ${
+                tags.length >= 3 && tags.length <= 6
+                  ? 'text-green-600'
+                  : tags.length > 0
+                    ? 'text-yellow-600'
+                    : 'text-gray-400'
+              }`}
+            >
+              {tags.length} tags
+            </span>
+          </div>
+
+          {/* Tag chips */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+              >
+                {tag}
+                {onTagsChange && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTag(tag)}
+                    disabled={isLoading}
+                    className="ml-1 text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </span>
+            ))}
+            {tags.length === 0 && (
+              <span className="text-sm text-gray-400 italic">No tags added yet</span>
+            )}
+          </div>
+
+          {/* Add new tag input */}
+          {onTagsChange && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onKeyDown={handleTagKeyDown}
+                disabled={isLoading}
+                placeholder="Add a tag..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm
+                  focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+              <button
+                type="button"
+                onClick={handleAddTag}
+                disabled={isLoading || !newTag.trim()}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md
+                  hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add
+              </button>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500 mt-2">
+            Recommended: 3-6 tags. Tags help organize your blog for SEO and navigation.
+          </p>
+
+          {/* Criteria breakdown for tags */}
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center gap-2">
+              {tags.length >= 3 ? (
+                <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+              )}
+              <span className={`text-xs ${tags.length >= 3 ? 'text-green-600' : 'text-red-500'}`}>
+                {tags.length >= 3 ? 'Minimum tags met (3+)' : `Need more tags (${tags.length}/3 minimum)`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {tags.length <= 6 ? (
+                <CheckCircle className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+              )}
+              <span className={`text-xs ${tags.length <= 6 ? 'text-green-600' : 'text-yellow-600'}`}>
+                {tags.length <= 6 ? 'Within recommended limit (≤6)' : `Too many tags (${tags.length}/6 recommended)`}
+              </span>
+            </div>
           </div>
         </div>
 

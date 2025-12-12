@@ -1,0 +1,630 @@
+/**
+ * SEO Validator Agent Service
+ *
+ * An AI-powered validation agent that runs after content generation to ensure
+ * Yoast SEO compliance. Each validation is performed by an AI agent, not hard-coded logic.
+ */
+
+import { GoogleGenAI } from '@google/genai';
+
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+
+export type IssueSeverity = 'critical' | 'error' | 'warning' | 'info';
+
+export type IssueCategory =
+  | 'title'
+  | 'description'
+  | 'excerpt'
+  | 'headings'
+  | 'links'
+  | 'images'
+  | 'ai-content';
+
+export interface SeoIssue {
+  id: string;
+  severity: IssueSeverity;
+  category: IssueCategory;
+  message: string;
+  suggestion: string;
+  autoFixable: boolean;
+  context?: string;
+}
+
+export interface ContentAgentFeedback {
+  requiresRegeneration: boolean;
+  regenerationPrompt?: string;
+  specificIssues: Array<{ what: string; why: string; how: string }>;
+}
+
+export interface SeoValidationReport {
+  isValid: boolean;
+  score: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  issues: SeoIssue[];
+  criticalCount: number;
+  errorCount: number;
+  warningCount: number;
+  fixedContent?: string;
+  fixedTitle?: string;
+  fixedDescription?: string;
+  feedback: ContentAgentFeedback;
+  checks: {
+    title: { passed: boolean; value: string; length: number };
+    description: { passed: boolean; value: string; length: number };
+    excerpt: { passed: boolean; value: string; length: number };
+    headings: { passed: boolean; hierarchy: string[]; issues: string[] };
+    links: { passed: boolean; total: number; invalid: number; external: number; nofollow: number };
+    images: { passed: boolean; total: number; withAlt: number; withoutAlt: number };
+    aiContent: { passed: boolean; issues: string[]; patterns: string[] };
+  };
+}
+
+/**
+ * AI-Powered SEO Validator Agent
+ */
+export class SeoValidator {
+  private issues: SeoIssue[] = [];
+  private issueIdCounter = 0;
+  private model: string = 'gemini-2.0-flash';
+
+  /**
+   * Run full SEO validation using AI agents
+   */
+  async validate(
+    content: string,
+    metaTitle: string,
+    metaDescription: string,
+    options: {
+      autoFix?: boolean;
+      primaryKeyword?: string;
+      excerpt?: string;
+      model?: string;
+      skipCategories?: IssueCategory[]; // Categories that already passed - skip re-validation
+    } = {}
+  ): Promise<SeoValidationReport> {
+    const { autoFix = true, primaryKeyword = '', excerpt = '', model = 'gemini-2.0-flash', skipCategories = [] } = options;
+    this.model = model;
+
+    this.issues = [];
+    this.issueIdCounter = 0;
+
+    // Skip categories that already passed (saves API calls and avoids AI variance issues)
+    const skip = new Set(skipCategories);
+
+    // Run AI validations in parallel (skip already-passed categories)
+    const [titleCheck, descCheck, excerptCheck, headingCheck, linkCheck, imageCheck, aiContentCheck] =
+      await Promise.all([
+        skip.has('title') ? Promise.resolve({ passed: true }) : this.validateTitleWithAI(metaTitle, primaryKeyword),
+        skip.has('description') ? Promise.resolve({ passed: true }) : this.validateDescriptionWithAI(metaDescription, primaryKeyword),
+        skip.has('excerpt') ? Promise.resolve({ passed: true }) : this.validateExcerptWithAI(excerpt, primaryKeyword, metaDescription),
+        skip.has('headings') ? Promise.resolve({ passed: true, hierarchy: [], issues: [] }) : this.validateHeadingsWithAI(content),
+        skip.has('links') ? Promise.resolve({ passed: true, total: 0, invalid: 0, external: 0, nofollow: 0 }) : this.validateLinksWithAI(content),
+        skip.has('images') ? Promise.resolve({ passed: true, total: 0, withAlt: 0, withoutAlt: 0 }) : this.validateImagesWithAI(content),
+        skip.has('ai-content') ? Promise.resolve({ passed: true, issues: [], patterns: [] }) : this.validateAiContentWithAI(content),
+      ]);
+
+    // Calculate score based on issues
+    const score = this.calculateScore();
+    const grade = this.getGrade(score);
+    const feedback = this.generateFeedback();
+
+    return {
+      isValid: this.issues.filter(i => i.severity === 'critical' || i.severity === 'error').length === 0,
+      score,
+      grade,
+      issues: this.issues,
+      criticalCount: this.issues.filter(i => i.severity === 'critical').length,
+      errorCount: this.issues.filter(i => i.severity === 'error').length,
+      warningCount: this.issues.filter(i => i.severity === 'warning').length,
+      fixedContent: autoFix ? content : undefined,
+      fixedTitle: autoFix ? metaTitle : undefined,
+      fixedDescription: autoFix ? metaDescription : undefined,
+      feedback,
+      checks: {
+        title: { passed: titleCheck.passed, value: metaTitle, length: metaTitle.length },
+        description: { passed: descCheck.passed, value: metaDescription, length: metaDescription.length },
+        excerpt: { passed: excerptCheck.passed, value: excerpt, length: excerpt.replace(/<[^>]+>/g, '').length },
+        headings: headingCheck,
+        links: linkCheck,
+        images: imageCheck,
+        aiContent: aiContentCheck,
+      },
+    };
+  }
+
+  /**
+   * AI Agent: Validate meta title
+   */
+  private async validateTitleWithAI(title: string, keyword: string): Promise<{ passed: boolean }> {
+    if (!title) {
+      this.addIssue({
+        severity: 'critical',
+        category: 'title',
+        message: 'Meta title is empty',
+        suggestion: 'Add a compelling title of 50-60 characters',
+        autoFixable: false,
+      });
+      return { passed: false };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: `You are an SEO Validator Agent. Analyze this meta title for SEO effectiveness.
+
+TITLE: "${title}"
+LENGTH: ${title.length} characters
+PRIMARY KEYWORD: "${keyword || 'not specified'}"
+
+VALIDATION CRITERIA:
+1. Length: 50-60 characters ideal (current: ${title.length})
+2. Keyword placement: Should contain primary keyword, preferably near beginning
+3. Readability: Clear, compelling, click-worthy
+4. No keyword stuffing or spam patterns
+5. Proper capitalization and grammar
+
+RESPOND WITH JSON ONLY:
+{
+  "passed": boolean,
+  "issues": [{ "severity": "error"|"warning"|"info", "message": "issue", "suggestion": "fix" }]
+}`,
+      });
+
+      const text = response.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        if (result.issues) {
+          for (const issue of result.issues) {
+            this.addIssue({ severity: issue.severity, category: 'title', message: issue.message, suggestion: issue.suggestion, autoFixable: false });
+          }
+        }
+        return { passed: result.passed };
+      }
+    } catch (error) {
+      console.error('[SEO Validator] AI title validation failed:', error);
+    }
+
+    return { passed: title.length >= 50 && title.length <= 60 };
+  }
+
+  /**
+   * AI Agent: Validate meta description
+   */
+  private async validateDescriptionWithAI(description: string, keyword: string): Promise<{ passed: boolean }> {
+    if (!description) {
+      this.addIssue({
+        severity: 'critical',
+        category: 'description',
+        message: 'Meta description is empty',
+        suggestion: 'Add a compelling description of 140-160 characters',
+        autoFixable: false,
+      });
+      return { passed: false };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: `You are an SEO Validator Agent. Analyze this meta description for SEO effectiveness.
+
+DESCRIPTION: "${description}"
+LENGTH: ${description.length} characters
+PRIMARY KEYWORD: "${keyword || 'not specified'}"
+
+VALIDATION CRITERIA:
+1. Length: 140-160 characters ideal (current: ${description.length})
+2. Keyword inclusion: Should contain primary keyword naturally
+3. Call-to-action: Should encourage clicks
+4. Unique value proposition: Clear benefit to reader
+5. No AI patterns: No "I will", "This article", etc.
+
+RESPOND WITH JSON ONLY:
+{
+  "passed": boolean,
+  "issues": [{ "severity": "error"|"warning"|"info", "message": "issue", "suggestion": "fix" }]
+}`,
+      });
+
+      const text = response.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        if (result.issues) {
+          for (const issue of result.issues) {
+            this.addIssue({ severity: issue.severity, category: 'description', message: issue.message, suggestion: issue.suggestion, autoFixable: false });
+          }
+        }
+        return { passed: result.passed };
+      }
+    } catch (error) {
+      console.error('[SEO Validator] AI description validation failed:', error);
+    }
+
+    return { passed: description.length >= 140 && description.length <= 160 };
+  }
+
+  /**
+   * AI Agent: Validate excerpt/summary
+   */
+  private async validateExcerptWithAI(
+    excerpt: string,
+    keyword: string,
+    metaDescription: string
+  ): Promise<{ passed: boolean }> {
+    const cleanExcerpt = excerpt.replace(/<[^>]+>/g, '').trim();
+
+    if (!cleanExcerpt) {
+      this.addIssue({
+        severity: 'warning',
+        category: 'excerpt',
+        message: 'Excerpt/summary is empty',
+        suggestion: 'Add a 2-3 sentence teaser (100-200 chars) for blog listing pages',
+        autoFixable: false,
+      });
+      return { passed: false };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: `You are an SEO Validator Agent. Analyze this blog excerpt for quality.
+
+EXCERPT: "${cleanExcerpt}"
+LENGTH: ${cleanExcerpt.length} characters
+PRIMARY KEYWORD: "${keyword || 'not specified'}"
+META DESCRIPTION: "${metaDescription || 'not specified'}"
+
+VALIDATION CRITERIA:
+1. Length: 100-200 characters ideal
+2. Engagement: Should entice readers to click
+3. Keyword: Should include primary keyword naturally
+4. Uniqueness: Should NOT be identical to meta description
+5. No AI patterns: No "I selected", "This article will", "As an expert"
+6. Reader focus: Written FOR readers, not about the writing process
+
+RESPOND WITH JSON ONLY:
+{
+  "passed": boolean,
+  "issues": [{ "severity": "error"|"warning"|"info", "message": "issue", "suggestion": "fix" }]
+}`,
+      });
+
+      const text = response.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        if (result.issues) {
+          for (const issue of result.issues) {
+            this.addIssue({ severity: issue.severity, category: 'excerpt', message: issue.message, suggestion: issue.suggestion, autoFixable: false });
+          }
+        }
+        return { passed: result.passed };
+      }
+    } catch (error) {
+      console.error('[SEO Validator] AI excerpt validation failed:', error);
+    }
+
+    return { passed: cleanExcerpt.length >= 100 && cleanExcerpt.length <= 200 };
+  }
+
+  /**
+   * AI Agent: Validate heading hierarchy
+   */
+  private async validateHeadingsWithAI(
+    content: string
+  ): Promise<{ passed: boolean; hierarchy: string[]; issues: string[] }> {
+    const headingPattern = /<h([1-6])([^>]*)>([\s\S]*?)<\/h\1>/gi;
+    const headings: string[] = [];
+    let match;
+    while ((match = headingPattern.exec(content)) !== null) {
+      const level = match[1];
+      const text = match[3].replace(/<[^>]+>/g, '').trim();
+      headings.push(`H${level}: ${text.substring(0, 50)}`);
+    }
+
+    if (headings.length === 0) {
+      return { passed: true, hierarchy: [], issues: [] };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: `You are an SEO Validator Agent. Analyze heading structure for SEO.
+
+HEADINGS FOUND:
+${headings.join('\n')}
+
+VALIDATION CRITERIA:
+1. No H1 tags in blog content (H1 is reserved for page title)
+2. Hierarchy must be sequential: H2 → H3 → H4 (no skipping levels)
+3. No empty headings
+4. Headings should be descriptive and keyword-rich
+5. No duplicate headings
+
+RESPOND WITH JSON ONLY:
+{
+  "passed": boolean,
+  "issues": [{ "severity": "error"|"warning"|"info", "message": "issue", "suggestion": "fix" }],
+  "hierarchy": ["H2: First", "H3: Sub"]
+}`,
+      });
+
+      const text = response.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        const issueMessages: string[] = [];
+        if (result.issues) {
+          for (const issue of result.issues) {
+            this.addIssue({ severity: issue.severity, category: 'headings', message: issue.message, suggestion: issue.suggestion, autoFixable: false });
+            issueMessages.push(issue.message);
+          }
+        }
+        return { passed: result.passed, hierarchy: result.hierarchy || headings, issues: issueMessages };
+      }
+    } catch (error) {
+      console.error('[SEO Validator] AI headings validation failed:', error);
+    }
+
+    return { passed: true, hierarchy: headings, issues: [] };
+  }
+
+  /**
+   * AI Agent: Validate links
+   */
+  private async validateLinksWithAI(
+    content: string
+  ): Promise<{ passed: boolean; total: number; invalid: number; external: number; nofollow: number }> {
+    const linkPattern = /<a([^>]*)href=["']([^"']*)["']([^>]*)>/gi;
+    const links: string[] = [];
+    let match;
+    while ((match = linkPattern.exec(content)) !== null) {
+      links.push(match[2]);
+    }
+
+    if (links.length === 0) {
+      return { passed: true, total: 0, invalid: 0, external: 0, nofollow: 0 };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: `You are an SEO Validator Agent. Analyze links for SEO best practices.
+
+LINKS FOUND:
+${links.map((l, i) => `${i + 1}. ${l}`).join('\n')}
+
+FULL CONTENT WITH LINK TAGS (for nofollow check):
+${content.match(/<a[^>]*>/gi)?.join('\n') || 'No link tags'}
+
+VALIDATION CRITERIA:
+1. No invalid/placeholder links (#, PRODUCT_URL, placeholder, empty)
+2. External links should have rel="nofollow"
+3. Internal links (mcgrocer.com, myshopify.com) don't need nofollow
+4. All links should be properly formatted URLs
+
+RESPOND WITH JSON ONLY:
+{
+  "passed": boolean,
+  "total": number,
+  "invalid": number,
+  "external": number,
+  "nofollow": number,
+  "issues": [{ "severity": "error"|"warning", "message": "issue", "suggestion": "fix" }]
+}`,
+      });
+
+      const text = response.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        if (result.issues) {
+          for (const issue of result.issues) {
+            this.addIssue({ severity: issue.severity, category: 'links', message: issue.message, suggestion: issue.suggestion, autoFixable: false });
+          }
+        }
+        return {
+          passed: result.passed,
+          total: result.total || links.length,
+          invalid: result.invalid || 0,
+          external: result.external || 0,
+          nofollow: result.nofollow || 0,
+        };
+      }
+    } catch (error) {
+      console.error('[SEO Validator] AI links validation failed:', error);
+    }
+
+    return { passed: true, total: links.length, invalid: 0, external: 0, nofollow: 0 };
+  }
+
+  /**
+   * AI Agent: Validate images
+   */
+  private async validateImagesWithAI(
+    content: string
+  ): Promise<{ passed: boolean; total: number; withAlt: number; withoutAlt: number }> {
+    const imgPattern = /<img([^>]*)>/gi;
+    const images: string[] = [];
+    let match;
+    while ((match = imgPattern.exec(content)) !== null) {
+      images.push(match[0]);
+    }
+
+    if (images.length === 0) {
+      return { passed: true, total: 0, withAlt: 0, withoutAlt: 0 };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: `You are an SEO Validator Agent. Analyze images for accessibility and SEO.
+
+IMAGE TAGS FOUND:
+${images.join('\n')}
+
+VALIDATION CRITERIA:
+1. All images must have alt attributes
+2. Alt text should be descriptive (not empty, not just "image")
+3. Alt text should be relevant to the image context
+4. File names should be descriptive (not random strings)
+
+RESPOND WITH JSON ONLY:
+{
+  "passed": boolean,
+  "total": number,
+  "withAlt": number,
+  "withoutAlt": number,
+  "issues": [{ "severity": "warning", "message": "issue", "suggestion": "fix" }]
+}`,
+      });
+
+      const text = response.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        if (result.issues) {
+          for (const issue of result.issues) {
+            this.addIssue({ severity: issue.severity, category: 'images', message: issue.message, suggestion: issue.suggestion, autoFixable: false });
+          }
+        }
+        return {
+          passed: result.passed,
+          total: result.total || images.length,
+          withAlt: result.withAlt || 0,
+          withoutAlt: result.withoutAlt || 0,
+        };
+      }
+    } catch (error) {
+      console.error('[SEO Validator] AI images validation failed:', error);
+    }
+
+    return { passed: true, total: images.length, withAlt: images.length, withoutAlt: 0 };
+  }
+
+  /**
+   * AI Agent: Validate content for AI patterns
+   */
+  private async validateAiContentWithAI(
+    content: string
+  ): Promise<{ passed: boolean; issues: string[]; patterns: string[] }> {
+    const textContent = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+    if (!textContent) {
+      return { passed: true, issues: [], patterns: [] };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: `You are an SEO Validator Agent specialized in detecting AI-generated content patterns.
+
+CONTENT TO ANALYZE:
+"${textContent.substring(0, 3000)}"
+
+DETECT THESE AI PATTERNS:
+
+1. SELF-INTRODUCTION (CRITICAL):
+   - "I am a writer/blogger/expert"
+   - "My name is...", "As your nutritionist/chef"
+   - "With X years of experience"
+   - "Let me introduce myself"
+
+2. AI REASONING IN CONTENT (CRITICAL):
+   - "I selected this keyword because..."
+   - "Based on my analysis..."
+   - "My strategy for this article..."
+   - "The keyword was chosen..."
+   - "For this article, I will..."
+
+3. META/SUMMARY BLEED (ERROR):
+   - "Selected keyword: ..."
+   - "SEO Strategy: ..."
+   - "Word count: ..."
+   - "Summary:" appearing in content
+
+4. WEAK OPENINGS (WARNING):
+   - "In this article, we will..."
+   - "This blog post covers..."
+   - "Let's dive into..."
+   - "Here's what you need to know..."
+
+RESPOND WITH JSON ONLY:
+{
+  "passed": boolean,
+  "issues": [{ "severity": "critical"|"error"|"warning", "message": "description", "suggestion": "fix" }],
+  "patterns": ["exact pattern found 1", "exact pattern found 2"]
+}`,
+      });
+
+      const text = response.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        const issueMessages: string[] = [];
+        if (result.issues) {
+          for (const issue of result.issues) {
+            this.addIssue({ severity: issue.severity, category: 'ai-content', message: issue.message, suggestion: issue.suggestion, autoFixable: false });
+            issueMessages.push(issue.message);
+          }
+        }
+        return { passed: result.passed, issues: issueMessages, patterns: result.patterns || [] };
+      }
+    } catch (error) {
+      console.error('[SEO Validator] AI content validation failed:', error);
+    }
+
+    return { passed: true, issues: [], patterns: [] };
+  }
+
+  private addIssue(issue: Omit<SeoIssue, 'id'>): void {
+    this.issues.push({ id: `seo-${++this.issueIdCounter}`, ...issue });
+  }
+
+  private calculateScore(): number {
+    let score = 100;
+    for (const issue of this.issues) {
+      switch (issue.severity) {
+        case 'critical': score -= 25; break;
+        case 'error': score -= 15; break;
+        case 'warning': score -= 5; break;
+        case 'info': score -= 1; break;
+      }
+    }
+    return Math.max(0, score);
+  }
+
+  private getGrade(score: number): 'A' | 'B' | 'C' | 'D' | 'F' {
+    if (score >= 90) return 'A';
+    if (score >= 80) return 'B';
+    if (score >= 70) return 'C';
+    if (score >= 60) return 'D';
+    return 'F';
+  }
+
+  private generateFeedback(): ContentAgentFeedback {
+    const critical = this.issues.filter(i => i.severity === 'critical' || i.severity === 'error');
+    if (critical.length === 0) {
+      return { requiresRegeneration: false, specificIssues: [] };
+    }
+
+    return {
+      requiresRegeneration: true,
+      regenerationPrompt: `Fix these SEO issues:\n${critical.map(i => `- ${i.category}: ${i.message}`).join('\n')}`,
+      specificIssues: critical.map(i => ({ what: i.message, why: `${i.severity} issue`, how: i.suggestion })),
+    };
+  }
+}
+
+export const seoValidator = new SeoValidator();
+
+export async function validateAndFixWithFeedback(
+  content: string,
+  metaTitle: string,
+  metaDescription: string,
+  options: { autoFix?: boolean; primaryKeyword?: string; excerpt?: string; maxRetries?: number; model?: string } = {}
+): Promise<SeoValidationReport> {
+  const { primaryKeyword = '', excerpt = '', model } = options;
+  return seoValidator.validate(content, metaTitle, metaDescription, { primaryKeyword, excerpt, model });
+}

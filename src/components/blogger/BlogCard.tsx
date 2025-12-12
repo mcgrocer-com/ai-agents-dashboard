@@ -3,7 +3,7 @@
  * Displays a blog item with status and actions
  */
 
-import { Calendar, Eye, Edit, Trash2, Copy, FileImage } from 'lucide-react';
+import { Calendar, Eye, Edit, Trash2, Copy, FileImage, Search } from 'lucide-react';
 import type { BlogWithRelations, BlogStatus } from '@/types/blogger';
 
 interface BlogCardProps {
@@ -109,6 +109,17 @@ export function BlogCard({
           >
             <Copy className="w-4 h-4" />
           </button>
+          <a
+            href={`https://fxkjblrlogjumybceozk.supabase.co/functions/v1/blog-preview/${blog.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-2 text-sm font-medium text-indigo-700 bg-indigo-100
+              rounded-md hover:bg-indigo-200"
+            title="SEO Preview"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Search className="w-4 h-4" />
+          </a>
           <button
             onClick={() => onDelete(blog.id)}
             className="px-3 py-2 text-sm font-medium text-red-700 bg-red-100

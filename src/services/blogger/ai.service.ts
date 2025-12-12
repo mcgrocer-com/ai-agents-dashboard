@@ -398,10 +398,33 @@ Respond ONLY with a JSON object in this exact format (no markdown, no explanatio
 
     const data = JSON.parse(jsonMatch[0]);
 
+    // Enforce character limits with intelligent truncation
+    let title = data.title || '';
+    let description = data.description || '';
+
+    // Truncate title at word boundary (max 60 chars)
+    if (title.length > 60) {
+      const truncated = title.substring(0, 60);
+      const lastSpace = truncated.lastIndexOf(' ');
+      title = lastSpace > 40 ? truncated.substring(0, lastSpace) : truncated;
+    }
+
+    // Truncate description at word boundary or sentence (max 160 chars)
+    if (description.length > 160) {
+      const truncated = description.substring(0, 157);
+      const lastPeriod = truncated.lastIndexOf('.');
+      const lastSpace = truncated.lastIndexOf(' ');
+      if (lastPeriod > 120) {
+        description = description.substring(0, lastPeriod + 1);
+      } else {
+        description = (lastSpace > 120 ? truncated.substring(0, lastSpace) : truncated) + '...';
+      }
+    }
+
     return {
       data: {
-        title: data.title || '',
-        description: data.description || '',
+        title,
+        description,
         keywords: keywords
       },
       error: null,
@@ -1342,5 +1365,166 @@ export function calculateMetaDescriptionScore(
     score: criteria.reduce((sum, c) => sum + c.points, 0),
     maxScore: 20,
     criteria,
+  };
+}
+
+/**
+ * SEO validation issue types
+ */
+export interface SeoValidationIssue {
+  type: 'error' | 'warning';
+  category: 'title' | 'description' | 'headings' | 'content';
+  message: string;
+  suggestion?: string;
+}
+
+/**
+ * SEO validation result
+ */
+export interface SeoValidationResult {
+  isValid: boolean;
+  issues: SeoValidationIssue[];
+  fixedContent?: string;
+  fixedTitle?: string;
+  fixedDescription?: string;
+}
+
+/**
+ * Validate and optionally fix SEO issues in blog content
+ * Checks for Yoast SEO compliance: title length, description length, heading hierarchy, empty headings
+ */
+export function validateAndFixSeo(
+  content: string,
+  metaTitle: string,
+  metaDescription: string,
+  autoFix: boolean = true
+): SeoValidationResult {
+  const issues: SeoValidationIssue[] = [];
+  let fixedContent = content;
+  let fixedTitle = metaTitle;
+  let fixedDescription = metaDescription;
+
+  // 1. Validate meta title length (50-60 chars ideal)
+  if (metaTitle.length > 60) {
+    issues.push({
+      type: 'error',
+      category: 'title',
+      message: `Title tag too long: ${metaTitle.length} characters (ideal: 50-60)`,
+      suggestion: 'Shorten the title to under 60 characters',
+    });
+    if (autoFix) {
+      const truncated = metaTitle.substring(0, 60);
+      const lastSpace = truncated.lastIndexOf(' ');
+      fixedTitle = lastSpace > 40 ? truncated.substring(0, lastSpace) : truncated;
+    }
+  } else if (metaTitle.length < 50) {
+    issues.push({
+      type: 'warning',
+      category: 'title',
+      message: `Title tag too short: ${metaTitle.length} characters (ideal: 50-60)`,
+      suggestion: 'Consider adding more descriptive keywords',
+    });
+  }
+
+  // 2. Validate meta description length (140-160 chars ideal)
+  if (metaDescription.length > 160) {
+    issues.push({
+      type: 'error',
+      category: 'description',
+      message: `Meta description too long: ${metaDescription.length} characters (ideal: 140-160)`,
+      suggestion: 'Shorten the description to under 160 characters',
+    });
+    if (autoFix) {
+      const truncated = metaDescription.substring(0, 157);
+      const lastPeriod = truncated.lastIndexOf('.');
+      const lastSpace = truncated.lastIndexOf(' ');
+      if (lastPeriod > 120) {
+        fixedDescription = metaDescription.substring(0, lastPeriod + 1);
+      } else {
+        fixedDescription = (lastSpace > 120 ? truncated.substring(0, lastSpace) : truncated) + '...';
+      }
+    }
+  } else if (metaDescription.length < 140) {
+    issues.push({
+      type: 'warning',
+      category: 'description',
+      message: `Meta description too short: ${metaDescription.length} characters (ideal: 140-160)`,
+      suggestion: 'Consider adding more compelling description',
+    });
+  }
+
+  // 3. Check for h1 tags (should not be in blog content - CMS handles page title)
+  const h1Matches = fixedContent.match(/<h1[^>]*>[\s\S]*?<\/h1>/gi);
+  if (h1Matches && h1Matches.length > 0) {
+    issues.push({
+      type: 'error',
+      category: 'headings',
+      message: `Found ${h1Matches.length} H1 tag(s) in content (H1 should be the page title only)`,
+      suggestion: 'Convert H1 tags to H2 - blog content should start with H2',
+    });
+    if (autoFix) {
+      fixedContent = fixedContent
+        .replace(/<h1([^>]*)>/gi, '<h2$1>')
+        .replace(/<\/h1>/gi, '</h2>');
+    }
+  }
+
+  // 4. Check heading hierarchy (h2 should come before h3, h3 before h4)
+  const headingPattern = /<h([2-6])([^>]*)>/gi;
+  const headings: { level: number; position: number }[] = [];
+  let match;
+  while ((match = headingPattern.exec(fixedContent)) !== null) {
+    headings.push({ level: parseInt(match[1]), position: match.index });
+  }
+
+  let lastLevel = 1; // Assume h1 is the page title (outside content)
+  for (const heading of headings) {
+    if (heading.level > lastLevel + 1) {
+      issues.push({
+        type: 'error',
+        category: 'headings',
+        message: `Heading hierarchy broken: H${heading.level} appears without H${heading.level - 1}`,
+        suggestion: `Use H${lastLevel + 1} before H${heading.level}`,
+      });
+    }
+    lastLevel = heading.level;
+  }
+
+  // 5. Check for empty headings
+  const emptyHeadingPattern = /<h([1-6])([^>]*)>\s*<\/h\1>/gi;
+  const emptyMatches = fixedContent.match(emptyHeadingPattern);
+  if (emptyMatches && emptyMatches.length > 0) {
+    issues.push({
+      type: 'error',
+      category: 'headings',
+      message: `Found ${emptyMatches.length} empty heading tag(s)`,
+      suggestion: 'Remove empty heading tags or add content to them',
+    });
+    if (autoFix) {
+      fixedContent = fixedContent.replace(emptyHeadingPattern, '');
+    }
+  }
+
+  // 6. Check for headings with only whitespace
+  const whitespaceHeadingPattern = /<h([1-6])([^>]*)>[\s\u00A0]+<\/h\1>/gi;
+  const whitespaceMatches = fixedContent.match(whitespaceHeadingPattern);
+  if (whitespaceMatches && whitespaceMatches.length > 0) {
+    issues.push({
+      type: 'error',
+      category: 'headings',
+      message: `Found ${whitespaceMatches.length} heading tag(s) with only whitespace`,
+      suggestion: 'Remove whitespace-only heading tags',
+    });
+    if (autoFix) {
+      fixedContent = fixedContent.replace(whitespaceHeadingPattern, '');
+    }
+  }
+
+  return {
+    isValid: issues.filter(i => i.type === 'error').length === 0,
+    issues,
+    fixedContent: autoFix ? fixedContent : undefined,
+    fixedTitle: autoFix ? fixedTitle : undefined,
+    fixedDescription: autoFix ? fixedDescription : undefined,
   };
 }

@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Send, Archive, ArchiveRestore, ExternalLink, Search } from 'lucide-react';
 import { BlogPreview } from '@/components/blogger';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { Toast } from '@/components/ui/Toast';
@@ -131,6 +131,7 @@ export function BloggerDetailPage() {
         blogId: selectedBlogId,
         title: blog.title,
         content: blog.content,
+        summary: `<p>${blog.meta_description}</p>`,  // Use meta description as excerpt
         metaTitle: blog.meta_title,
         metaDescription: blog.meta_description,
         featuredImageUrl: blog.featured_image_url || undefined,
@@ -249,6 +250,18 @@ export function BloggerDetailPage() {
               <Edit className="w-4 h-4" />
               Edit
             </button>
+
+            <a
+              href={`https://fxkjblrlogjumybceozk.supabase.co/functions/v1/blog-preview/${id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700
+                flex items-center gap-2"
+              title="Open SEO preview page for Yoast analysis"
+            >
+              <Search className="w-4 h-4" />
+              SEO Preview
+            </a>
 
             {blog.status === 'draft' && (
               <button

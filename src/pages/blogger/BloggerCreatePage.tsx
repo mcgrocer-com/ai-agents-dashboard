@@ -34,7 +34,7 @@ import {
 import { generateMetaData, calculateSeoScore, calculateReadabilityScore } from '@/services/blogger/ai.service';
 import { generateBlogWithGemini, type ProcessingLog } from '@/services/blogger/gemini-content.service';
 import { createBlog, getBlogById, updateBlog } from '@/services/blogger/blogs.service';
-import { publishBlogToShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
+import { publishBlogToShopify, updateBlogOnShopify, fetchShopifyBlogs } from '@/services/blogger/shopify.service';
 import type {
   BloggerPersona,
   BloggerTemplate,
@@ -49,6 +49,33 @@ import Swal from 'sweetalert2';
 
 const TOTAL_STEPS = 6;
 const AUTOSAVE_KEY = 'blogger_draft';
+
+/**
+ * Strip leading H2 title from content if it matches the blog title.
+ * Shopify renders the blog title as H1, so we don't need a duplicate H2.
+ */
+function stripLeadingTitleH2(content: string, title: string): string {
+  // Match H2 at the start of content (with optional whitespace)
+  const h2Match = content.match(/^\s*<h2[^>]*>(.*?)<\/h2>/i);
+  if (!h2Match) return content;
+
+  const h2Text = h2Match[1].replace(/<[^>]*>/g, '').trim(); // Strip HTML tags from H2 text
+  const titleNormalized = title.replace(/[^\w\s]/g, '').toLowerCase().trim();
+  const h2Normalized = h2Text.replace(/[^\w\s]/g, '').toLowerCase().trim();
+
+  // Check if H2 is similar to title (contains most of the same words)
+  const titleWords = new Set(titleNormalized.split(/\s+/));
+  const h2Words = h2Normalized.split(/\s+/);
+  const matchingWords = h2Words.filter(word => titleWords.has(word)).length;
+  const similarity = matchingWords / Math.max(titleWords.size, h2Words.length);
+
+  // If H2 is very similar to title (>70% word match), strip it
+  if (similarity > 0.7) {
+    return content.replace(/^\s*<h2[^>]*>.*?<\/h2>\s*/i, '').trim();
+  }
+
+  return content;
+}
 
 export function BloggerCreatePage() {
   const navigate = useNavigate();
@@ -95,6 +122,10 @@ export function BloggerCreatePage() {
   const [productLinks, setProductLinks] = useState<string[]>([]);
   const [wordCount, setWordCount] = useState<number>(0);
   const [aiSummary, setAiSummary] = useState<string>(''); // AI's summary of decisions
+  const [blogExcerpt, setBlogExcerpt] = useState<string>(''); // Blog excerpt for listing pages
+  const [blogTags, setBlogTags] = useState<string[]>([]); // SEO tags for blog
+  const [existingShopifyArticleId, setExistingShopifyArticleId] = useState<number | null>(null); // Existing Shopify article ID for updates
+  const [existingShopifyBlogId, setExistingShopifyBlogId] = useState<number | null>(null); // Existing Shopify blog ID for updates
 
   // Generation Settings Dialog
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
@@ -102,6 +133,7 @@ export function BloggerCreatePage() {
     model: 'gemini-3-pro-preview', // Default to most powerful model
     includeImages: true,
     articlesResearchCount: 3,
+    seoIterationCount: 5, // SEO fix iterations (5-10)
   });
 
   // Step 5: Meta Data & SEO
@@ -145,7 +177,7 @@ export function BloggerCreatePage() {
       saveToLocalStorage();
     }, 1000);
     return () => clearTimeout(timer);
-  }, [topic, selectedPersona, selectedTemplate, selectedKeyword, metaTitle, metaDescription, content, markdownContent, articlesAnalyzed, productLinks, wordCount, processingLogs, generationSettings, isLoadingFromAutoSave, isEditMode]);
+  }, [topic, selectedPersona, selectedTemplate, selectedKeyword, metaTitle, metaDescription, blogExcerpt, blogTags, content, markdownContent, articlesAnalyzed, productLinks, wordCount, processingLogs, generationSettings, isLoadingFromAutoSave, isEditMode]);
 
   // Save immediately on navigation/tab switch/page unload
   useEffect(() => {
@@ -165,7 +197,7 @@ export function BloggerCreatePage() {
         saveToLocalStorage();
       }
     };
-  }, [topic, selectedPersona, selectedTemplate, selectedKeyword, metaTitle, metaDescription, content, markdownContent, articlesAnalyzed, productLinks, wordCount, processingLogs, generationSettings, featuredImage, featuredImageAlt, currentStep, isEditMode]);
+  }, [topic, selectedPersona, selectedTemplate, selectedKeyword, metaTitle, metaDescription, blogExcerpt, blogTags, content, markdownContent, articlesAnalyzed, productLinks, wordCount, processingLogs, generationSettings, featuredImage, featuredImageAlt, currentStep, isEditMode]);
 
   const loadInitialData = async () => {
     setIsLoading(true);
@@ -227,6 +259,10 @@ export function BloggerCreatePage() {
           setMarkdownContent(blog.markdown_content || '');
           setMetaTitle(blog.meta_title || '');
           setMetaDescription(blog.meta_description || '');
+          setBlogExcerpt(blog.excerpt || '');
+          setBlogTags(blog.tags || []);
+          setExistingShopifyArticleId(blog.shopify_article_id || null);
+          setExistingShopifyBlogId(blog.shopify_blog_id || null);
           setSeoScore(blog.seo_score);
           setReadabilityScore(blog.readability_score);
           setWordCount(blog.word_count || 0);
@@ -282,6 +318,8 @@ export function BloggerCreatePage() {
       selectedKeyword,
       metaTitle,
       metaDescription,
+      blogExcerpt,
+      blogTags,
       featuredImage,
       featuredImageAlt,
       content,
@@ -331,6 +369,8 @@ export function BloggerCreatePage() {
         setSelectedKeyword(draft.selectedKeyword || '');
         setMetaTitle(draft.metaTitle || '');
         setMetaDescription(draft.metaDescription || '');
+        setBlogExcerpt(draft.blogExcerpt || '');
+        setBlogTags(draft.blogTags || []);
         setFeaturedImage(draft.featuredImage || '');
         setFeaturedImageAlt(draft.featuredImageAlt || '');
         setContent(draft.content || '');
@@ -340,6 +380,7 @@ export function BloggerCreatePage() {
           model: 'gemini-2.0-flash-exp',
           includeImages: true,
           articlesResearchCount: 3,
+          seoIterationCount: 5,
         });
         setArticlesAnalyzed(draft.articlesAnalyzed || 0);
         setProductLinks(draft.productLinks || []);
@@ -444,6 +485,7 @@ export function BloggerCreatePage() {
         model: settings?.model || generationSettings.model,
         includeImages: settings?.includeImages || generationSettings.includeImages,
         articlesResearchCount: settings?.articlesResearchCount || generationSettings.articlesResearchCount,
+        seoIterationCount: settings?.seoIterationCount || generationSettings.seoIterationCount,
         contextFileContent,
         userPrompt,
         // Real-time log updates
@@ -460,6 +502,8 @@ export function BloggerCreatePage() {
         setProductLinks(result.data.productLinks || []);
         setWordCount(result.data.wordCount || 0);
         setAiSummary(result.data.summary || ''); // Capture AI's summary of decisions
+        setBlogExcerpt(result.data.excerpt || ''); // Capture blog excerpt for listing pages
+        setBlogTags(result.data.tags || []); // Capture SEO tags
 
         // Auto-populate SEO meta tags from AI generation
         setMetaTitle(result.data.metaTitle || '');
@@ -474,6 +518,8 @@ export function BloggerCreatePage() {
         console.log('- Selected keyword:', result.data.selectedKeyword);
         console.log('- Meta title:', result.data.metaTitle);
         console.log('- Meta description:', result.data.metaDescription);
+        console.log('- Excerpt:', result.data.excerpt);
+        console.log('- Tags:', result.data.tags);
 
         // Show success notification
         Swal.fire({
@@ -532,6 +578,8 @@ export function BloggerCreatePage() {
           markdown_content: markdownContent,
           meta_title: metaTitle,
           meta_description: metaDescription,
+          excerpt: blogExcerpt || null,
+          tags: blogTags.length > 0 ? blogTags : null,
           featured_image_url: featuredImage || null,
           featured_image_alt: featuredImageAlt || null,
           seo_score: seoScore,
@@ -558,6 +606,8 @@ export function BloggerCreatePage() {
           markdown_content: markdownContent,
           meta_title: metaTitle,
           meta_description: metaDescription,
+          excerpt: blogExcerpt || null,
+          tags: blogTags.length > 0 ? blogTags : null,
           featured_image_url: featuredImage || null,
           featured_image_alt: featuredImageAlt || null,
           status: 'draft',
@@ -662,83 +712,135 @@ export function BloggerCreatePage() {
         return;
       }
 
-      // Step 3: Save blog to database first
-      const baseSlug = metaTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .substring(0, 50);
-      const uniqueSlug = `${baseSlug}-${Date.now()}`;
+      // Step 3: Save/Update blog in database and publish/update on Shopify
+      const isUpdatingExisting = isEditMode && id && existingShopifyArticleId;
 
-      const createResult = await createBlog({
-        persona_id: selectedPersona.id,
-        template_id: selectedTemplate!.id,
-        primary_keyword_id: null,
-        primary_keyword: selectedKeyword || null,
-        title: metaTitle,
-        slug: uniqueSlug,
-        content,
-        markdown_content: markdownContent,
-        meta_title: metaTitle,
-        meta_description: metaDescription,
-        featured_image_url: featuredImage || null,
-        featured_image_alt: featuredImageAlt || null,
-        status: 'draft', // Will be updated to published after successful Shopify publish
-        seo_score: seoScore,
-        readability_score: readabilityScore,
-        word_count: wordCount,
-        shopify_article_id: null,
-        shopify_blog_id: null,
-        published_at: null,
-      });
+      // Strip leading H2 title if it duplicates the blog title (Shopify renders title as H1)
+      const processedContent = stripLeadingTitleH2(content, metaTitle);
 
-      if (!createResult.success || !createResult.data) {
-        throw new Error('Failed to save blog to database');
-      }
-
-      const blogId = createResult.data.id;
-
-      // Step 4: Publish to Shopify
-      const publishResult = await publishBlogToShopify({
+      const shopifyRequest = {
         blogId: selectedBlogId,
         title: metaTitle,
-        content,
+        content: processedContent,
+        summary: `<p>${blogExcerpt || metaDescription}</p>`,
         metaTitle,
         metaDescription,
         featuredImageUrl: featuredImage || undefined,
         featuredImageAlt: featuredImageAlt || undefined,
         author: selectedPersona.name,
-        tags: selectedKeyword ? [selectedKeyword] : [],
+        tags: blogTags.length > 0 ? blogTags : (selectedKeyword ? [selectedKeyword] : []),
         publishedAt: new Date().toISOString(),
-      });
+      };
 
-      if (publishResult.success && publishResult.data) {
-        // Extract numeric ID from Shopify GID
-        const articleIdMatch = publishResult.data.article.id.match(/\/(\d+)$/);
-        const shopifyArticleId = articleIdMatch ? parseInt(articleIdMatch[1]) : null;
-
-        // Update blog with Shopify article ID and status
-        if (shopifyArticleId) {
-          await updateBlog(blogId, {
-            shopify_article_id: shopifyArticleId,
-            status: 'published'
-          });
-        }
-
-        Swal.fire({
-          icon: 'success',
-          title: 'Saved to Shopify as Draft!',
-          html: `
-            <p>Your blog has been saved to Shopify as a draft.</p>
-            <p style="margin-top: 12px;">You can publish it from the Shopify admin when ready.</p>
-          `,
-          confirmButtonText: 'View Dashboard',
+      if (isUpdatingExisting) {
+        // Update existing blog in database
+        await updateBlog(id, {
+          persona_id: selectedPersona.id,
+          template_id: selectedTemplate!.id,
+          primary_keyword: selectedKeyword || null,
+          title: metaTitle,
+          content,
+          markdown_content: markdownContent,
+          meta_title: metaTitle,
+          meta_description: metaDescription,
+          excerpt: blogExcerpt || null,
+          tags: blogTags.length > 0 ? blogTags : null,
+          featured_image_url: featuredImage || null,
+          featured_image_alt: featuredImageAlt || null,
+          seo_score: seoScore,
+          readability_score: readabilityScore,
+          word_count: wordCount,
         });
 
-        clearAutoSave();
-        navigate('/blogger', { state: { draftCleared: true } });
+        // Update on Shopify
+        const updateResult = await updateBlogOnShopify(existingShopifyArticleId, shopifyRequest);
+
+        if (updateResult.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Updated on Shopify!',
+            html: `
+              <p>Your blog has been updated on Shopify.</p>
+              <p style="margin-top: 12px;">Changes are now live.</p>
+            `,
+            confirmButtonText: 'View Dashboard',
+          });
+
+          clearAutoSave();
+          navigate('/blogger', { state: { draftCleared: true } });
+        } else {
+          throw new Error(updateResult.error?.message || 'Failed to update on Shopify');
+        }
       } else {
-        throw new Error(publishResult.error?.message || 'Failed to save to Shopify');
+        // Create new blog
+        const baseSlug = metaTitle
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .substring(0, 50);
+        const uniqueSlug = `${baseSlug}-${Date.now()}`;
+
+        const createResult = await createBlog({
+          persona_id: selectedPersona.id,
+          template_id: selectedTemplate!.id,
+          primary_keyword_id: null,
+          primary_keyword: selectedKeyword || null,
+          title: metaTitle,
+          slug: uniqueSlug,
+          content,
+          markdown_content: markdownContent,
+          meta_title: metaTitle,
+          meta_description: metaDescription,
+          excerpt: blogExcerpt || null,
+          tags: blogTags.length > 0 ? blogTags : null,
+          featured_image_url: featuredImage || null,
+          featured_image_alt: featuredImageAlt || null,
+          status: 'draft',
+          seo_score: seoScore,
+          readability_score: readabilityScore,
+          word_count: wordCount,
+          shopify_article_id: null,
+          shopify_blog_id: null,
+          published_at: null,
+        });
+
+        if (!createResult.success || !createResult.data) {
+          throw new Error('Failed to save blog to database');
+        }
+
+        const blogId = createResult.data.id;
+
+        // Publish to Shopify
+        const publishResult = await publishBlogToShopify(shopifyRequest);
+
+        if (publishResult.success && publishResult.data) {
+          // Extract numeric ID from Shopify GID
+          const articleIdMatch = publishResult.data.article.id.match(/\/(\d+)$/);
+          const shopifyArticleId = articleIdMatch ? parseInt(articleIdMatch[1]) : null;
+
+          // Update blog with Shopify article ID and status
+          if (shopifyArticleId) {
+            await updateBlog(blogId, {
+              shopify_article_id: shopifyArticleId,
+              status: 'published'
+            });
+          }
+
+          Swal.fire({
+            icon: 'success',
+            title: 'Saved to Shopify as Draft!',
+            html: `
+              <p>Your blog has been saved to Shopify as a draft.</p>
+              <p style="margin-top: 12px;">You can publish it from the Shopify admin when ready.</p>
+            `,
+            confirmButtonText: 'View Dashboard',
+          });
+
+          clearAutoSave();
+          navigate('/blogger', { state: { draftCleared: true } });
+        } else {
+          throw new Error(publishResult.error?.message || 'Failed to save to Shopify');
+        }
       }
     } catch (error) {
       console.error('Error saving to Shopify:', error);
@@ -1150,6 +1252,8 @@ export function BloggerCreatePage() {
           <SeoOptimizer
             metaTitle={metaTitle}
             metaDescription={metaDescription}
+            excerpt={blogExcerpt}
+            tags={blogTags}
             featuredImage={featuredImage}
             featuredImageAlt={featuredImageAlt}
             blogId={id || draftBlogId}
@@ -1157,6 +1261,8 @@ export function BloggerCreatePage() {
             primaryKeyword={selectedKeyword}
             onMetaTitleChange={setMetaTitle}
             onMetaDescriptionChange={setMetaDescription}
+            onExcerptChange={setBlogExcerpt}
+            onTagsChange={setBlogTags}
             onPrimaryKeywordChange={setSelectedKeyword}
             onFeaturedImageChange={(url, alt) => {
               setFeaturedImage(url);
@@ -1185,6 +1291,8 @@ export function BloggerCreatePage() {
           markdown_content: markdownContent,
           meta_title: metaTitle,
           meta_description: metaDescription,
+          excerpt: blogExcerpt || null,
+          tags: blogTags.length > 0 ? blogTags : null,
           featured_image_url: featuredImage || null,
           featured_image_alt: featuredImageAlt || null,
           status: 'draft',

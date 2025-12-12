@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase/client';
+import { rehostAllImages } from './images.service';
 import type {
   BloggerBlog,
   BlogWithRelations,
@@ -33,6 +34,7 @@ export async function createBlog(
       };
     }
 
+    // Create the blog first to get the ID
     const { data, error } = await supabase
       .from('blogger_blogs')
       .insert({
@@ -45,6 +47,38 @@ export async function createBlog(
     if (error) {
       console.error('Error creating blog:', error);
       return { data: null, error, success: false };
+    }
+
+    // Rehost external images to Supabase storage
+    if (data.content) {
+      try {
+        const { content: rehostedContent, rehostedCount } = await rehostAllImages(
+          data.content,
+          data.id
+        );
+
+        if (rehostedCount > 0) {
+          console.log(`[Blog Create] Rehosted ${rehostedCount} external images`);
+
+          // Update blog with rehosted content
+          const { data: updatedData, error: updateError } = await supabase
+            .from('blogger_blogs')
+            .update({ content: rehostedContent })
+            .eq('id', data.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.warn('Failed to update blog with rehosted images:', updateError);
+            // Continue with original content if update fails
+          } else {
+            return { data: updatedData, error: null, success: true };
+          }
+        }
+      } catch (rehostError) {
+        console.warn('Image rehosting failed, continuing with original URLs:', rehostError);
+        // Continue with original content if rehosting fails
+      }
     }
 
     return { data, error: null, success: true };
@@ -202,6 +236,24 @@ export async function updateBlog(
   >
 ): Promise<ServiceResponse<BloggerBlog>> {
   try {
+    // If content is being updated, rehost external images first
+    if (updates.content) {
+      try {
+        const { content: rehostedContent, rehostedCount } = await rehostAllImages(
+          updates.content,
+          id
+        );
+
+        if (rehostedCount > 0) {
+          console.log(`[Blog Update] Rehosted ${rehostedCount} external images`);
+          updates.content = rehostedContent;
+        }
+      } catch (rehostError) {
+        console.warn('Image rehosting failed, continuing with original URLs:', rehostError);
+        // Continue with original content if rehosting fails
+      }
+    }
+
     const { data, error } = await supabase
       .from('blogger_blogs')
       .update(updates)

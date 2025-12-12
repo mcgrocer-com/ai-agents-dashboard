@@ -110,6 +110,8 @@ export interface BloggerBlog {
   markdown_content: string | null;
   meta_title: string;
   meta_description: string;
+  excerpt: string | null;              // Blog excerpt for listing pages (100-200 chars)
+  tags: string[] | null;               // SEO tags for blog categorization
   featured_image_url: string | null;
   featured_image_alt: string | null;
   status: BlogStatus;
@@ -302,6 +304,7 @@ export interface ShopifyPublishRequest {
   blogId: string;  // Shopify blog ID (e.g., "gid://shopify/Blog/74558931119")
   title: string;
   content: string;
+  summary?: string;  // Excerpt/summary for blog listing page (HTML)
   metaTitle?: string;
   metaDescription?: string;
   featuredImageUrl?: string;

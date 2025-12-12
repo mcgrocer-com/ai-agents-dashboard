@@ -14,6 +14,25 @@ const BUCKET_NAME = 'blog-images';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
 
+// Domains that are already hosted on our infrastructure (no need to re-host)
+const HOSTED_DOMAINS = [
+  'supabase.co',           // Already on Supabase
+  'cdn.shopify.com',       // Shopify CDN (product images)
+  'mcgrocer.com',          // Our own domain
+];
+
+/**
+ * Check if URL is already hosted on our infrastructure
+ */
+function isHostedUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return HOSTED_DOMAINS.some(domain => hostname.includes(domain));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Upload image to Supabase Storage
  * @param file - The image file to upload
@@ -267,4 +286,153 @@ Requirements:
       success: false,
     };
   }
+}
+
+/**
+ * Download an external image and upload to Supabase storage
+ * Returns the new Supabase URL or original URL if download fails
+ */
+export async function rehostExternalImage(
+  imageUrl: string,
+  blogId: string,
+  imageIndex: number
+): Promise<{ success: boolean; url: string; error?: string }> {
+  try {
+    // Skip if already hosted on our infrastructure
+    if (isHostedUrl(imageUrl)) {
+      return { success: true, url: imageUrl };
+    }
+
+    // Skip data URLs
+    if (imageUrl.startsWith('data:')) {
+      return { success: true, url: imageUrl };
+    }
+
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { success: false, url: imageUrl, error: 'User not authenticated' };
+    }
+
+    console.log(`[Image Rehost] Downloading: ${imageUrl}`);
+
+    // Download the image
+    const response = await fetch(imageUrl, {
+      mode: 'cors',
+      headers: {
+        'Accept': 'image/*',
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, url: imageUrl, error: `HTTP ${response.status}` };
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const blob = await response.blob();
+
+    // Validate size
+    if (blob.size > MAX_FILE_SIZE) {
+      return { success: false, url: imageUrl, error: 'Image too large (>5MB)' };
+    }
+
+    // Determine file extension
+    const extMap: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+    };
+    const fileExt = extMap[contentType] || 'jpg';
+    const fileName = `${user.id}/${blogId}-img${imageIndex}.${fileExt}`;
+
+    console.log(`[Image Rehost] Uploading to storage: ${fileName}`);
+
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(fileName, blob, {
+        cacheControl: '31536000', // 1 year cache
+        upsert: true,
+        contentType,
+      });
+
+    if (uploadError) {
+      console.error('[Image Rehost] Upload failed:', uploadError);
+      return { success: false, url: imageUrl, error: uploadError.message };
+    }
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(uploadData.path);
+
+    console.log(`[Image Rehost] Success: ${publicUrl}`);
+    return { success: true, url: publicUrl };
+
+  } catch (error) {
+    console.error('[Image Rehost] Error:', error);
+    return {
+      success: false,
+      url: imageUrl,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Process all images in HTML content - rehost external images to Supabase
+ * @param content - HTML content with image tags
+ * @param blogId - Blog ID for naming
+ * @returns Updated content with Supabase URLs
+ */
+export async function rehostAllImages(
+  content: string,
+  blogId: string
+): Promise<{ content: string; rehostedCount: number; failedCount: number }> {
+  // Extract all image URLs
+  const imgPattern = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  const images: { fullTag: string; url: string }[] = [];
+  let match;
+
+  while ((match = imgPattern.exec(content)) !== null) {
+    images.push({ fullTag: match[0], url: match[1] });
+  }
+
+  if (images.length === 0) {
+    return { content, rehostedCount: 0, failedCount: 0 };
+  }
+
+  console.log(`[Image Rehost] Processing ${images.length} images...`);
+
+  let updatedContent = content;
+  let rehostedCount = 0;
+  let failedCount = 0;
+
+  // Process images sequentially to avoid rate limits
+  for (let i = 0; i < images.length; i++) {
+    const { fullTag, url } = images[i];
+
+    // Skip if already hosted
+    if (isHostedUrl(url)) {
+      console.log(`[Image Rehost] Skipping (already hosted): ${url.substring(0, 50)}...`);
+      continue;
+    }
+
+    const result = await rehostExternalImage(url, blogId, i);
+
+    if (result.success && result.url !== url) {
+      // Replace URL in the tag
+      const newTag = fullTag.replace(url, result.url);
+      updatedContent = updatedContent.replace(fullTag, newTag);
+      rehostedCount++;
+    } else if (!result.success) {
+      console.warn(`[Image Rehost] Failed: ${url} - ${result.error}`);
+      failedCount++;
+    }
+  }
+
+  console.log(`[Image Rehost] Complete: ${rehostedCount} rehosted, ${failedCount} failed`);
+  return { content: updatedContent, rehostedCount, failedCount };
 }

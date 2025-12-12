@@ -13,6 +13,8 @@ import { researchKeywords as researchKeywordsService } from './ai.service';
 import type { BloggerPersona, BloggerTemplate, ServiceResponse } from '@/types/blogger';
 import { buildSystemPrompt } from './system-prompt';
 import { supabase } from '@/lib/supabase/client';
+import { seoValidator } from './seo-validator.service';
+import type { SeoValidationReport } from './seo-validator.service';
 
 // Initialize Google GenAI with new SDK
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
@@ -67,6 +69,7 @@ export interface GeminiBlogRequest {
   model?: GeminiModel;
   includeImages?: boolean;  // Include product images in content
   articlesResearchCount?: number;  // Number of top articles to scrape (3-10, default: 3)
+  seoIterationCount?: number;  // Max SEO fix iterations (5-10, default: 5)
   contextFileContent?: string;  // Optional context file content to inject into prompt
   userPrompt?: string;  // Optional user prompt for additional instructions
   onLogUpdate?: (logs: ProcessingLog[]) => void;  // Real-time log callback
@@ -93,8 +96,11 @@ export interface GeminiBlogResponse {
   selectedKeyword: string;  // Keyword the AI agent selected for SEO
   metaTitle: string;        // SEO meta title (50-60 chars)
   metaDescription: string;  // SEO meta description (140-160 chars)
+  excerpt: string;          // Blog excerpt for listing pages (100-200 chars)
+  tags: string[];           // SEO tags for blog categorization (3-6 tags)
   summary: string;          // AI's summary of decisions made during generation
   processingLogs?: ProcessingLog[];  // Optional processing logs
+  seoReport?: SeoValidationReport;   // SEO validation report from validator agent
 }
 
 /**
@@ -458,8 +464,8 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
           usableCount: usableImages.length,
           cachedCount: cachedMap.size,
           note: usableImages.length > 0
-            ? `Found ${usableImages.length} analyzed images (${cachedMap.size} cached). Use URLs marked as usable.`
-            : 'No usable images found. Use product images instead.',
+            ? `SUCCESS: Found ${usableImages.length} usable images. NEXT: When writing content, embed 2-4 of these images distributed across sections (intro + body sections). Use the "summary" field to pick images relevant to each section.`
+            : 'No usable article images. NEXT: You MUST still embed 2-4 product images from searchProducts() distributed across your blog sections.',
         },
       };
 
@@ -587,6 +593,11 @@ Begin with researchKeywords now.`,
             const totalChars = data?.scrapedContent?.reduce((sum: number, s: any) => sum + (s.text?.length || 0), 0) || 0;
             const totalImages = data?.scrapedContent?.reduce((sum: number, s: any) => sum + (s.images?.length || 0), 0) || 0;
             addLog('info', `Total context: ${Math.round(totalChars/1024)}KB text, ${totalImages} images available for AI`);
+
+            // Nudge about image collection step
+            if (totalImages > 0) {
+              addLog('info', `→ AI should now call viewArticleImages() to analyze ${totalImages} article images`);
+            }
           }
         } else if (fc.functionCall.name === 'searchProducts') {
           const products = functionResult.data;
@@ -635,12 +646,35 @@ Begin with researchKeywords now.`,
   // Step 6: Extract final content from JSON response
   const finalText = result.text;
 
+  // Debug: Log the raw response to understand what's happening
   if (!finalText || finalText.length < 100) {
+    addLog('error', `Raw result.text length: ${finalText?.length || 0}`);
+    addLog('error', `Raw result.text preview: "${(finalText || '').substring(0, 200)}"`);
+
+    // Check if there's content in candidates
+    const candidates = result.candidates;
+    if (candidates?.[0]?.content?.parts) {
+      const parts = candidates[0].content.parts;
+      addLog('error', `Found ${parts.length} parts in response`);
+      parts.forEach((p: any, i: number) => {
+        if (p.text) addLog('error', `Part ${i}: text (${p.text.length} chars)`);
+        if (p.functionCall) addLog('error', `Part ${i}: functionCall (${p.functionCall.name})`);
+      });
+    }
+
+    // Check finish reason
+    const finishReason = candidates?.[0]?.finishReason;
+    if (finishReason) {
+      addLog('error', `Finish reason: ${finishReason}`);
+    }
+
     throw new Error('Generated content is too short or empty');
   }
 
-  // Parse JSON response with summary and content fields
+  // Parse JSON response with summary, excerpt, tags, and content fields
   let summary = '';
+  let excerpt = '';
+  let tags: string[] = [];
   let cleanContent = '';
 
   // Clean up any markdown code blocks around JSON
@@ -698,11 +732,23 @@ Begin with researchKeywords now.`,
     return json;
   };
 
-  // Helper to extract summary and content using regex (fallback)
-  const extractWithRegex = (text: string): { summary: string; content: string } | null => {
+  // Helper to extract summary, excerpt, tags, and content using regex (fallback)
+  const extractWithRegex = (text: string): { summary: string; excerpt: string; tags: string[]; content: string } | null => {
     // Try to extract summary field using proper JSON string matching
     // Pattern: match any char except " or \, OR any escaped sequence (\")
     const summaryMatch = text.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    const excerptMatch = text.match(/"excerpt"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+
+    // Try to extract tags array
+    const tagsMatch = text.match(/"tags"\s*:\s*\[((?:[^\]])*)\]/);
+    let tagsValue: string[] = [];
+    if (tagsMatch) {
+      // Parse the array contents - extract quoted strings
+      const tagStrings = tagsMatch[1].match(/"([^"]+)"/g);
+      if (tagStrings) {
+        tagsValue = tagStrings.map(t => t.replace(/"/g, '').trim());
+      }
+    }
 
     // Try to extract content field - match from "content": " to the last occurrence of the pattern "} or just before }
     const contentStartMatch = text.match(/"content"\s*:\s*"/);
@@ -739,8 +785,22 @@ Begin with researchKeywords now.`,
             .trim();
         }
 
+        // Clean up excerpt - unescape quotes and convert newlines to spaces
+        let excerptValue = '';
+        if (excerptMatch) {
+          excerptValue = excerptMatch[1]
+            .replace(/\\n/g, ' ')
+            .replace(/\\r/g, '')
+            .replace(/\\t/g, ' ')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\')
+            .trim();
+        }
+
         return {
           summary: summaryValue,
+          excerpt: excerptValue,
+          tags: tagsValue,
           content: contentValue.trim()
         };
       }
@@ -760,8 +820,10 @@ Begin with researchKeywords now.`,
       if (result.content) {
         cleanContent = result.content;
         summary = result.summary || '';
+        excerpt = result.excerpt || '';
+        tags = Array.isArray(result.tags) ? result.tags : [];
         parsed = true;
-        addLog('success', `Parsed JSON directly (summary: ${summary.length} chars, content: ${cleanContent.length} chars)`);
+        addLog('success', `Parsed JSON directly (summary: ${summary.length} chars, excerpt: ${excerpt.length} chars, tags: ${tags.length}, content: ${cleanContent.length} chars)`);
       }
     }
   } catch {
@@ -776,8 +838,10 @@ Begin with researchKeywords now.`,
       if (result.content) {
         cleanContent = result.content;
         summary = result.summary || '';
+        excerpt = result.excerpt || '';
+        tags = Array.isArray(result.tags) ? result.tags : [];
         parsed = true;
-        addLog('success', `Parsed sanitized JSON (summary: ${summary.length} chars, content: ${cleanContent.length} chars)`);
+        addLog('success', `Parsed sanitized JSON (summary: ${summary.length} chars, excerpt: ${excerpt.length} chars, tags: ${tags.length}, content: ${cleanContent.length} chars)`);
       }
     } catch {
       // Strategy 2 failed, continue to next
@@ -790,8 +854,10 @@ Begin with researchKeywords now.`,
     if (extracted && extracted.content) {
       cleanContent = extracted.content;
       summary = extracted.summary;
+      excerpt = extracted.excerpt || '';
+      tags = extracted.tags || [];
       parsed = true;
-      addLog('info', `Extracted via regex (summary: ${summary.length} chars, content: ${cleanContent.length} chars)`);
+      addLog('info', `Extracted via regex (summary: ${summary.length} chars, excerpt: ${excerpt.length} chars, tags: ${tags.length}, content: ${cleanContent.length} chars)`);
     }
   }
 
@@ -823,19 +889,26 @@ Begin with researchKeywords now.`,
     .replace(/\\\\/g, '\\');    // Convert \\ to \
 
   // Convert markdown headers to HTML if present (## -> <h2>, ### -> <h3>, etc.)
+  // IMPORTANT: Convert # to h2 (not h1) - h1 is reserved for page title from CMS
   cleanContent = cleanContent
     .replace(/^######\s+(.+)$/gm, '<h6>$1</h6>')
     .replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>')
     .replace(/^####\s+(.+)$/gm, '<h4>$1</h4>')
     .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
     .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
-    .replace(/^#\s+(.+)$/gm, '<h1>$1</h1>')
+    .replace(/^#\s+(.+)$/gm, '<h2>$1</h2>')  // Single # becomes h2, NOT h1
     // Convert markdown bold **text** to <strong>text</strong>
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     // Convert markdown italic *text* to <em>text</em>
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     // Convert --- separators to <hr>
     .replace(/^---+$/gm, '<hr>');
+
+  // Remove any h1 tags that slipped through (convert to h2)
+  cleanContent = cleanContent.replace(/<h1([^>]*)>/gi, '<h2$1>').replace(/<\/h1>/gi, '</h2>');
+
+  // Remove empty headings (critical for SEO)
+  cleanContent = cleanContent.replace(/<h([1-6])([^>]*)>\s*<\/h\1>/gi, '');
 
   // Validate no placeholder links
   const hasPlaceholderLinks = /<a\s+href=["']#["']/.test(cleanContent) ||
@@ -844,14 +917,18 @@ Begin with researchKeywords now.`,
     addLog('warning', `Content contains placeholder links - AI may not have used searchProducts correctly`);
   }
 
-  // Validate product images are embedded (only if includeImages is enabled)
+  // Validate images are embedded (only if includeImages is enabled)
   if (request.includeImages !== false) {
-    const hasProductImages = /<img[^>]+src=["'][^"']+["'][^>]*>/.test(cleanContent);
-    if (!hasProductImages) {
-      addLog('warning', `Content does not contain product images - AI may not have embedded images from searchProducts`);
+    const imageCount = (cleanContent.match(/<img[^>]+>/g) || []).length;
+
+    if (imageCount === 0) {
+      addLog('error', `CRITICAL: No images found in content! AI failed to embed images. Target: 2-4 images.`);
+    } else if (imageCount === 1) {
+      addLog('warning', `Only 1 image embedded. Target is 2-4 images distributed across sections.`);
+    } else if (imageCount >= 2 && imageCount <= 4) {
+      addLog('success', `✓ ${imageCount} images embedded successfully (target: 2-4)`);
     } else {
-      const imageCount = (cleanContent.match(/<img[^>]+>/g) || []).length;
-      addLog('info', `Product images embedded: ${imageCount} images`);
+      addLog('info', `${imageCount} images embedded (target: 2-4)`);
     }
   } else {
     addLog('info', `Product images disabled - text links only`);
@@ -917,6 +994,28 @@ ${linksResult.data.map(link => `  <li><a href="${link.url}" target="_blank">${li
   let metaTitle = '';
   let metaDescription = '';
 
+  // Helper to truncate meta title intelligently (at word boundary)
+  const truncateTitle = (title: string, maxLen: number = 60): string => {
+    if (title.length <= maxLen) return title;
+    // Find last space before maxLen to avoid cutting words
+    const truncated = title.substring(0, maxLen);
+    const lastSpace = truncated.lastIndexOf(' ');
+    return lastSpace > 40 ? truncated.substring(0, lastSpace) : truncated;
+  };
+
+  // Helper to truncate meta description intelligently
+  const truncateDescription = (desc: string, maxLen: number = 160): string => {
+    if (desc.length <= maxLen) return desc;
+    const truncated = desc.substring(0, maxLen - 3); // Leave room for ellipsis
+    const lastSpace = truncated.lastIndexOf(' ');
+    const lastPeriod = truncated.lastIndexOf('.');
+    // Prefer ending at a sentence if possible
+    if (lastPeriod > maxLen - 40) {
+      return desc.substring(0, lastPeriod + 1);
+    }
+    return (lastSpace > maxLen - 40 ? truncated.substring(0, lastSpace) : truncated) + '...';
+  };
+
   try {
     const metaPrompt = `Based on this blog content and primary keyword "${selectedKeyword || request.topic}", generate SEO-optimized meta tags.
 
@@ -946,6 +1045,16 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
       metaTitle = metaData.metaTitle || '';
       metaDescription = metaData.metaDescription || '';
 
+      // Enforce character limits with intelligent truncation
+      if (metaTitle.length > 60) {
+        addLog('warning', `Meta title too long (${metaTitle.length} chars), truncating to 60`);
+        metaTitle = truncateTitle(metaTitle, 60);
+      }
+      if (metaDescription.length > 160) {
+        addLog('warning', `Meta description too long (${metaDescription.length} chars), truncating to 160`);
+        metaDescription = truncateDescription(metaDescription, 160);
+      }
+
       addLog('success', `✓ Meta tags generated: "${metaTitle}" (${metaTitle.length} chars)`);
       addLog('info', `Meta description: ${metaDescription.length} characters`);
     } else {
@@ -953,11 +1062,17 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
     }
   } catch (metaError) {
     addLog('warning', `Failed to generate meta tags: ${metaError instanceof Error ? metaError.message : 'Unknown error'}`);
-    // Fallback: create basic meta tags
-    metaTitle = `${selectedKeyword || request.topic} - ${request.persona.name}`;
-    metaDescription = `Comprehensive guide to ${selectedKeyword || request.topic}. Expert insights and recommendations.`;
+    // Fallback: create basic meta tags with enforced limits
+    metaTitle = truncateTitle(`${selectedKeyword || request.topic} - ${request.persona.name}`, 60);
+    metaDescription = truncateDescription(`Comprehensive guide to ${selectedKeyword || request.topic}. Expert insights and recommendations.`, 160);
     addLog('info', `Using fallback meta tags`);
   }
+
+  // Use excerpt from Content Agent (SEO Validator will handle issues via feedback loop)
+  const finalExcerpt = excerpt || metaDescription;
+
+  // Fallback tags from keyword if AI didn't generate any
+  const finalTags = tags.length > 0 ? tags : (selectedKeyword ? [selectedKeyword.toLowerCase()] : []);
 
   return {
     content: cleanContent,
@@ -968,6 +1083,8 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
     selectedKeyword: selectedKeyword || request.topic, // Fallback to topic if no keyword selected
     metaTitle,
     metaDescription,
+    excerpt: finalExcerpt, // Blog excerpt for listing pages
+    tags: finalTags, // SEO tags for blog categorization
     summary, // AI's summary of decisions made during generation
     processingLogs: [], // Will be populated by the wrapper function
   };
@@ -999,6 +1116,7 @@ export async function generateBlogWithGemini(
   addLog('info', `Template: ${request.template.name}`);
   addLog('info', `Total Articles To Research: ${request.articlesResearchCount || 3}`);
   addLog('info', `Embed Product Images: ${request.includeImages || false}`);
+  addLog('info', `SEO Fix Iterations: ${request.seoIterationCount || 5}`);
   if (request.contextFileContent) {
     addLog('info', `Context file: ${formatTokens(request.contextFileContent.length)} of additional context provided`);
   }
@@ -1035,37 +1153,296 @@ export async function generateBlogWithGemini(
 
       const result = await generateBlogWithModel(request, modelName, addLog);
 
-      // Success! Return the result with processing logs
+      // Success! Now run SEO validation
       addLog('success', `✓ Blog generated successfully with ${modelName}`);
+      addLog('info', 'Running SEO validation...');
+
+      const seoReport = await seoValidator.validate(
+        result.content,
+        result.metaTitle,
+        result.metaDescription,
+        { autoFix: true, primaryKeyword: result.selectedKeyword, excerpt: result.excerpt, model: modelName }
+      );
+
+      // Log SEO validation results - show all checks performed
+      addLog('info', `SEO Score: ${seoReport.score}/100 (Grade: ${seoReport.grade})`);
+
+      // Log individual check results (even when passing)
+      const { checks } = seoReport;
+      addLog(checks.title.passed ? 'success' : 'warning',
+        `✓ Title: ${checks.title.length} chars ${checks.title.passed ? '(valid)' : '(needs fix)'}`);
+      addLog(checks.description.passed ? 'success' : 'warning',
+        `✓ Description: ${checks.description.length} chars ${checks.description.passed ? '(valid)' : '(needs fix)'}`);
+      addLog(checks.excerpt.passed ? 'success' : 'warning',
+        `✓ Excerpt: ${checks.excerpt.length} chars ${checks.excerpt.passed ? '(valid)' : '(needs fix)'}`);
+      addLog(checks.headings.passed ? 'success' : 'warning',
+        `✓ Headings: ${checks.headings.hierarchy.length} found ${checks.headings.passed ? '(valid hierarchy)' : `(${checks.headings.issues.join(', ')})`}`);
+      addLog(checks.links.passed ? 'success' : 'warning',
+        `✓ Links: ${checks.links.total} total, ${checks.links.external} external ${checks.links.passed ? '(valid)' : `(${checks.links.invalid} invalid)`}`);
+      addLog(checks.images.passed ? 'success' : 'warning',
+        `✓ Images: ${checks.images.total} total, ${checks.images.withAlt}/${checks.images.total} with alt ${checks.images.passed ? '(valid)' : '(missing alt)'}`);
+      addLog(checks.aiContent.passed ? 'success' : 'error',
+        `✓ AI Content: ${checks.aiContent.passed ? 'Clean (no self-intro or reasoning detected)' : `ISSUES: ${checks.aiContent.patterns.join(', ')}`}`);
+
+      // Log issue counts if any
+      if (seoReport.criticalCount > 0) {
+        addLog('error', `SEO Critical Issues: ${seoReport.criticalCount}`);
+      }
+      if (seoReport.errorCount > 0) {
+        addLog('warning', `SEO Errors: ${seoReport.errorCount}`);
+      }
+      if (seoReport.warningCount > 0) {
+        addLog('info', `SEO Warnings: ${seoReport.warningCount}`);
+      }
+
+      // Log specific issues (detailed)
+      seoReport.issues.forEach(issue => {
+        const logType = issue.severity === 'critical' || issue.severity === 'error' ? 'error' : 'warning';
+        addLog(logType, `[${issue.category.toUpperCase()}] ${issue.message}`);
+      });
+
+      // ITERATIVE FEEDBACK LOOP: Keep fixing until Grade A (90+) or max iterations
+      let finalContent = result.content;
+      let finalTitle = result.metaTitle;
+      let finalDescription = result.metaDescription;
+      let finalExcerpt = result.excerpt;
+      let currentScore = seoReport.score;
+      let currentReport = seoReport;
+      const maxIterations = request.seoIterationCount || 5; // User-configurable (5-10)
+      const targetScore = 90; // Grade A
+
+      // Track the best version seen (score can go down after "over-fixing")
+      let bestContent = finalContent;
+      let bestTitle = finalTitle;
+      let bestDescription = finalDescription;
+      let bestExcerpt = finalExcerpt;
+      let bestScore = currentScore;
+      let bestIteration = 0;
+
+      // Track categories that passed - skip re-validating them (saves API calls, avoids AI variance)
+      type IssueCategory = 'title' | 'description' | 'excerpt' | 'headings' | 'links' | 'images' | 'ai-content';
+      const passedCategories: IssueCategory[] = [];
+
+      // Collect initially passed categories from first validation
+      if (seoReport.checks.title.passed) passedCategories.push('title');
+      if (seoReport.checks.description.passed) passedCategories.push('description');
+      if (seoReport.checks.excerpt.passed) passedCategories.push('excerpt');
+      if (seoReport.checks.headings.passed) passedCategories.push('headings');
+      if (seoReport.checks.links.passed) passedCategories.push('links');
+      if (seoReport.checks.images.passed) passedCategories.push('images');
+      if (seoReport.checks.aiContent.passed) passedCategories.push('ai-content');
+
+      if (passedCategories.length > 0) {
+        addLog('info', `Categories already passing: ${passedCategories.join(', ')}`);
+      }
+
+      for (let iteration = 1; iteration <= maxIterations && currentScore < targetScore; iteration++) {
+        const hasIssues = currentReport.issues.length > 0;
+        if (!hasIssues) break;
+
+        addLog('info', `SEO Fix Iteration ${iteration}/${maxIterations} - Current score: ${currentScore}/100`);
+
+        try {
+          // Build list of ALL issues for the Content Agent to fix
+          const issuesList = currentReport.issues
+            .filter(i => i.severity === 'critical' || i.severity === 'error' || i.severity === 'warning')
+            .map(i => `- [${i.category.toUpperCase()}] ${i.message}: ${i.suggestion}`)
+            .join('\n');
+
+          const fixPrompt = `You are an SEO Content Fixer Agent. Fix ALL the following SEO issues to achieve a perfect score:
+
+ISSUES TO FIX:
+${issuesList}
+
+CURRENT VALUES:
+- Title (${finalTitle.length} chars): "${finalTitle}"
+- Description (${finalDescription.length} chars): "${finalDescription}"
+- Excerpt (${finalExcerpt.length} chars): "${finalExcerpt}"
+
+CURRENT CONTENT (for link/heading fixes):
+${finalContent}
+
+REQUIREMENTS:
+- Title: 50-60 characters, include keyword "${result.selectedKeyword}"
+- Description: 140-160 characters, compelling CTA, include keyword naturally
+- Excerpt: 100-200 characters, UNIQUE from description, engaging teaser for blog listing
+- Links (<a href> ONLY): Remove tracking parameters (?_pos, ?_psq, etc), add rel="noopener noreferrer" to target="_blank" links
+- External links: Must have rel="nofollow"
+- IMPORTANT: Do NOT modify <img src> URLs - only modify <a href> URLs
+
+Return ONLY a JSON object with the fixed fields (only include fields that need fixing):
+{
+  "metaTitle": "fixed title if needed",
+  "metaDescription": "fixed description if needed",
+  "excerpt": "fixed excerpt if needed",
+  "contentFixes": [
+    {"find": "old link or text", "replace": "fixed link or text"}
+  ]
+}`;
+
+          const fixResponse = await ai.models.generateContent({
+            model: modelName,
+            contents: fixPrompt,
+          });
+
+          const fixText = fixResponse.text || '';
+          const fixJsonMatch = fixText.match(/\{[\s\S]*\}/);
+
+          if (fixJsonMatch) {
+            const fixes = JSON.parse(fixJsonMatch[0]);
+            let fixesApplied = 0;
+
+            if (fixes.metaTitle && fixes.metaTitle !== finalTitle) {
+              finalTitle = fixes.metaTitle;
+              addLog('success', `✓ Fixed title: "${finalTitle}" (${finalTitle.length} chars)`);
+              fixesApplied++;
+            }
+            if (fixes.metaDescription && fixes.metaDescription !== finalDescription) {
+              finalDescription = fixes.metaDescription;
+              addLog('success', `✓ Fixed description (${finalDescription.length} chars)`);
+              fixesApplied++;
+            }
+            if (fixes.excerpt && fixes.excerpt !== finalExcerpt) {
+              finalExcerpt = fixes.excerpt;
+              addLog('success', `✓ Fixed excerpt (${finalExcerpt.length} chars)`);
+              fixesApplied++;
+            }
+            if (fixes.contentFixes && Array.isArray(fixes.contentFixes)) {
+              let contentFixesApplied = 0;
+              let imageFixesSkipped = 0;
+              for (const cf of fixes.contentFixes) {
+                if (cf.find && cf.replace && finalContent.includes(cf.find)) {
+                  // Skip any fix that modifies image tags to protect image URLs
+                  const isImageFix = cf.find.includes('<img') || cf.replace.includes('<img') ||
+                                     cf.find.includes('src=') || cf.replace.includes('src=');
+                  if (isImageFix) {
+                    imageFixesSkipped++;
+                    continue; // Skip this fix to protect image URLs
+                  }
+                  finalContent = finalContent.replace(cf.find, cf.replace);
+                  fixesApplied++;
+                  contentFixesApplied++;
+                }
+              }
+              if (contentFixesApplied > 0) {
+                addLog('success', `✓ Applied ${contentFixesApplied} content fixes`);
+              }
+              if (imageFixesSkipped > 0) {
+                addLog('info', `Skipped ${imageFixesSkipped} fixes that would modify image tags`);
+              }
+            }
+
+            if (fixesApplied === 0) {
+              addLog('info', 'No new fixes applied - stopping iteration');
+              break;
+            }
+
+            // Re-validate after fixes (skip categories that already passed)
+            addLog('info', `Re-validating... (skipping ${passedCategories.length} passed categories)`);
+            currentReport = await seoValidator.validate(
+              finalContent,
+              finalTitle,
+              finalDescription,
+              {
+                autoFix: false,
+                primaryKeyword: result.selectedKeyword,
+                excerpt: finalExcerpt,
+                model: modelName,
+                skipCategories: passedCategories,
+              }
+            );
+            currentScore = currentReport.score;
+            addLog('info', `New SEO Score: ${currentScore}/100 (Grade: ${currentReport.grade})`);
+
+            // Update passed categories with newly passing checks
+            if (currentReport.checks.title.passed && !passedCategories.includes('title')) passedCategories.push('title');
+            if (currentReport.checks.description.passed && !passedCategories.includes('description')) passedCategories.push('description');
+            if (currentReport.checks.excerpt.passed && !passedCategories.includes('excerpt')) passedCategories.push('excerpt');
+            if (currentReport.checks.headings.passed && !passedCategories.includes('headings')) passedCategories.push('headings');
+            if (currentReport.checks.links.passed && !passedCategories.includes('links')) passedCategories.push('links');
+            if (currentReport.checks.images.passed && !passedCategories.includes('images')) passedCategories.push('images');
+            if (currentReport.checks.aiContent.passed && !passedCategories.includes('ai-content')) passedCategories.push('ai-content');
+
+            // Track best version (score can decrease after over-fixing)
+            if (currentScore > bestScore) {
+              bestScore = currentScore;
+              bestContent = finalContent;
+              bestTitle = finalTitle;
+              bestDescription = finalDescription;
+              bestExcerpt = finalExcerpt;
+              bestIteration = iteration;
+            }
+
+            if (currentScore >= targetScore) {
+              addLog('success', `✓ Target score achieved! (${currentScore}/100)`);
+              break;
+            }
+          }
+        } catch (fixError) {
+          addLog('warning', `Fix iteration ${iteration} failed: ${fixError instanceof Error ? fixError.message : 'Unknown error'}`);
+        }
+      }
+
+      // Use best version if final score dropped below peak
+      if (currentScore < bestScore) {
+        addLog('warning', `Score dropped from ${bestScore} to ${currentScore} - reverting to best version (iteration ${bestIteration})`);
+        finalContent = bestContent;
+        finalTitle = bestTitle;
+        finalDescription = bestDescription;
+        finalExcerpt = bestExcerpt;
+        currentScore = bestScore;
+      }
+
+      if (currentScore < targetScore) {
+        addLog('info', `Final score: ${currentScore}/100 - some issues may require manual review`);
+      }
+
+      // NOTE: Image validation removed - viewArticleImages() already validates images server-side
+      // Client-side validation was causing CORS false positives (browsers can display cross-origin images)
 
       return {
         success: true,
         data: {
           ...result,
-          processingLogs, // Add processing logs to the result
+          content: finalContent,
+          metaTitle: finalTitle,
+          metaDescription: finalDescription,
+          excerpt: finalExcerpt,
+          processingLogs,
+          seoReport, // Include SEO report in response
         },
         error: null,
       };
 
     } catch (error) {
       lastError = error as Error;
+      const errorMessage = lastError.message || 'Unknown error';
 
       // Check if this is a rate limit error
       if (isRateLimitError(error)) {
         const message = getRateLimitMessage(modelName, error);
         addLog('warning', message);
-
-        // If this is not the last model, continue to next one
-        if (i < modelsToTry.length - 1) {
-          addLog('info', `Trying next model in fallback chain...`);
-          continue;
-        } else {
-          addLog('error', `All models exhausted. All have quota limits.`);
-        }
       } else {
-        // Non-rate-limit error - log and fail immediately
-        addLog('error', `Error with ${modelName}: ${lastError.message}`);
-        break;
+        addLog('error', `Error with ${modelName}: ${errorMessage}`);
+      }
+
+      // For recoverable errors, try the next model in fallback chain
+      const isRecoverableError =
+        isRateLimitError(error) ||
+        errorMessage.includes('too short or empty') ||
+        errorMessage.includes('Failed to parse') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('RECITATION') ||
+        errorMessage.includes('SAFETY');
+
+      if (isRecoverableError && i < modelsToTry.length - 1) {
+        addLog('info', `Trying next model in fallback chain...`);
+        continue;
+      }
+
+      // Non-recoverable error or last model - stop trying
+      if (i >= modelsToTry.length - 1) {
+        addLog('error', `All models exhausted.`);
       }
     }
   }

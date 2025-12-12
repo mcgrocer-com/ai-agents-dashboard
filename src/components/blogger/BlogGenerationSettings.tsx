@@ -19,6 +19,7 @@ export interface BlogGenerationSettings {
   model: 'gemini-3-pro-preview' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash' | 'gemini-2.0-flash-exp' | 'gemini-flash-latest';
   includeImages: boolean;
   articlesResearchCount: number;
+  seoIterationCount: number; // SEO fix iterations (5-10)
 }
 
 export function BlogGenerationSettingsDialog({
@@ -176,6 +177,28 @@ export function BlogGenerationSettingsDialog({
             />
             <p className="text-xs text-gray-500 mt-2">
               Number of top-ranking articles to analyze (3-10). Higher values provide more insights but take longer.
+            </p>
+          </div>
+
+          {/* SEO Iteration Count */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              SEO Fix Iterations
+            </label>
+            <input
+              type="number"
+              min={5}
+              max={10}
+              value={settings.seoIterationCount}
+              onChange={(e) => {
+                const value = Math.max(5, Math.min(10, parseInt(e.target.value) || 5));
+                setSettings({ ...settings, seoIterationCount: value });
+              }}
+              disabled={isLoading}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              Maximum SEO fix attempts (5-10). Higher values allow more refinement to achieve target SEO score.
             </p>
           </div>
         </div>
