@@ -18,7 +18,8 @@ export type IssueCategory =
   | 'headings'
   | 'links'
   | 'images'
-  | 'ai-content';
+  | 'ai-content'
+  | 'tags';
 
 export interface SeoIssue {
   id: string;
@@ -56,6 +57,7 @@ export interface SeoValidationReport {
     links: { passed: boolean; total: number; invalid: number; external: number; nofollow: number };
     images: { passed: boolean; total: number; withAlt: number; withoutAlt: number };
     aiContent: { passed: boolean; issues: string[]; patterns: string[] };
+    tags: { passed: boolean; tags: string[]; issues: string[]; suggestedTags?: string[] };
   };
 }
 
@@ -78,11 +80,12 @@ export class SeoValidator {
       autoFix?: boolean;
       primaryKeyword?: string;
       excerpt?: string;
+      tags?: string[];
       model?: string;
       skipCategories?: IssueCategory[]; // Categories that already passed - skip re-validation
     } = {}
   ): Promise<SeoValidationReport> {
-    const { autoFix = true, primaryKeyword = '', excerpt = '', model = 'gemini-2.0-flash', skipCategories = [] } = options;
+    const { autoFix = true, primaryKeyword = '', excerpt = '', tags = [], model = 'gemini-2.0-flash', skipCategories = [] } = options;
     this.model = model;
 
     this.issues = [];
@@ -92,7 +95,7 @@ export class SeoValidator {
     const skip = new Set(skipCategories);
 
     // Run AI validations in parallel (skip already-passed categories)
-    const [titleCheck, descCheck, excerptCheck, headingCheck, linkCheck, imageCheck, aiContentCheck] =
+    const [titleCheck, descCheck, excerptCheck, headingCheck, linkCheck, imageCheck, aiContentCheck, tagsCheck] =
       await Promise.all([
         skip.has('title') ? Promise.resolve({ passed: true }) : this.validateTitleWithAI(metaTitle, primaryKeyword),
         skip.has('description') ? Promise.resolve({ passed: true }) : this.validateDescriptionWithAI(metaDescription, primaryKeyword),
@@ -101,6 +104,7 @@ export class SeoValidator {
         skip.has('links') ? Promise.resolve({ passed: true, total: 0, invalid: 0, external: 0, nofollow: 0 }) : this.validateLinksWithAI(content),
         skip.has('images') ? Promise.resolve({ passed: true, total: 0, withAlt: 0, withoutAlt: 0 }) : this.validateImagesWithAI(content),
         skip.has('ai-content') ? Promise.resolve({ passed: true, issues: [], patterns: [] }) : this.validateAiContentWithAI(content),
+        skip.has('tags') ? Promise.resolve({ passed: true, tags: [], issues: [], suggestedTags: [] }) : this.validateTagsWithAI(tags, content, primaryKeyword, metaTitle),
       ]);
 
     // Calculate score based on issues
@@ -128,6 +132,7 @@ export class SeoValidator {
         links: linkCheck,
         images: imageCheck,
         aiContent: aiContentCheck,
+        tags: tagsCheck,
       },
     };
   }
@@ -578,6 +583,135 @@ RESPOND WITH JSON ONLY:
     return { passed: true, issues: [], patterns: [] };
   }
 
+  /**
+   * AI Agent: Validate tags for relevance and SEO best practices
+   */
+  private async validateTagsWithAI(
+    tags: string[],
+    content: string,
+    primaryKeyword: string,
+    metaTitle: string
+  ): Promise<{ passed: boolean; tags: string[]; issues: string[]; suggestedTags?: string[] }> {
+    if (!tags || tags.length === 0) {
+      this.addIssue({
+        severity: 'warning',
+        category: 'tags',
+        message: 'No tags provided for the blog',
+        suggestion: 'Add 3-7 relevant tags that describe the blog topic and help with SEO',
+        autoFixable: false,
+      });
+      return { passed: false, tags: [], issues: ['No tags provided'], suggestedTags: [] };
+    }
+
+    // Extract text content for analysis
+    const textContent = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000);
+
+    try {
+      const response = await ai.models.generateContent({
+        model: this.model,
+        contents: `You are an SEO Tag Validator Agent. Analyze these blog tags for relevance and SEO effectiveness.
+
+TAGS PROVIDED: ${JSON.stringify(tags)}
+PRIMARY KEYWORD: "${primaryKeyword || 'not specified'}"
+META TITLE: "${metaTitle}"
+CONTENT EXCERPT: "${textContent.substring(0, 1000)}..."
+
+VALIDATION CRITERIA:
+1. RELEVANCE: Tags must be directly related to the blog content
+2. QUANTITY: Ideal is 3-7 tags (too few = missed SEO opportunity, too many = keyword stuffing)
+3. FORMAT: Tags should be lowercase, no special characters, concise (1-3 words each)
+4. PRIMARY KEYWORD: At least one tag should contain or relate to the primary keyword
+5. SPECIFICITY: Tags should be specific enough to be useful but not too niche
+6. NO DUPLICATES: No duplicate or near-duplicate tags
+7. NO GENERIC TAGS: Avoid overly generic tags like "blog", "article", "post"
+8. SEARCH INTENT: Tags should match what users might search for
+
+ANALYZE AND RESPOND WITH JSON ONLY:
+{
+  "passed": boolean,
+  "relevantTags": ["tags that are good"],
+  "irrelevantTags": ["tags that don't fit the content"],
+  "issues": [{ "severity": "error"|"warning"|"info", "message": "issue description", "suggestion": "how to fix" }],
+  "suggestedTags": ["3-5 better tag suggestions based on the content"]
+}`,
+      });
+
+      const text = response.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        const issueMessages: string[] = [];
+
+        if (result.issues) {
+          for (const issue of result.issues) {
+            this.addIssue({
+              severity: issue.severity,
+              category: 'tags',
+              message: issue.message,
+              suggestion: issue.suggestion,
+              autoFixable: false,
+            });
+            issueMessages.push(issue.message);
+          }
+        }
+
+        // Add specific issues for irrelevant tags
+        if (result.irrelevantTags && result.irrelevantTags.length > 0) {
+          this.addIssue({
+            severity: 'warning',
+            category: 'tags',
+            message: `Irrelevant tags detected: ${result.irrelevantTags.join(', ')}`,
+            suggestion: 'Remove or replace these tags with more relevant ones',
+            autoFixable: false,
+            context: result.irrelevantTags.join(', '),
+          });
+        }
+
+        return {
+          passed: result.passed,
+          tags: result.relevantTags || tags,
+          issues: issueMessages,
+          suggestedTags: result.suggestedTags || [],
+        };
+      }
+    } catch (error) {
+      console.error('[SEO Validator] AI tags validation failed:', error);
+    }
+
+    // Fallback validation
+    const hasEnoughTags = tags.length >= 3 && tags.length <= 7;
+    const hasPrimaryKeyword = primaryKeyword
+      ? tags.some(tag => tag.toLowerCase().includes(primaryKeyword.toLowerCase()))
+      : true;
+
+    if (!hasEnoughTags) {
+      this.addIssue({
+        severity: 'warning',
+        category: 'tags',
+        message: tags.length < 3 ? 'Too few tags (less than 3)' : 'Too many tags (more than 7)',
+        suggestion: 'Aim for 3-7 relevant tags for optimal SEO',
+        autoFixable: false,
+      });
+    }
+
+    if (!hasPrimaryKeyword && primaryKeyword) {
+      this.addIssue({
+        severity: 'warning',
+        category: 'tags',
+        message: 'Primary keyword not found in tags',
+        suggestion: `Add a tag containing "${primaryKeyword}" for better SEO`,
+        autoFixable: false,
+      });
+    }
+
+    return {
+      passed: hasEnoughTags && hasPrimaryKeyword,
+      tags,
+      issues: [],
+      suggestedTags: [],
+    };
+  }
+
   private addIssue(issue: Omit<SeoIssue, 'id'>): void {
     this.issues.push({ id: `seo-${++this.issueIdCounter}`, ...issue });
   }
@@ -623,8 +757,8 @@ export async function validateAndFixWithFeedback(
   content: string,
   metaTitle: string,
   metaDescription: string,
-  options: { autoFix?: boolean; primaryKeyword?: string; excerpt?: string; maxRetries?: number; model?: string } = {}
+  options: { autoFix?: boolean; primaryKeyword?: string; excerpt?: string; tags?: string[]; maxRetries?: number; model?: string } = {}
 ): Promise<SeoValidationReport> {
-  const { primaryKeyword = '', excerpt = '', model } = options;
-  return seoValidator.validate(content, metaTitle, metaDescription, { primaryKeyword, excerpt, model });
+  const { primaryKeyword = '', excerpt = '', tags = [], model } = options;
+  return seoValidator.validate(content, metaTitle, metaDescription, { primaryKeyword, excerpt, tags, model });
 }

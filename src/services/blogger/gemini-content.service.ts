@@ -1161,7 +1161,7 @@ export async function generateBlogWithGemini(
         result.content,
         result.metaTitle,
         result.metaDescription,
-        { autoFix: true, primaryKeyword: result.selectedKeyword, excerpt: result.excerpt, model: modelName }
+        { autoFix: true, primaryKeyword: result.selectedKeyword, excerpt: result.excerpt, tags: result.tags, model: modelName }
       );
 
       // Log SEO validation results - show all checks performed
@@ -1183,6 +1183,8 @@ export async function generateBlogWithGemini(
         `✓ Images: ${checks.images.total} total, ${checks.images.withAlt}/${checks.images.total} with alt ${checks.images.passed ? '(valid)' : '(missing alt)'}`);
       addLog(checks.aiContent.passed ? 'success' : 'error',
         `✓ AI Content: ${checks.aiContent.passed ? 'Clean (no self-intro or reasoning detected)' : `ISSUES: ${checks.aiContent.patterns.join(', ')}`}`);
+      addLog(checks.tags.passed ? 'success' : 'warning',
+        `✓ Tags: ${checks.tags.tags.length} tags ${checks.tags.passed ? '(valid and relevant)' : `(${checks.tags.issues.join(', ')})`}`);
 
       // Log issue counts if any
       if (seoReport.criticalCount > 0) {
@@ -1220,7 +1222,7 @@ export async function generateBlogWithGemini(
       let bestIteration = 0;
 
       // Track categories that passed - skip re-validating them (saves API calls, avoids AI variance)
-      type IssueCategory = 'title' | 'description' | 'excerpt' | 'headings' | 'links' | 'images' | 'ai-content';
+      type IssueCategory = 'title' | 'description' | 'excerpt' | 'headings' | 'links' | 'images' | 'ai-content' | 'tags';
       const passedCategories: IssueCategory[] = [];
 
       // Collect initially passed categories from first validation
@@ -1231,6 +1233,7 @@ export async function generateBlogWithGemini(
       if (seoReport.checks.links.passed) passedCategories.push('links');
       if (seoReport.checks.images.passed) passedCategories.push('images');
       if (seoReport.checks.aiContent.passed) passedCategories.push('ai-content');
+      if (seoReport.checks.tags.passed) passedCategories.push('tags');
 
       if (passedCategories.length > 0) {
         addLog('info', `Categories already passing: ${passedCategories.join(', ')}`);
@@ -1347,6 +1350,7 @@ Return ONLY a JSON object with the fixed fields (only include fields that need f
                 autoFix: false,
                 primaryKeyword: result.selectedKeyword,
                 excerpt: finalExcerpt,
+                tags: result.tags,
                 model: modelName,
                 skipCategories: passedCategories,
               }
@@ -1362,6 +1366,7 @@ Return ONLY a JSON object with the fixed fields (only include fields that need f
             if (currentReport.checks.links.passed && !passedCategories.includes('links')) passedCategories.push('links');
             if (currentReport.checks.images.passed && !passedCategories.includes('images')) passedCategories.push('images');
             if (currentReport.checks.aiContent.passed && !passedCategories.includes('ai-content')) passedCategories.push('ai-content');
+            if (currentReport.checks.tags.passed && !passedCategories.includes('tags')) passedCategories.push('tags');
 
             // Track best version (score can decrease after over-fixing)
             if (currentScore > bestScore) {
