@@ -1,0 +1,20 @@
+[
+  { "name": "Aptamil", "url": "https://www.aptaclub.co.uk/", "cart_automation": true },
+  { "name": "Argos", "url": "https://www.argos.co.uk/", "cart_automation": false  },
+  { "name": "ASDA", "url": "https://www.asda.com/", "cart_automation": false  },
+  { "name": "Boots", "url": "https://www.boots.com/", "cart_automation": true }, 
+  { "name": "Costco UK", "url": "https://www.costco.co.uk/", "cart_automation": true },
+  { "name": "Harrods", "url": "https://www.harrods.com/", "cart_automation": true },
+  { "name": "Holland&Barrett", "url": "https://www.hollandandbarrett.com/" },
+  { "name": "John Lewis", "url": "https://www.johnlewis.com/", "cart_automation": true },
+  { "name": "Kendamil", "url": "https://www.kendamil.com/", "cart_automation": true },
+  { "name": "Lidl", "url": "https://www.lidl.co.uk/" , "cart_automation": false },
+  { "name": "Lush", "url": "https://www.lush.com/uk/en", "cart_automation": true  },
+  { "name": "McGrocer Direct", "url": "https://www.mcgrocer.com/", "cart_automation": true  },
+  { "name": "M&S", "url": "https://www.marksandspencer.com/", "cart_automation": true  },
+  { "name": "Ocado", "url": "https://www.ocado.com/", "cart_automation": true  },
+  { "name": "Orientalmart", "url": "https://www.orientalmart.co.uk/", "cart_automation": true  },
+  { "name": "Sainsburys", "url": "https://www.sainsburys.co.uk/", "cart_automation": true  },
+  { "name": "Superdrug", "url": "https://www.superdrug.com/", "cart_automation": true  }
+]
+

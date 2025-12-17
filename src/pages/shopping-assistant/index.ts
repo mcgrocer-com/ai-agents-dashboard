@@ -6,3 +6,4 @@
 export { CredentialsDashboardPage } from './CredentialsDashboardPage';
 export { QueueMonitorPage } from './QueueMonitorPage';
 export { VendorDetailPage } from './VendorDetailPage';
+export { PriceComparisonPage } from './PriceComparisonPage';

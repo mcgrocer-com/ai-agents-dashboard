@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutList, Key } from 'lucide-react';
+import { LayoutList, Key, Search } from 'lucide-react';
 
 export const ShoppingAssistantNav: React.FC = () => {
   const location = useLocation();
@@ -15,6 +15,11 @@ export const ShoppingAssistantNav: React.FC = () => {
       name: 'Queue Monitor',
       path: '/shopping-assistant',
       icon: LayoutList,
+    },
+    {
+      name: 'Price Comparison',
+      path: '/shopping-assistant/prices',
+      icon: Search,
     },
     {
       name: 'Credentials',
