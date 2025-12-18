@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation Structure
+
+- **CLAUDE.md** (this file) - AI development guidelines and feature documentation
+- **FRONTEND.md** - Comprehensive frontend architecture documentation
+- **README.md** - Project overview and quick start guide
+
 
 
 ## Core Development Philosophy
