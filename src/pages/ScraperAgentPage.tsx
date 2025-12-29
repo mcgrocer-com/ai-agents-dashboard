@@ -642,11 +642,17 @@ interface ProductCardProps {
 const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = false, isSelected = false, onToggleSelection }: ProductCardProps) => {
   const navigate = useNavigate()
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
     if (selectionMode && onToggleSelection) {
       onToggleSelection(product.id)
     } else {
-      navigate(`/scraper-agent/${product.id}`, { state: { from: 'scraper-agent' } })
+      // Support Ctrl/Cmd+Click or middle-click to open in new tab
+      if (e.ctrlKey || e.metaKey || e.button === 1) {
+        // HashRouter: construct URL with hash for proper routing
+        window.open(`${window.location.origin}${window.location.pathname}#/scraper-agent/${product.id}`, '_blank')
+      } else {
+        navigate(`/scraper-agent/${product.id}`, { state: { from: 'scraper-agent' } })
+      }
     }
   }, [navigate, product.id, selectionMode, onToggleSelection])
 
@@ -657,9 +663,19 @@ const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = fals
     }
   }, [onToggleSelection, product.id])
 
+  const handleAuxClick = useCallback((e: React.MouseEvent) => {
+    // Handle middle-click (button 1)
+    if (e.button === 1 && !selectionMode) {
+      e.preventDefault()
+      // HashRouter: construct URL with hash for proper routing
+      window.open(`${window.location.origin}${window.location.pathname}#/scraper-agent/${product.id}`, '_blank')
+    }
+  }, [product.id, selectionMode])
+
   return (
     <div
       onClick={handleClick}
+      onAuxClick={handleAuxClick}
       className="block p-4 hover:bg-secondary-50 cursor-pointer relative hover-bg-optimized"
       style={{ contain: 'layout style paint' }}
     >

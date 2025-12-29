@@ -228,7 +228,23 @@ function PinnedProductsList({ products, isLoading }: PinnedProductsListProps) {
         {products.map((product) => (
           <div
             key={product.id}
-            onClick={() => navigate(`/scraper-agent/${product.id}`, { state: { from: 'scraper-agent' } })}
+            onClick={(e) => {
+              // Support Ctrl/Cmd+Click or middle-click to open in new tab
+              if (e.ctrlKey || e.metaKey || e.button === 1) {
+                // HashRouter: construct URL with hash for proper routing
+                window.open(`${window.location.origin}${window.location.pathname}#/scraper-agent/${product.id}`, '_blank')
+              } else {
+                navigate(`/scraper-agent/${product.id}`, { state: { from: 'scraper-agent' } })
+              }
+            }}
+            onAuxClick={(e) => {
+              // Handle middle-click
+              if (e.button === 1) {
+                e.preventDefault()
+                // HashRouter: construct URL with hash for proper routing
+                window.open(`${window.location.origin}${window.location.pathname}#/scraper-agent/${product.id}`, '_blank')
+              }
+            }}
             className="block p-4 hover:bg-secondary-50 transition-colors cursor-pointer relative"
           >
             {/* Pin indicator */}

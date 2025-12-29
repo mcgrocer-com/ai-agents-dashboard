@@ -27,7 +27,7 @@ interface AgentProductCardProps {
     iconColor: string
     primaryColor: string
   }
-  onClick?: () => void
+  onClick?: (e: React.MouseEvent) => void
 }
 
 export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick }: AgentProductCardProps) {
@@ -157,9 +157,18 @@ export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick
 
   const IconComponent = agentConfig.icon
 
+  const handleAuxClick = (e: React.MouseEvent) => {
+    // Handle middle-click to open in new tab
+    if (e.button === 1 && onClick) {
+      e.preventDefault()
+      onClick(e)
+    }
+  }
+
   return (
     <div
       onClick={onClick}
+      onAuxClick={handleAuxClick}
       className="p-4 hover:bg-secondary-50 transition-colors cursor-pointer border-b border-secondary-200 last:border-b-0"
     >
       <div className="flex items-start gap-4">

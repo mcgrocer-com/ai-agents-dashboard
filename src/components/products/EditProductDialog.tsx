@@ -4,7 +4,7 @@
  * Dialog for editing basic product information.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog } from '@/components/ui/Dialog'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
@@ -14,6 +14,7 @@ export interface EditProductData {
   original_price: number
   description: string
   stock_status: string
+  main_image?: string
 }
 
 interface EditProductDialogProps {
@@ -25,6 +26,7 @@ interface EditProductDialogProps {
     original_price?: number
     description?: string
     stock_status?: string
+    main_image?: string
   }
   onSave: (data: EditProductData) => Promise<void>
   saving?: boolean
@@ -43,7 +45,22 @@ export function EditProductDialog({
     original_price: product.original_price || 0,
     description: product.description || '',
     stock_status: product.stock_status || 'In Stock',
+    main_image: product.main_image || '',
   })
+
+  // Reset form data when dialog opens or product changes
+  useEffect(() => {
+    if (open) {
+      setFormData({
+        name: product.name || '',
+        price: product.price || 0,
+        original_price: product.original_price || 0,
+        description: product.description || '',
+        stock_status: product.stock_status || 'In Stock',
+        main_image: product.main_image || '',
+      })
+    }
+  }, [open, product])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,6 +91,33 @@ export function EditProductDialog({
             className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             placeholder="Enter product name"
           />
+        </div>
+
+        {/* Main Image */}
+        <div>
+          <label htmlFor="main_image" className="block text-sm font-medium text-secondary-700 mb-1">
+            Product Image
+          </label>
+          <input
+            id="main_image"
+            type="url"
+            value={formData.main_image || ''}
+            onChange={(e) => handleChange('main_image', e.target.value)}
+            className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            placeholder="Enter image URL"
+          />
+          {formData.main_image && (
+            <div className="mt-2">
+              <img
+                src={formData.main_image}
+                alt="Product preview"
+                className="h-32 w-32 object-cover rounded-lg border border-secondary-200"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none'
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Price */}

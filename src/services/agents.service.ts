@@ -7,6 +7,18 @@
 import { supabase } from '@/lib/supabase/client'
 import type { AgentMetrics, AgentStatus, AgentProduct, PendingProduct, ScrapedProduct } from '@/types'
 
+/**
+ * Normalize UUID by adding hyphens if missing
+ * Converts: 4f20e00125dcc24a622aa63ac84c32a4
+ * To: 4f20e001-25dc-c24a-622a-a63ac84c32a4
+ */
+function normalizeUuid(uuid: string): string {
+  // Remove any existing hyphens
+  const cleaned = uuid.replace(/-/g, '')
+  // Add hyphens in the correct positions (8-4-4-4-12)
+  return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`
+}
+
 export type AgentType = 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright' | 'classification'
 
 export interface TriggerAgentParams {
@@ -167,13 +179,24 @@ class AgentsService {
         query = query.eq('vendor', vendor)
       }
 
-      // Search in scraped product data
+      // Search in pending product data
       if (search) {
-        // Note: This searches in the pending_products table fields
-        // For scraped product fields, we need to join and filter
-        query = query.or(
-          `item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
-        )
+        // Check if search looks like a UUID for exact matching (performance optimization)
+        const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(search)
+
+        if (isUuidFormat) {
+          // Normalize UUID to add hyphens for exact match (PostgreSQL UUID format)
+          const normalizedUuid = normalizeUuid(search)
+          // Use exact match for UUID (much faster than ilike)
+          query = query.or(
+            `id.eq.${normalizedUuid},product_id.ilike.%${search}%,item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
+          )
+        } else {
+          // Use pattern matching for text search only
+          query = query.or(
+            `product_id.ilike.%${search}%,item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
+          )
+        }
       }
 
       const { data, error, count } = await query
@@ -292,11 +315,24 @@ class AgentsService {
         query = query.eq('vendor', vendor)
       }
 
-      // Search
+      // Search in pending product data
       if (search) {
-        query = query.or(
-          `item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
-        )
+        // Check if search looks like a UUID for exact matching (performance optimization)
+        const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(search)
+
+        if (isUuidFormat) {
+          // Normalize UUID to add hyphens for exact match (PostgreSQL UUID format)
+          const normalizedUuid = normalizeUuid(search)
+          // Use exact match for UUID (much faster than ilike)
+          query = query.or(
+            `id.eq.${normalizedUuid},product_id.ilike.%${search}%,item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
+          )
+        } else {
+          // Use pattern matching for text search only
+          query = query.or(
+            `product_id.ilike.%${search}%,item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
+          )
+        }
       }
 
       const { data, error, count } = await query

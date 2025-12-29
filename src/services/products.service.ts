@@ -12,6 +12,18 @@ import type {
   ProductWithAgentData,
 } from '@/types'
 
+/**
+ * Normalize UUID by adding hyphens if missing
+ * Converts: 4f20e00125dcc24a622aa63ac84c32a4
+ * To: 4f20e001-25dc-c24a-622a-a63ac84c32a4
+ */
+function normalizeUuid(uuid: string): string {
+  // Remove any existing hyphens
+  const cleaned = uuid.replace(/-/g, '')
+  // Add hyphens in the correct positions (8-4-4-4-12)
+  return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`
+}
+
 class ProductsService {
   /**
    * Get products with filters and pagination
@@ -78,12 +90,25 @@ class ProductsService {
           )
         `, { count: 'planned' })
 
-      // Apply search filter on name, description, and ai_title
-      // ai_title is synced from pending_products to scraped_products after ERPNext sync
+      // Apply search filter on id, product_id, name, description, and ai_title
+      // For ID field, use exact match for performance; for text fields use pattern matching
       if (filters.search) {
-        query = query.or(
-          `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
-        )
+        // Check if search looks like a UUID (8-4-4-4-12 format with hyphens or 32 hex chars)
+        const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(filters.search)
+
+        if (isUuidFormat) {
+          // Remove hyphens for comparison (id column stores text without hyphens)
+          const cleanedId = filters.search.replace(/-/g, '')
+          // Use exact match for ID (much faster than ilike)
+          query = query.or(
+            `id.eq.${cleanedId},product_id.ilike.%${filters.search}%,name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
+          )
+        } else {
+          // Use pattern matching for text search only
+          query = query.or(
+            `product_id.ilike.%${filters.search}%,name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
+          )
+        }
       }
 
       // Apply vendor filter
@@ -567,12 +592,25 @@ class ProductsService {
         `, { count: 'planned' })
         .eq('pinned', true)
 
-      // Apply search filter on name, description, and ai_title
-      // ai_title is synced from pending_products to scraped_products after ERPNext sync
+      // Apply search filter on id, product_id, name, description, and ai_title
+      // For ID field, use exact match for performance; for text fields use pattern matching
       if (filters.search) {
-        query = query.or(
-          `name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
-        )
+        // Check if search looks like a UUID (8-4-4-4-12 format with hyphens or 32 hex chars)
+        const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(filters.search)
+
+        if (isUuidFormat) {
+          // Remove hyphens for comparison (id column stores text without hyphens)
+          const cleanedId = filters.search.replace(/-/g, '')
+          // Use exact match for ID (much faster than ilike)
+          query = query.or(
+            `id.eq.${cleanedId},product_id.ilike.%${filters.search}%,name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
+          )
+        } else {
+          // Use pattern matching for text search only
+          query = query.or(
+            `product_id.ilike.%${filters.search}%,name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
+          )
+        }
       }
 
       // Apply vendor filter

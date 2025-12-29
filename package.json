@@ -14,7 +14,11 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "fix:seo-rls": "node scripts/run-migration.js"
+    "fix:seo-rls": "node scripts/run-migration.js",
+    "filter:chanel": "node scripts/filter-chanel-products.js",
+    "fetch:chanel": "node scripts/fetch-chanel-from-erpnext.js",
+    "import:chanel": "node scripts/import-chanel-to-supabase.js",
+    "test:erpnext": "node scripts/test-erpnext-connection.js"
   },
   "dependencies": {
     "@browserbasehq/stagehand": "^3.0.3",
@@ -25,6 +29,7 @@
     "@supabase/supabase-js": "^2.45.4",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "dotenv": "^17.2.3",
     "lucide-react": "^0.454.0",
     "mammoth": "^1.11.0",
     "mysql2": "^3.15.2",

@@ -671,9 +671,19 @@ function ProductsList({ products, isLoading, agentType, agentConfig, navigate }:
             iconColor: agentConfig.iconColor,
             primaryColor: agentConfig.primaryColor,
           }}
-          onClick={() => agentProduct.productData?.id && navigate(`/scraper-agent/${agentProduct.productData.id}`, {
-            state: { from: `agents/${agentType === 'weight_dimension' ? 'weight' : agentType}` }
-          })}
+          onClick={(e) => {
+            if (!agentProduct.productData?.id) return
+
+            // Support Ctrl/Cmd+Click or middle-click to open in new tab
+            if (e.ctrlKey || e.metaKey || e.button === 1) {
+              // HashRouter: construct URL with hash for proper routing
+              window.open(`${window.location.origin}${window.location.pathname}#/scraper-agent/${agentProduct.productData.id}`, '_blank')
+            } else {
+              navigate(`/scraper-agent/${agentProduct.productData.id}`, {
+                state: { from: `agents/${agentType === 'weight_dimension' ? 'weight' : agentType}` }
+              })
+            }
+          }}
         />
       ))}
     </div>

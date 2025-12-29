@@ -610,6 +610,7 @@ export function ProductDetailPage() {
           original_price: product.original_price || 0,
           description: product.description || '',
           stock_status: product.stock_status || 'In Stock',
+          main_image: product.main_image || '',
         }}
         onSave={handleSaveEdit}
         saving={savingEdit}

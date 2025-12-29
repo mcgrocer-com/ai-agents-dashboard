@@ -15,6 +15,18 @@ import type {
 } from '@/types/blogger';
 
 /**
+ * Normalize UUID by adding hyphens if missing
+ * Converts: 4f20e00125dcc24a622aa63ac84c32a4
+ * To: 4f20e001-25dc-c24a-622a-a63ac84c32a4
+ */
+function normalizeUuid(uuid: string): string {
+  // Remove any existing hyphens
+  const cleaned = uuid.replace(/-/g, '');
+  // Add hyphens in the correct positions (8-4-4-4-12)
+  return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`;
+}
+
+/**
  * Create a new blog post
  */
 export async function createBlog(
@@ -143,9 +155,22 @@ export async function getUserBlogs(
     }
 
     if (filters?.search) {
-      query = query.or(
-        `title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`
-      );
+      // Check if search looks like a UUID for exact matching (performance optimization)
+      const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(filters.search);
+
+      if (isUuidFormat) {
+        // Normalize UUID to add hyphens for exact match (PostgreSQL UUID format)
+        const normalizedUuid = normalizeUuid(filters.search);
+        // Use exact match for UUID (much faster than ilike)
+        query = query.or(
+          `id.eq.${normalizedUuid},title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`
+        );
+      } else {
+        // Use pattern matching for text search only
+        query = query.or(
+          `title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`
+        );
+      }
     }
 
     // Apply sorting
