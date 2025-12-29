@@ -21,7 +21,6 @@
     "test:erpnext": "node scripts/test-erpnext-connection.js"
   },
   "dependencies": {
-    "@browserbasehq/stagehand": "^3.0.3",
     "@google/genai": "^1.31.0",
     "@headlessui/react": "^2.2.9",
     "@react-three/drei": "^10.7.6",
@@ -42,8 +41,7 @@
     "sweetalert2": "^11.26.3",
     "swr": "^2.3.6",
     "three": "^0.180.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "zod": "3.25.67"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.1",
