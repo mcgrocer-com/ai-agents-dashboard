@@ -58,7 +58,6 @@ A real-time dashboard for monitoring and managing AI agents for the MCGrocer e-c
 - **MariaDB** - ERP integration (ERPNext)
 - **Google Gemini AI** - Content generation
 - **Shopify GraphQL API** - Product catalog and blog publishing
-- **Browserbase** - Browser automation platform
 
 ### Data & Visualization
 - **Recharts** - Charts and analytics

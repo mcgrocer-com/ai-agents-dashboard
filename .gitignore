@@ -38,7 +38,9 @@ supabase/.temp/
 supabase/supabase/
 supabase/.branches/
 supabase/edge-functions/
-supabase/functions/
+supabase/functions/*
+!supabase/functions/README.md
+!supabase/functions/SHOPIFY_FUNCTIONS.md
 supabase/seeding-report.json
 
 # Windows
