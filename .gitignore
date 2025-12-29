@@ -38,9 +38,13 @@ supabase/.temp/
 supabase/supabase/
 supabase/.branches/
 supabase/edge-functions/
+# Supabase functions - ignore all except documentation
 supabase/functions/*
+supabase/functions/*/*
 !supabase/functions/README.md
 !supabase/functions/SHOPIFY_FUNCTIONS.md
+!supabase/functions/*/
+!supabase/functions/*/README.md
 supabase/seeding-report.json
 
 # Windows

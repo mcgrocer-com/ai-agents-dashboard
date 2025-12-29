@@ -29,7 +29,7 @@ Edge Functions are serverless functions that run on Supabase's edge infrastructu
 
 ## Core Functions
 
-### `price-comparison`
+### [`price-comparison`](./price-comparison/README.md)
 **Price Comparison across UK Retailers**
 
 Searches multiple UK retailers to find product prices using Serper API.
@@ -49,7 +49,7 @@ Searches multiple UK retailers to find product prices using Serper API.
 
 ---
 
-### `check-api-key-health`
+### [`check-api-key-health`](./check-api-key-health/README.md)
 **API Key Health Monitoring**
 
 Tests the health of all external API keys used by AI agents.
@@ -72,7 +72,7 @@ Results are stored in `agent_tools` table for dashboard display.
 
 ## Classification Functions
 
-### `classify-product`
+### [`classify-product`](./classify-product/README.md)
 **UK Medicine Classification API**
 
 Stateless API for classifying products according to UK medicine regulations.
@@ -94,7 +94,7 @@ Stateless API for classifying products according to UK medicine regulations.
 
 ---
 
-### `retry-failed-classifications`
+### [`retry-failed-classifications`](./retry-failed-classifications/README.md)
 **Retry Queue Processor**
 
 Processes products that failed initial classification.
@@ -110,7 +110,7 @@ Processes products that failed initial classification.
 
 ---
 
-### `push-to-pending`
+### [`push-to-pending`](./push-to-pending/README.md)
 **Webhook: Scraped Products to Pending Queue**
 
 Database webhook triggered on `scraped_products` table changes.
@@ -125,7 +125,7 @@ Creates retry log entries on classification failures.
 
 ---
 
-### `populate-retry-log`
+### [`populate-retry-log`](./populate-retry-log/README.md)
 **Bulk Retry Log Population**
 
 Populates `classification_retry_log` with unclassified products for retry processing.
@@ -134,7 +134,7 @@ Populates `classification_retry_log` with unclassified products for retry proces
 
 ## ERPNext Sync Functions
 
-### `sync-completed-products-to-erpnext`
+### [`sync-completed-products-to-erpnext`](./sync-completed-products-to-erpnext/README.md)
 **Cron: Push Completed Products to ERPNext**
 
 Main sync job for pushing processed products to ERPNext.
@@ -157,21 +157,21 @@ Main sync job for pushing processed products to ERPNext.
 
 ---
 
-### `push-products-to-erpnext`
+### [`push-products-to-erpnext`](./push-products-to-erpnext/README.md)
 **Manual ERPNext Push**
 
 Manually push specific products to ERPNext.
 
 ---
 
-### `resync-product-to-erpnext`
+### [`resync-product-to-erpnext`](./resync-product-to-erpnext/README.md)
 **Single Product Resync**
 
 Force resync a single product to ERPNext.
 
 ---
 
-### `resync-vendor-to-erpnext`
+### [`resync-vendor-to-erpnext`](./resync-vendor-to-erpnext/README.md)
 **Vendor-Wide Resync**
 
 Resync all products from a specific vendor to ERPNext.
@@ -182,71 +182,70 @@ Resync all products from a specific vendor to ERPNext.
 
 See [SHOPIFY_FUNCTIONS.md](./SHOPIFY_FUNCTIONS.md) for detailed documentation.
 
-### `shopify-blogs`
+### [`shopify-blogs`](./shopify-blogs/README.md)
 List all blogs from Shopify.
 
-### `shopify-blog-articles`
+### [`shopify-blog-articles`](./shopify-blog-articles/README.md)
 List articles for a specific blog.
 
-### `shopify-published-blogs`
+### [`shopify-published-blogs`](./shopify-published-blogs/README.md)
 Get published blog articles.
 
-### `shopify-push-blog`
+### [`shopify-push-blog`](./shopify-push-blog/README.md)
 Publish or update a blog article to Shopify.
 
-### `shopify-product-search`
+### [`shopify-product-search`](./shopify-product-search/README.md)
 Search Shopify products for blog linking.
 
-### `blog-preview`
+### [`blog-preview`](./blog-preview/README.md)
 Generate blog preview HTML.
 
 ---
 
 ## Utility Functions
 
-### `add-product-copyright`
+### [`add-product-copyright`](./add-product-copyright/README.md)
 Add a product to the copyright detection queue.
 
-### `remove-product-from-copyright`
+### [`remove-product-from-copyright`](./remove-product-from-copyright/README.md)
 Remove a product from copyright detection queue.
 
-### `clear-copyright-queue`
+### [`clear-copyright-queue`](./clear-copyright-queue/README.md)
 Clear entire copyright detection queue.
 
-### `cleanup-old-3d-models`
+### [`cleanup-old-3d-models`](./cleanup-old-3d-models/README.md)
 Clean up old 3D model files from storage.
 
-### `add-to-cart`
+### [`add-to-cart`](./add-to-cart/README.md)
 Shopping assistant cart automation.
 
-### `decodo-proxy`
+### [`decodo-proxy`](./decodo-proxy/README.md)
 Proxy for Decodo Google Suggest API.
 
-### `fetch-vendor-products`
+### [`fetch-vendor-products`](./fetch-vendor-products/README.md)
 Fetch products from a specific vendor.
 
-### `manual-push-to-pending`
+### [`manual-push-to-pending`](./manual-push-to-pending/README.md)
 Manually push products to pending queue.
 
-### `reset-agent-completed`
+### [`reset-agent-completed`](./reset-agent-completed/README.md)
 Reset agent completion status for reprocessing.
 
-### `seed-scraped-products`
+### [`seed-scraped-products`](./seed-scraped-products/README.md)
 Seed test data into scraped_products.
 
-### `scrape-article`
+### [`scrape-article`](./scrape-article/README.md)
 Scrape article content from URLs for blogger.
 
 ---
 
 ## Shared Code
 
-### `_shared/`
+### [`_shared/`](./_shared/README.md)
 Shared utilities used across multiple functions:
 
 - **`gemini-classification.ts`** - UK medicine classification using Gemini AI
 - **`erpnext-utils.ts`** - ERPNext API integration utilities
-- **`supabase-client.ts`** - Supabase client configuration
 
 ---
 
@@ -327,8 +326,8 @@ npx supabase functions logs <function-name>
 ## Related Documentation
 
 - [SHOPIFY_FUNCTIONS.md](./SHOPIFY_FUNCTIONS.md) - Detailed Shopify function docs
-- [CLAUDE.md](../../CLAUDE.md) - Development guidelines
 - [FRONTEND.md](../../FRONTEND.md) - Frontend architecture
+- [README.md](../../README.md) - Project overview
 
 ---
 
