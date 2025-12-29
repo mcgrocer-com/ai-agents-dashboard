@@ -116,6 +116,7 @@ ai-dashboard/
 │
 ├── public/                 # Static assets
 ├── supabase/              # Backend (Edge Functions, migrations)
+├── docs/                  # Infrastructure documentation
 ├── .env.example           # Environment variables template
 ├── vite.config.ts         # Vite configuration
 ├── tailwind.config.js     # Tailwind CSS configuration
@@ -372,7 +373,7 @@ Organized by feature domain:
 **Products** (`src/components/products/`):
 - ProductTabs (Overview, Category, Weight, SEO, Copyright, Variants, Raw Data)
 - ProductHeader, AgentProductCard
-- EditProductDialog
+- EditProductDialog, PriceComparisonDialog
 
 **Dashboard** (`src/components/dashboard/`):
 - StatCard, LiveMetrics, AgentStatusCard
@@ -970,6 +971,6 @@ Proprietary - MCGrocer Internal Tool
 
 ---
 
-**Last Updated**: 2025-12-18
+**Last Updated**: 2025-12-29
 
 For questions or support, contact the development team.

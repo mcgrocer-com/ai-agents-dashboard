@@ -86,6 +86,37 @@ This project uses specialized AI subagents for specific domains. Claude Code sho
 
 ## Feature Documentation
 
+### Price Comparison Feature
+
+The Price Comparison feature allows users to compare product prices across multiple UK retailers directly from the product detail page.
+
+#### Components
+- **`PriceComparisonDialog.tsx`** (`src/components/products/`): Modal dialog displaying price comparison results
+- **`ProductHeader.tsx`**: Contains "Compare Prices" button that triggers the dialog
+
+#### How It Works
+1. User clicks "Compare Prices" button below the price label on product detail page
+2. Dialog opens and calls `price-comparison` Edge Function via Supabase
+3. Edge Function uses dedicated Serper API key (`serper-key-price-comparison`) to search for product prices
+4. Results show lowest price, vendor name, product name, and link to retailer site
+5. Best price is highlighted with "Best Price" badge
+
+#### Backend
+- **Edge Function**: `supabase/functions/price-comparison/`
+- **API Tool**: `serper-key-price-comparison` (visible in Agent Tools page)
+- **Migration**: `20251229000002_add_serper_price_comparison_tool.sql`
+
+#### UI Features
+- Loading state with spinner while fetching prices
+- Error handling with retry button
+- Summary showing: Results Found, Lowest Price, Search Time
+- Sorted results with best price first (green highlight)
+- External links to retailer websites
+- Debug information collapsible section
+- Responsive design with max-height scrolling
+
+---
+
 ### Blogger Feature (AI-Powered Blog Content Generation)
 
 The Blogger feature enables users to create high-quality, E-E-A-T compliant blog content using AI-powered generation with persona-based writing styles.

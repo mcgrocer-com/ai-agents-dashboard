@@ -39,6 +39,7 @@ A real-time dashboard for monitoring and managing AI agents for the MCGrocer e-c
 ### Additional Tools
 - Real-time dashboard with live metrics
 - Product detail views with agent data
+- **Price Comparison** - Compare prices across UK retailers (Serper API)
 - Warehouse data upload (Excel/CSV)
 - Advanced filtering and search
 - Pin/unpin products for quick access
@@ -123,6 +124,7 @@ ai-dashboard/
 │   └── App.tsx         # Root component
 ├── supabase/           # Backend (Edge Functions, migrations)
 ├── public/             # Static assets
+├── docs/               # Infrastructure documentation
 ├── FRONTEND.md         # Frontend documentation
 ├── CLAUDE.md           # Development guidelines
 └── package.json        # Dependencies
@@ -185,6 +187,7 @@ Supabase Realtime for live dashboard metrics and product updates.
 - Multi-column sorting
 - Pin/unpin for quick access
 - Detailed product view with tabs (Overview, Category, Weight, SEO, Copyright, Variants)
+- **Price Comparison** - Compare prices across UK retailers from product detail page
 - ERPNext sync status tracking
 
 ### Blogger Feature
