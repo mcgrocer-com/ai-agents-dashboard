@@ -12,17 +12,6 @@ import type {
   ProductWithAgentData,
 } from '@/types'
 
-/**
- * Normalize UUID by adding hyphens if missing
- * Converts: 4f20e00125dcc24a622aa63ac84c32a4
- * To: 4f20e001-25dc-c24a-622a-a63ac84c32a4
- */
-function normalizeUuid(uuid: string): string {
-  // Remove any existing hyphens
-  const cleaned = uuid.replace(/-/g, '')
-  // Add hyphens in the correct positions (8-4-4-4-12)
-  return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`
-}
 
 class ProductsService {
   /**
@@ -62,6 +51,39 @@ class ProductsService {
           return {
             ...productData,
             sync_status,
+          } as ScrapedProduct
+        })
+
+        const totalCount = data && data.length > 0 ? Number(data[0].total_count) : 0
+
+        return {
+          products,
+          count: totalCount,
+          error: null,
+        }
+      }
+
+      // Use RPC function for failed_sync_at sorting (shows only products that failed to sync)
+      if (sortBy === 'failed_sync_at') {
+        const limit = filters.limit || 20
+        const offset = filters.offset || 0
+
+        const { data, error } = await supabase.rpc('get_products_sorted_by_failed_sync', {
+          p_limit: limit,
+          p_offset: offset,
+          p_ascending: sortOrder === 'asc',
+          p_search: filters.search || null,
+          p_vendor: filters.vendor || null,
+          p_pinned_only: false,
+        })
+
+        if (error) throw error
+
+        const products = (data || []).map((product: any) => {
+          const { total_count, ...productData } = product
+          return {
+            ...productData,
+            sync_status: 'failed' as const,
           } as ScrapedProduct
         })
 
@@ -423,6 +445,7 @@ class ProductsService {
 
   /**
    * Update basic product fields (name, price, original_price, description, stock_status)
+   * If ai_title or ai_description is set to null, also resets SEO status in pending_products
    */
   async updateBasicProductInfo(
     id: string,
@@ -432,17 +455,47 @@ class ProductsService {
       original_price?: number
       description?: string
       stock_status?: string
+      main_image?: string
+      ai_title?: string | null
+      ai_description?: string | null
     }
   ) {
     try {
+      // Separate AI fields from scraped_products updates
+      const { ai_title, ai_description, ...scrapedProductUpdates } = updates
+
+      // Check if we need to reset AI fields (when explicitly set to null)
+      const shouldResetSeo = ai_title === null || ai_description === null
+
+      // Update scraped_products table
       const { data, error } = await supabase
         .from('scraped_products')
-        .update(updates)
+        .update({
+          ...scrapedProductUpdates,
+          // Also clear AI fields in scraped_products if resetting
+          ...(shouldResetSeo ? { ai_title: null, ai_description: null } : {}),
+        })
         .eq('id', id)
         .select()
         .single()
 
       if (error) throw error
+
+      // If resetting AI fields, also update pending_products to trigger regeneration
+      if (shouldResetSeo) {
+        const { error: pendingError } = await supabase
+          .from('pending_products')
+          .update({
+            ai_title: null,
+            ai_description: null,
+            seo_status: 'pending',
+          })
+          .eq('scraped_product_id', id)
+
+        if (pendingError) {
+          console.error('Error resetting SEO status in pending_products:', pendingError)
+        }
+      }
 
       return {
         success: true,
@@ -564,6 +617,39 @@ class ProductsService {
           return {
             ...productData,
             sync_status,
+          } as ScrapedProduct
+        })
+
+        const totalCount = data && data.length > 0 ? Number(data[0].total_count) : 0
+
+        return {
+          products,
+          count: totalCount,
+          error: null,
+        }
+      }
+
+      // Use RPC function for failed_sync_at sorting (shows only products that failed to sync)
+      if (sortBy === 'failed_sync_at') {
+        const limit = filters.limit || 20
+        const offset = filters.offset || 0
+
+        const { data, error } = await supabase.rpc('get_products_sorted_by_failed_sync', {
+          p_limit: limit,
+          p_offset: offset,
+          p_ascending: sortOrder === 'asc',
+          p_search: filters.search || null,
+          p_vendor: filters.vendor || null,
+          p_pinned_only: true,
+        })
+
+        if (error) throw error
+
+        const products = (data || []).map((product: any) => {
+          const { total_count, ...productData } = product
+          return {
+            ...productData,
+            sync_status: 'failed' as const,
           } as ScrapedProduct
         })
 

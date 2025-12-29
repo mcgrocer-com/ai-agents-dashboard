@@ -15,6 +15,9 @@ export interface EditProductData {
   description: string
   stock_status: string
   main_image?: string
+  // Set to null to reset AI-generated fields when name/description changes
+  ai_title?: string | null
+  ai_description?: string | null
 }
 
 interface EditProductDialogProps {
@@ -48,6 +51,10 @@ export function EditProductDialog({
     main_image: product.main_image || '',
   })
 
+  // Track original values to detect changes
+  const [originalName, setOriginalName] = useState(product.name || '')
+  const [originalDescription, setOriginalDescription] = useState(product.description || '')
+
   // Reset form data when dialog opens or product changes
   useEffect(() => {
     if (open) {
@@ -59,12 +66,28 @@ export function EditProductDialog({
         stock_status: product.stock_status || 'In Stock',
         main_image: product.main_image || '',
       })
+      // Store original values for change detection
+      setOriginalName(product.name || '')
+      setOriginalDescription(product.description || '')
     }
   }, [open, product])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await onSave(formData)
+
+    // Check if name or description was modified
+    const nameChanged = formData.name !== originalName
+    const descriptionChanged = formData.description !== originalDescription
+
+    // If name or description changed, reset AI-generated fields to trigger regeneration
+    const dataToSave: EditProductData = {
+      ...formData,
+      ...(nameChanged || descriptionChanged
+        ? { ai_title: null, ai_description: null }
+        : {}),
+    }
+
+    await onSave(dataToSave)
   }
 
   const handleChange = (field: keyof EditProductData, value: string | number) => {

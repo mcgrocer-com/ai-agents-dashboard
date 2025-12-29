@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield, Package2 } from 'lucide-react'
+import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield, Package2, AlertTriangle } from 'lucide-react'
 import { productsService, erpnextService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
@@ -481,6 +481,27 @@ export function ProductDetailPage() {
         pushing={pushing}
         mcgrocerSlug={mcgrocerSlug}
       />
+
+      {/* Failed Sync Error Banner - Show when there's a failed sync that's more recent than last successful sync */}
+      {product.failed_sync_error_message && product.failed_sync_at &&
+       (!product.erpnext_updated_at || new Date(product.failed_sync_at) > new Date(product.erpnext_updated_at)) && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-red-800 mb-1">
+                ERPNext Sync Failed
+              </h3>
+              <p className="text-sm text-red-700 whitespace-pre-wrap break-words">
+                {product.failed_sync_error_message}
+              </p>
+              <p className="text-xs text-red-600 mt-2">
+                Failed at: {new Date(product.failed_sync_at).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Agent Status Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
