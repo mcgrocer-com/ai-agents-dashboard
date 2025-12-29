@@ -25,7 +25,13 @@ const toolConfigs: Record<string, { icon: any; color: string; description: strin
   'serper-key': {
     icon: Search,
     color: 'blue',
-    description: 'Web search and SERP data for product research and competitive analysis',
+    description: 'Web search and SERP data for product sanitisation and AI agents',
+    docsUrl: 'https://serper.dev/docs',
+  },
+  'serper-key-price-comparison': {
+    icon: Search,
+    color: 'orange',
+    description: 'Dedicated Serper API for price comparison edge function',
     docsUrl: 'https://serper.dev/docs',
   },
   'openai-vision': {
@@ -199,6 +205,12 @@ export function AgentToolsPage() {
         border: 'border-blue-200',
         icon: 'text-blue-600',
         button: 'bg-blue-600 hover:bg-blue-700',
+      },
+      orange: {
+        bg: 'bg-orange-50',
+        border: 'border-orange-200',
+        icon: 'text-orange-600',
+        button: 'bg-orange-600 hover:bg-orange-700',
       },
       teal: {
         bg: 'bg-teal-50',

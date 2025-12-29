@@ -21,6 +21,7 @@ import { RawDataTab } from '@/components/products/tabs/RawDataTab'
 import { RetryButton } from '@/components/ui/RetryButton'
 import { useToast } from '@/hooks/useToast'
 import { EditProductDialog, type EditProductData } from '@/components/products/EditProductDialog'
+import { PriceComparisonDialog } from '@/components/products/PriceComparisonDialog'
 
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -34,6 +35,7 @@ export function ProductDetailPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
   const [pushing, setPushing] = useState(false)
+  const [priceCompareOpen, setPriceCompareOpen] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -480,6 +482,7 @@ export function ProductDetailPage() {
         onPushToErpnext={handlePushToErpnext}
         pushing={pushing}
         mcgrocerSlug={mcgrocerSlug}
+        onComparePrices={() => setPriceCompareOpen(true)}
       />
 
       {/* Failed Sync Error Banner - Show when there's a failed sync that's more recent than last successful sync */}
@@ -635,6 +638,13 @@ export function ProductDetailPage() {
         }}
         onSave={handleSaveEdit}
         saving={savingEdit}
+      />
+
+      {/* Price Comparison Dialog */}
+      <PriceComparisonDialog
+        open={priceCompareOpen}
+        onClose={() => setPriceCompareOpen(false)}
+        productName={product.name || ''}
       />
     </div>
   )

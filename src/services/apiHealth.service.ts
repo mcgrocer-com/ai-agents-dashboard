@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase/client'
 
 export type KeyType =
   | 'serper-key'
+  | 'serper-key-price-comparison'
   | 'openai-vision'
   | 'category-key'
   | 'weight-and-dimension-key'
@@ -122,6 +123,7 @@ class ApiHealthService {
   async checkAllKeys(): Promise<Record<string, HealthStatus>> {
     const keyTypes: KeyType[] = [
       'serper-key',
+      'serper-key-price-comparison',
       'openai-vision',
       'category-key',
       'weight-and-dimension-key',

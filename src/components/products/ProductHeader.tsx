@@ -4,7 +4,7 @@
  * Displays product header with image, name, and basic information.
  */
 
-import { Package, ExternalLink, Pin, Edit, CheckCircle, XCircle, Upload } from 'lucide-react'
+import { Package, ExternalLink, Pin, Edit, CheckCircle, XCircle, Upload, Scale } from 'lucide-react'
 import { formatCurrency, formatDateTime } from '@/lib/utils/format'
 
 interface ProductHeaderProps {
@@ -26,6 +26,7 @@ interface ProductHeaderProps {
   onPushToErpnext?: () => void
   pushing?: boolean
   mcgrocerSlug?: string
+  onComparePrices?: () => void
 }
 
 export function ProductHeader({
@@ -47,6 +48,7 @@ export function ProductHeader({
   onPushToErpnext,
   pushing = false,
   mcgrocerSlug,
+  onComparePrices,
 }: ProductHeaderProps) {
   // Check if product is synced to ERPNext
   const isSynced = erpnextUpdatedAt && (!failedSyncAt || new Date(erpnextUpdatedAt) > new Date(failedSyncAt))
@@ -216,6 +218,15 @@ export function ProductHeader({
                   <p className="text-lg text-gray-500 line-through mt-1">
                     {formatCurrency(originalPrice)}
                   </p>
+                )}
+                {onComparePrices && (
+                  <button
+                    onClick={onComparePrices}
+                    className="mt-2 inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded transition-colors"
+                  >
+                    <Scale className="h-3 w-3" />
+                    Compare Prices
+                  </button>
                 )}
               </div>
             )}
