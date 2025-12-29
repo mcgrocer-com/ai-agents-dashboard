@@ -9,7 +9,9 @@ A real-time dashboard for monitoring and managing AI agents for the MCGrocer e-c
 ## Documentation
 
 - **[FRONTEND.md](./FRONTEND.md)** - Complete frontend architecture, components, services, and development guidelines
-- **[CLAUDE.md](./CLAUDE.md)** - AI development guidelines and coding standards
+- **[Edge Functions](./supabase/functions/README.md)** - Supabase Edge Functions documentation (27+ functions)
+- **[Shopify Functions](./supabase/functions/SHOPIFY_FUNCTIONS.md)** - Shopify-specific edge functions
+- **[Tunnel Maintenance](./docs/TUNNEL-MAINTENANCE.md)** - Infrastructure documentation
 - **README.md** (this file) - Quick start and overview
 
 ## Features
@@ -150,8 +152,6 @@ npm run deploy       # Deploy to GitHub Pages
 - Follow **KISS** and **YAGNI** principles
 - Single Responsibility Principle
 - Comprehensive TypeScript types
-
-See [CLAUDE.md](./CLAUDE.md) for complete development guidelines.
 
 ## Key Technologies
 

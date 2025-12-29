@@ -46,3 +46,6 @@ supabase/seeding-report.json
 # Windows
 nul
 .tunnel-token
+
+# AI Development Guidelines (internal)
+CLAUDE.md

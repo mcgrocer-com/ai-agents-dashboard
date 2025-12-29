@@ -122,7 +122,6 @@ ai-dashboard/
 ├── tailwind.config.js     # Tailwind CSS configuration
 ├── tsconfig.json          # TypeScript configuration
 ├── package.json           # Dependencies and scripts
-├── CLAUDE.md              # AI development guidelines
 └── FRONTEND.md            # This file
 ```
 
@@ -662,8 +661,6 @@ Mobile-first approach with breakpoints:
 
 ### Code Quality Standards
 
-**From CLAUDE.md**:
-
 1. **File Length**: Maximum 500 lines per file
 2. **Function Length**: Maximum 50 lines per function
 3. **Component Length**: Maximum 100 lines per component
@@ -924,7 +921,7 @@ Endpoints:
 ### Workflow
 
 1. Create feature branch from `main`
-2. Follow code quality standards from CLAUDE.md
+2. Follow code quality standards (see Development Guidelines section)
 3. Test changes locally
 4. Submit pull request with clear description
 5. Ensure CI/CD checks pass
@@ -961,9 +958,10 @@ Potential improvements:
 - [SWR Docs](https://swr.vercel.app)
 
 ### Related Documentation
-- `CLAUDE.md` - AI development guidelines
 - `README.md` - Project overview
-- `supabase/` - Backend documentation
+- `supabase/functions/README.md` - Edge Functions documentation
+- `supabase/functions/SHOPIFY_FUNCTIONS.md` - Shopify edge functions
+- `docs/TUNNEL-MAINTENANCE.md` - Infrastructure documentation
 
 ## License
 
