@@ -2,10 +2,6 @@
 
 Your blogger uses a **persistent Cloudflare Tunnel** for HTTPS access to the scraper service.
 
-## 🔒 Security Note
-
-🚨 **IMPORTANT:** Read [SECURITY-NOTICE.md](SECURITY-NOTICE.md) - Your tunnel token was exposed in git and should be **rotated immediately**.
-
 ## 📋 Current Setup
 
 - **Public URL:** `https://blogger.mcgrocer.com`
