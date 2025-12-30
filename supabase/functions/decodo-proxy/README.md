@@ -76,12 +76,59 @@ Uses Basic Authentication with Decodo credentials configured via environment var
 }
 ```
 
-### Google Search/Suggest Success (200)
+### Google Search SERP Success (200)
 
+When `parse: true`:
 ```json
 {
-  "results": [...],
-  "organic": [...],
+  "results": {
+    "organic": [
+      {
+        "pos": 1,
+        "url": "https://example.com/page",
+        "title": "Page Title",
+        "desc": "Page description from search results..."
+      }
+    ],
+    "paid": [...],
+    "knowledge_graph": {...},
+    "related_searches": [...]
+  },
+  "parse": true
+}
+```
+
+### Google Suggest (Keyword Research) Success (200)
+
+When `parse: false` (default for keyword research):
+```json
+{
+  "results": [
+    {
+      "content": "[[\"baby oil\",[\"baby oil\",\"baby oil for skin\",\"baby oil for hair\",\"baby oil uses\",\"baby oil on face\",\"baby oil for adults\",\"baby oil in bath\",\"baby oil for massage\",\"baby oil sunscreen\",\"baby oil tanning\"],[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],{\"google:suggestsubtypes\":[[],[],[],[],[],[],[],[],[],[]]}]]"
+    }
+  ]
+}
+```
+
+The `content` field contains a JSON string with Google's autocomplete suggestions. Parse it to extract keyword suggestions:
+```javascript
+const data = JSON.parse(response.results[0].content);
+const keywords = data[0][1]; // Array of keyword suggestions
+// ["baby oil", "baby oil for skin", "baby oil for hair", ...]
+```
+
+When `parse: true`:
+```json
+{
+  "results": {
+    "suggestions": [
+      "baby oil",
+      "baby oil for skin",
+      "baby oil for hair",
+      "baby oil uses"
+    ]
+  },
   "parse": true
 }
 ```
@@ -194,9 +241,21 @@ data.results[0].content  // HTML string
 
 If results array is missing or empty, falls back to raw response.
 
-### SERP/Suggest
+### Google Search SERP
 
-Returns the raw JSON response from Decodo API with parsed results (if parse enabled).
+Returns parsed search results with organic listings, paid ads, knowledge graph, and related searches when `parse: true`.
+
+### Google Suggest (Keyword Research)
+
+- `parse: false` (default): Returns raw Google autocomplete response in `results[0].content` as a JSON string
+- `parse: true`: Returns parsed `suggestions` array directly
+
+**Extracting keywords from raw response:**
+```javascript
+const rawContent = response.results[0].content;
+const parsed = JSON.parse(rawContent);
+const keywords = parsed[0][1]; // Array of 10 keyword suggestions
+```
 
 ### Image Proxy
 
