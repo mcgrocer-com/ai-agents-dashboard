@@ -12,6 +12,22 @@ import type {
   ProductWithAgentData,
 } from '@/types'
 
+const PRODUCT_IMAGES_BUCKET = 'product-images'
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
+
+// Domains that are already hosted on our infrastructure (no need to re-host)
+const HOSTED_DOMAINS = ['supabase.co', 'cdn.shopify.com', 'mcgrocer.com']
+
+function isHostedUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname
+    return HOSTED_DOMAINS.some((domain) => hostname.includes(domain))
+  } catch {
+    return false
+  }
+}
+
 
 class ProductsService {
   /**
@@ -550,6 +566,124 @@ class ProductsService {
         products: [],
         error: error as Error,
       }
+    }
+  }
+
+  /**
+   * Upload product image from external URL to Supabase Storage
+   * Uses decodo-proxy to bypass CORS restrictions
+   */
+  async uploadProductImageFromUrl(
+    imageUrl: string,
+    productId: string
+  ): Promise<{ success: boolean; url: string; error?: string }> {
+    const logPrefix = '[Product Image Upload]'
+
+    try {
+      // Skip if already hosted on our infrastructure
+      if (isHostedUrl(imageUrl)) {
+        console.log(`${logPrefix} SKIP: Already hosted on Supabase`)
+        return { success: true, url: imageUrl }
+      }
+
+      // Skip data URLs
+      if (imageUrl.startsWith('data:')) {
+        console.log(`${logPrefix} SKIP: Data URL`)
+        return { success: true, url: imageUrl }
+      }
+
+      // Get Supabase URL for the edge function
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+      console.log(`${logPrefix} Fetching image via proxy: ${imageUrl}`)
+
+      // Download the image via decodo-proxy (bypasses CORS)
+      const proxyResponse = await fetch(`${supabaseUrl}/functions/v1/decodo-proxy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ url: imageUrl, proxy_image: true }),
+      })
+
+      if (!proxyResponse.ok) {
+        console.error(`${logPrefix} Proxy returned ${proxyResponse.status}`)
+        return { success: false, url: imageUrl, error: `Proxy error: ${proxyResponse.status}` }
+      }
+
+      const result = await proxyResponse.json()
+
+      if (!result.success || !result.data) {
+        console.error(`${logPrefix} Download failed: ${result.error || 'No image data returned'}`)
+        return { success: false, url: imageUrl, error: result.error || 'No image data' }
+      }
+
+      const sizeKB = Math.round(result.size / 1024)
+      const mimeType = result.mimeType || 'image/jpeg'
+
+      console.log(`${logPrefix} Downloaded: ${sizeKB}KB, type: ${mimeType}`)
+
+      // Validate mime type
+      if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
+        console.error(`${logPrefix} Invalid image type: ${mimeType}`)
+        return { success: false, url: imageUrl, error: `Invalid image type: ${mimeType}` }
+      }
+
+      // Validate size
+      if (result.size > MAX_IMAGE_SIZE) {
+        console.error(`${logPrefix} Image too large: ${sizeKB}KB`)
+        return { success: false, url: imageUrl, error: 'Image too large (>5MB)' }
+      }
+
+      // Convert base64 to blob
+      const byteCharacters = atob(result.data)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], { type: mimeType })
+
+      // Determine file extension
+      const extMap: Record<string, string> = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
+        'image/webp': 'webp',
+        'image/gif': 'gif',
+      }
+      const fileExt = extMap[mimeType] || 'jpg'
+      const fileName = `${productId}.${fileExt}`
+
+      console.log(`${logPrefix} Uploading to Supabase: ${fileName}`)
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(PRODUCT_IMAGES_BUCKET)
+        .upload(fileName, blob, {
+          cacheControl: '31536000', // 1 year cache
+          upsert: true,
+          contentType: mimeType,
+        })
+
+      if (uploadError) {
+        console.error(`${logPrefix} Upload failed:`, uploadError.message)
+        return { success: false, url: imageUrl, error: uploadError.message }
+      }
+
+      // Get public URL
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(PRODUCT_IMAGES_BUCKET).getPublicUrl(uploadData.path)
+
+      console.log(`${logPrefix} Success: ${publicUrl}`)
+      return { success: true, url: publicUrl }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      console.error(`${logPrefix} Error:`, errorMsg)
+      return { success: false, url: imageUrl, error: errorMsg }
     }
   }
 

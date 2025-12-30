@@ -7,6 +7,8 @@
 import { useState, useEffect } from 'react'
 import { Dialog } from '@/components/ui/Dialog'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { productsService } from '@/services/products.service'
+import { CloudUpload, CheckCircle, AlertCircle } from 'lucide-react'
 
 export interface EditProductData {
   name: string
@@ -24,6 +26,7 @@ interface EditProductDialogProps {
   open: boolean
   onClose: () => void
   product: {
+    id?: string
     name?: string
     price?: number
     original_price?: number
@@ -55,6 +58,11 @@ export function EditProductDialog({
   const [originalName, setOriginalName] = useState(product.name || '')
   const [originalDescription, setOriginalDescription] = useState(product.description || '')
 
+  // Upload state
+  const [uploading, setUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
   // Reset form data when dialog opens or product changes
   useEffect(() => {
     if (open) {
@@ -69,8 +77,43 @@ export function EditProductDialog({
       // Store original values for change detection
       setOriginalName(product.name || '')
       setOriginalDescription(product.description || '')
+      // Reset upload status
+      setUploadStatus('idle')
+      setUploadError(null)
     }
   }, [open, product])
+
+  // Handle image upload to Supabase
+  const handleUploadImage = async () => {
+    if (!formData.main_image || !product.id) return
+
+    setUploading(true)
+    setUploadStatus('idle')
+    setUploadError(null)
+
+    try {
+      const result = await productsService.uploadProductImageFromUrl(formData.main_image, product.id)
+
+      if (result.success && result.url !== formData.main_image) {
+        setFormData((prev) => ({ ...prev, main_image: result.url }))
+        setUploadStatus('success')
+      } else if (!result.success) {
+        setUploadStatus('error')
+        setUploadError(result.error || 'Upload failed')
+      } else {
+        // URL didn't change (already hosted)
+        setUploadStatus('success')
+      }
+    } catch (error) {
+      setUploadStatus('error')
+      setUploadError(error instanceof Error ? error.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // Check if image is already on Supabase
+  const isImageOnSupabase = formData.main_image?.includes('supabase.co')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -125,12 +168,16 @@ export function EditProductDialog({
             id="main_image"
             type="url"
             value={formData.main_image || ''}
-            onChange={(e) => handleChange('main_image', e.target.value)}
+            onChange={(e) => {
+              handleChange('main_image', e.target.value)
+              setUploadStatus('idle')
+              setUploadError(null)
+            }}
             className="w-full px-3 py-2 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             placeholder="Enter image URL"
           />
           {formData.main_image && (
-            <div className="mt-2">
+            <div className="mt-2 flex items-start gap-3">
               <img
                 src={formData.main_image}
                 alt="Product preview"
@@ -139,6 +186,57 @@ export function EditProductDialog({
                   e.currentTarget.style.display = 'none'
                 }}
               />
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={handleUploadImage}
+                  disabled={uploading || isImageOnSupabase || !product.id}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isImageOnSupabase
+                      ? 'bg-green-50 text-green-700 border border-green-200 cursor-default'
+                      : uploading
+                        ? 'bg-secondary-100 text-secondary-500 cursor-wait'
+                        : 'bg-primary-50 text-primary-700 border border-primary-200 hover:bg-primary-100'
+                  }`}
+                  title={
+                    isImageOnSupabase
+                      ? 'Image already hosted on Supabase'
+                      : 'Upload image to Supabase storage'
+                  }
+                >
+                  {uploading ? (
+                    <>
+                      <LoadingSpinner size="sm" />
+                      <span>Uploading...</span>
+                    </>
+                  ) : isImageOnSupabase ? (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      <span>On Supabase</span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudUpload className="w-4 h-4" />
+                      <span>Upload to Supabase</span>
+                    </>
+                  )}
+                </button>
+                {uploadStatus === 'success' && !isImageOnSupabase && (
+                  <p className="text-xs text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    Uploaded successfully
+                  </p>
+                )}
+                {uploadStatus === 'error' && (
+                  <p className="text-xs text-red-600 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {uploadError || 'Upload failed'}
+                  </p>
+                )}
+                <p className="text-xs text-secondary-500">
+                  {isImageOnSupabase ? 'Hosted on Supabase CDN' : 'External image URL'}
+                </p>
+              </div>
             </div>
           )}
         </div>

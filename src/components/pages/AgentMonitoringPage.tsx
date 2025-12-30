@@ -20,7 +20,7 @@ import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { AgentProductCard } from '@/components/products/AgentProductCard'
 import { AgentVendorStatistics } from '@/components/agents/AgentVendorStatistics'
 import { AdvancedFilterBuilder, type FilterRule } from '@/components/filters/AdvancedFilterBuilder'
-import { Package, Search, SlidersHorizontal, RefreshCw, Trash2, RotateCcw, type LucideIcon } from 'lucide-react'
+import { Package, Search, SlidersHorizontal, RefreshCw, Trash2, RotateCcw, CheckSquare, Square, XCircle, CloudUpload, type LucideIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import type { AgentType } from '@/services/agents.service'
 
@@ -81,6 +81,13 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   const [showResetCompletedConfirm, setShowResetCompletedConfirm] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [vendorStats, setVendorStats] = useState<AgentVendorStats | null>(null)
+  const [selectedErpnextSync, setSelectedErpnextSync] = useState<'all' | 'synced' | 'not_synced'>('all')
+
+  // Selection state (for copyright agent bulk operations)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
+  const [isBulkResyncing, setIsBulkResyncing] = useState(false)
+  const [isBulkResetting, setIsBulkResetting] = useState(false)
 
   const { metrics } = useAgentMetrics()
   const { vendors } = useVendors()
@@ -114,6 +121,7 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     search: searchTerm || undefined,
     vendor: selectedVendor || undefined,
     status: selectedStatus || undefined,
+    erpnextSynced: selectedErpnextSync !== 'all' ? selectedErpnextSync : undefined,
   })
 
   const handleSearch = (value: string) => {
@@ -141,6 +149,7 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     setSearchTerm('')
     setSelectedVendor('')
     setSelectedStatus(config.defaultStatus)
+    setSelectedErpnextSync('all')
     setAppliedFilters([])
     setTempFilters([])
     setPage(1)
@@ -251,6 +260,120 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     }
   }
 
+  // Selection helpers
+  const toggleSelectionMode = () => {
+    if (selectionMode) {
+      setSelectedProductIds(new Set())
+    }
+    setSelectionMode(!selectionMode)
+  }
+
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProductIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(productId)) {
+        newSet.delete(productId)
+      } else {
+        newSet.add(productId)
+      }
+      return newSet
+    })
+  }
+
+  const selectAllProducts = () => {
+    if (products.length === 0) return
+    const allIds = products.map((p: any) => p.pendingData.id)
+    setSelectedProductIds(new Set(allIds))
+  }
+
+  const clearSelection = () => {
+    setSelectedProductIds(new Set())
+  }
+
+  // Bulk action handlers
+  const handleBulkResyncToErpnext = async () => {
+    if (selectedProductIds.size === 0) return
+    setIsBulkResyncing(true)
+
+    const productIdsArray = Array.from(selectedProductIds)
+    let successCount = 0
+    let errorCount = 0
+
+    for (const productId of productIdsArray) {
+      try {
+        const { data, error } = await supabase.functions.invoke('resync-product-to-erpnext', {
+          body: { productId }
+        })
+        if (error || !data?.success) {
+          errorCount++
+        } else {
+          successCount++
+        }
+      } catch {
+        errorCount++
+      }
+    }
+
+    setIsBulkResyncing(false)
+    clearSelection()
+    refresh()
+
+    if (errorCount === 0) {
+      setToast({
+        message: `Successfully queued ${successCount} product(s) for ERPNext resync`,
+        type: 'success'
+      })
+    } else {
+      setToast({
+        message: `Resynced ${successCount} product(s), ${errorCount} failed`,
+        type: errorCount === productIdsArray.length ? 'error' : 'info'
+      })
+    }
+  }
+
+  const handleBulkResetCompleted = async () => {
+    if (selectedProductIds.size === 0) return
+    setIsBulkResetting(true)
+
+    const productIdsArray = Array.from(selectedProductIds)
+    let successCount = 0
+    let errorCount = 0
+
+    for (const productId of productIdsArray) {
+      try {
+        // Reset the copyright_status to pending
+        const { error } = await supabase
+          .from('pending_products')
+          .update({ copyright_status: 'pending' })
+          .eq('id', productId)
+
+        if (error) {
+          errorCount++
+        } else {
+          successCount++
+        }
+      } catch {
+        errorCount++
+      }
+    }
+
+    setIsBulkResetting(false)
+    clearSelection()
+    refresh()
+
+    if (errorCount === 0) {
+      setToast({
+        message: `Successfully reset ${successCount} product(s) to pending`,
+        type: 'success'
+      })
+    } else {
+      setToast({
+        message: `Reset ${successCount} product(s), ${errorCount} failed`,
+        type: errorCount === productIdsArray.length ? 'error' : 'info'
+      })
+    }
+  }
+
   const IconComponent = config.icon
 
   // Get the appropriate counts based on vendor selection
@@ -297,17 +420,12 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {(agentType === 'copyright' || agentType === 'seo') && completedCount > 0 && (
+              {/* Reset Completed button - Only for SEO agent (copyright uses selection-based bulk actions) */}
+              {agentType === 'seo' && completedCount > 0 && (
                 <button
                   onClick={() => setShowResetCompletedConfirm(true)}
                   disabled={isResetting}
-                  className={`px-4 py-2 ${
-                    config.primaryColor === 'orange'
-                      ? 'bg-orange-600 hover:bg-orange-700'
-                      : config.primaryColor === 'indigo'
-                      ? 'bg-indigo-600 hover:bg-indigo-700'
-                      : 'bg-amber-600 hover:bg-amber-700'
-                  } text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium`}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
                 >
                   <RotateCcw className={`h-4 w-4 ${isResetting ? 'animate-spin' : ''}`} />
                   <span>Reset Completed ({completedCount.toLocaleString()})</span>
@@ -397,15 +515,95 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
               <option value="complete">Complete</option>
               <option value="failed">Failed</option>
             </select>
+
+            {/* ERPNext Sync Filter - Only for copyright agent */}
+            {agentType === 'copyright' && (
+              <select
+                value={selectedErpnextSync}
+                onChange={(e) => {
+                  setSelectedErpnextSync(e.target.value as 'all' | 'synced' | 'not_synced')
+                  setPage(1)
+                }}
+                className="px-4 py-2 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              >
+                <option value="all">All Sync Status</option>
+                <option value="synced">Synced to ERPNext</option>
+                <option value="not_synced">Not Synced</option>
+              </select>
+            )}
+
+            {/* Selection Mode Toggle - Only for copyright agent */}
+            {agentType === 'copyright' && (
+              <button
+                onClick={toggleSelectionMode}
+                className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${
+                  selectionMode
+                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                    : 'border-secondary-300 text-secondary-700 hover:bg-secondary-50'
+                }`}
+              >
+                {selectionMode ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                <span className="font-medium">Select</span>
+                {selectionMode && selectedProductIds.size > 0 && (
+                  <span className="bg-blue-500 text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] text-center">
+                    {selectedProductIds.size}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
 
           {/* Active Filters Display */}
-          {(appliedFilters.length > 0 || searchTerm || selectedVendor || selectedStatus !== config.defaultStatus) && (
+          {(appliedFilters.length > 0 || searchTerm || selectedVendor || selectedStatus !== config.defaultStatus || selectedErpnextSync !== 'all') && (
             <div className="flex items-center justify-between text-sm">
               <p className="text-secondary-600">{count.toLocaleString()} products found</p>
               <button onClick={handleClearFilters} className="text-blue-600 hover:text-blue-700 font-medium">
                 Clear all filters
               </button>
+            </div>
+          )}
+
+          {/* Bulk Actions Bar - Only for copyright agent when products are selected */}
+          {agentType === 'copyright' && selectionMode && selectedProductIds.size > 0 && (
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-blue-900">
+                    {selectedProductIds.size} {selectedProductIds.size === 1 ? 'product' : 'products'} selected
+                  </span>
+                  <button
+                    onClick={selectAllProducts}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Select all on page
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Clear selection
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleBulkResyncToErpnext}
+                    disabled={isBulkResyncing || isBulkResetting}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                  >
+                    <CloudUpload className={`h-4 w-4 ${isBulkResyncing ? 'animate-pulse' : ''}`} />
+                    <span>{isBulkResyncing ? 'Resyncing...' : 'Resync to ERPNext'}</span>
+                  </button>
+                  <button
+                    onClick={handleBulkResetCompleted}
+                    disabled={isBulkResyncing || isBulkResetting}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                  >
+                    <RotateCcw className={`h-4 w-4 ${isBulkResetting ? 'animate-spin' : ''}`} />
+                    <span>{isBulkResetting ? 'Resetting...' : 'Reset to Pending'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -518,6 +716,9 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
           agentType={agentType}
           agentConfig={config}
           navigate={navigate}
+          selectionMode={agentType === 'copyright' ? selectionMode : false}
+          selectedProductIds={selectedProductIds}
+          onToggleSelection={toggleProductSelection}
         />
 
         {/* Pagination */}
@@ -594,9 +795,21 @@ interface ProductsListProps {
   agentType: AgentType
   agentConfig: AgentConfig
   navigate: ReturnType<typeof useNavigate>
+  selectionMode?: boolean
+  selectedProductIds?: Set<string>
+  onToggleSelection?: (productId: string) => void
 }
 
-function ProductsList({ products, isLoading, agentType, agentConfig, navigate }: ProductsListProps) {
+function ProductsList({
+  products,
+  isLoading,
+  agentType,
+  agentConfig,
+  navigate,
+  selectionMode = false,
+  selectedProductIds = new Set(),
+  onToggleSelection
+}: ProductsListProps) {
   if (isLoading) {
     return (
       <div>
@@ -671,6 +884,9 @@ function ProductsList({ products, isLoading, agentType, agentConfig, navigate }:
             iconColor: agentConfig.iconColor,
             primaryColor: agentConfig.primaryColor,
           }}
+          selectionMode={selectionMode}
+          isSelected={selectedProductIds.has(agentProduct.pendingData.id)}
+          onToggleSelection={onToggleSelection}
           onClick={(e) => {
             if (!agentProduct.productData?.id) return
 

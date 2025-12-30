@@ -629,6 +629,7 @@ export function ProductDetailPage() {
         open={editDialogOpen}
         onClose={() => setEditDialogOpen(false)}
         product={{
+          id: product.id,
           name: product.name || '',
           price: product.price || 0,
           original_price: product.original_price || 0,

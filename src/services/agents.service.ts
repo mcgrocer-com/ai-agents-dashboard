@@ -155,10 +155,11 @@ class AgentsService {
       search?: string
       vendor?: string
       status?: string
+      erpnextSynced?: 'all' | 'synced' | 'not_synced'
     } = {}
   ) {
     try {
-      const { limit = 50, offset = 0, search, vendor, status } = options
+      const { limit = 50, offset = 0, search, vendor, status, erpnextSynced } = options
       const statusField = this.getStatusField(agentType)
 
       let query = supabase
@@ -177,6 +178,13 @@ class AgentsService {
       // Filter by vendor
       if (vendor) {
         query = query.eq('vendor', vendor)
+      }
+
+      // Filter by ERPNext sync status
+      if (erpnextSynced === 'synced') {
+        query = query.not('erpnext_updated_at', 'is', null)
+      } else if (erpnextSynced === 'not_synced') {
+        query = query.is('erpnext_updated_at', null)
       }
 
       // Search in pending product data

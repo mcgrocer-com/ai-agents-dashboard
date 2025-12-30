@@ -88,6 +88,7 @@ export function usePendingForAgent(
     search?: string
     vendor?: string
     status?: string
+    erpnextSynced?: 'all' | 'synced' | 'not_synced'
   } = {}
 ) {
   const { data, error, isLoading, mutate } = useSWR(

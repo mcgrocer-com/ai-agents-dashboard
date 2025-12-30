@@ -10,7 +10,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Package, MoreVertical, Trash2, type LucideIcon } from 'lucide-react'
+import { Package, MoreVertical, Trash2, CheckSquare, Square, type LucideIcon } from 'lucide-react'
 import type { AgentProduct, AgentStatus } from '@/types'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import type { AgentType } from '@/services/agents.service'
@@ -28,9 +28,20 @@ interface AgentProductCardProps {
     primaryColor: string
   }
   onClick?: (e: React.MouseEvent) => void
+  selectionMode?: boolean
+  isSelected?: boolean
+  onToggleSelection?: (productId: string) => void
 }
 
-export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick }: AgentProductCardProps) {
+export function AgentProductCard({
+  agentProduct,
+  agentType,
+  agentConfig,
+  onClick,
+  selectionMode = false,
+  isSelected = false,
+  onToggleSelection
+}: AgentProductCardProps) {
   const { pendingData, productData } = agentProduct
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false)
@@ -159,19 +170,46 @@ export function AgentProductCard({ agentProduct, agentType, agentConfig, onClick
 
   const handleAuxClick = (e: React.MouseEvent) => {
     // Handle middle-click to open in new tab
-    if (e.button === 1 && onClick) {
+    if (e.button === 1 && onClick && !selectionMode) {
       e.preventDefault()
       onClick(e)
     }
   }
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (selectionMode && onToggleSelection) {
+      onToggleSelection(pendingData.id)
+    } else if (onClick) {
+      onClick(e)
+    }
+  }
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (onToggleSelection) {
+      onToggleSelection(pendingData.id)
+    }
+  }
+
   return (
     <div
-      onClick={onClick}
+      onClick={handleCardClick}
       onAuxClick={handleAuxClick}
-      className="p-4 hover:bg-secondary-50 transition-colors cursor-pointer border-b border-secondary-200 last:border-b-0"
+      className={`p-4 hover:bg-secondary-50 transition-colors cursor-pointer border-b border-secondary-200 last:border-b-0 ${
+        isSelected ? 'bg-blue-50 hover:bg-blue-100' : ''
+      }`}
     >
       <div className="flex items-start gap-4">
+        {/* Selection Checkbox */}
+        {selectionMode && (
+          <div className="flex-shrink-0 pt-1" onClick={handleCheckboxClick}>
+            {isSelected ? (
+              <CheckSquare className="w-6 h-6 text-blue-600 cursor-pointer" />
+            ) : (
+              <Square className="w-6 h-6 text-gray-400 cursor-pointer hover:text-gray-600" />
+            )}
+          </div>
+        )}
         {/* Product Image */}
         {productData?.main_image ? (
           <img
