@@ -16,17 +16,18 @@ A real-time dashboard for monitoring and managing AI agents for the MCGrocer e-c
 - **[Tunnel Maintenance](./docs/TUNNEL-MAINTENANCE.md)** - Infrastructure documentation
 - **README.md** (this file) - Quick start and overview
 
-### External Agent Documentation (mcgrocer-sanitisation-agents)
-The AI agents that process product data are maintained in a separate repository. Each agent has its own documentation:
+### AI Agent Documentation
+The AI agents that process product data. External agents are maintained in a separate repository.
 
 | Agent | Description | Documentation |
 |-------|-------------|---------------|
+| **Blogger Agent** | AI-powered blog content generation with E-E-A-T compliance | [README](./docs/BLOGGER.md) |
 | **Category Agent** | AI-powered product categorization with multi-level taxonomy mapping | [README](https://github.com/mcgrocer-com/mcgrocer-sanitisation-agents/blob/master/mcgrocer/category-agent/README.md) |
 | **Weight & Dimension Agent** | Intelligent extraction of product weight, dimensions, and packaging info | [README](https://github.com/mcgrocer-com/mcgrocer-sanitisation-agents/blob/master/mcgrocer/weight-dimension-agent/README.md) |
 | **SEO Agent** | SEO optimization with keyword research, meta generation, and content scoring | [README](https://github.com/mcgrocer-com/mcgrocer-sanitisation-agents/blob/master/mcgrocer/seo_agent/README.md) |
 | **Copyright Agent** | Brand and trademark violation detection for product listings | [README](https://github.com/mcgrocer-com/mcgrocer-sanitisation-agents/blob/master/mcgrocer/copyright_agent/README.md) |
 
-> **Note**: The sanitisation agents repository is private. Contact the development team for access.
+> **Note**: External agents (Category, Weight & Dimension, SEO, Copyright) are in a private repository. Contact the development team for access.
 
 ## Features
 
