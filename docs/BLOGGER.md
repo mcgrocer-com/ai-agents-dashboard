@@ -113,15 +113,15 @@ Fine-tune SEO elements:
 
 ### Edge Functions (`supabase/functions/`)
 
-| Function | Purpose |
-|----------|---------|
-| `shopify-product-search` | Search McGrocer products |
-| `shopify-blogs` | List Shopify blogs |
-| `shopify-blog-articles` | List blog articles |
-| `shopify-push-blog` | Publish to Shopify |
-| `decodo-proxy` | Keyword research via Google Suggest |
-| `scrape-article` | Scrape competitor articles |
-| `blog-preview` | Generate preview HTML |
+| Function | Purpose | API Docs |
+|----------|---------|----------|
+| `shopify-product-search` | Search McGrocer products | [README](../supabase/functions/shopify-product-search/README.md) |
+| `shopify-blogs` | List Shopify blogs | [README](../supabase/functions/shopify-blogs/README.md) |
+| `shopify-blog-articles` | List blog articles | [README](../supabase/functions/shopify-blog-articles/README.md) |
+| `shopify-push-blog` | Publish to Shopify | [README](../supabase/functions/shopify-push-blog/README.md) |
+| `decodo-proxy` | Keyword research via Google Suggest | [README](../supabase/functions/decodo-proxy/README.md) |
+| `scrape-article` | Scrape competitor articles | [README](../supabase/functions/scrape-article/README.md) |
+| `blog-preview` | Generate preview HTML | [README](../supabase/functions/blog-preview/README.md) |
 
 ## AI Generation Pipeline
 
