@@ -8,12 +8,25 @@ A real-time dashboard for monitoring and managing AI agents for the MCGrocer e-c
 
 ## Documentation
 
+### Internal Documentation
 - **[FRONTEND.md](./FRONTEND.md)** - Complete frontend architecture, components, services, and development guidelines
 - **[Blogger](./docs/BLOGGER.md)** - AI-powered blog content generator (architecture, services, output)
 - **[Edge Functions](./supabase/functions/README.md)** - Supabase Edge Functions documentation (27+ functions)
 - **[Shopify Functions](./supabase/functions/SHOPIFY_FUNCTIONS.md)** - Shopify-specific edge functions
 - **[Tunnel Maintenance](./docs/TUNNEL-MAINTENANCE.md)** - Infrastructure documentation
 - **README.md** (this file) - Quick start and overview
+
+### External Agent Documentation (mcgrocer-sanitisation-agents)
+The AI agents that process product data are maintained in a separate repository. Each agent has its own documentation:
+
+| Agent | Description | Documentation |
+|-------|-------------|---------------|
+| **Category Agent** | AI-powered product categorization with multi-level taxonomy mapping | [README](https://github.com/mcgrocer-com/mcgrocer-sanitisation-agents/blob/master/mcgrocer/category-agent/README.md) |
+| **Weight & Dimension Agent** | Intelligent extraction of product weight, dimensions, and packaging info | [README](https://github.com/mcgrocer-com/mcgrocer-sanitisation-agents/blob/master/mcgrocer/weight-dimension-agent/README.md) |
+| **SEO Agent** | SEO optimization with keyword research, meta generation, and content scoring | [README](https://github.com/mcgrocer-com/mcgrocer-sanitisation-agents/blob/master/mcgrocer/seo_agent/README.md) |
+| **Copyright Agent** | Brand and trademark violation detection for product listings | [README](https://github.com/mcgrocer-com/mcgrocer-sanitisation-agents/blob/master/mcgrocer/copyright_agent/README.md) |
+
+> **Note**: The sanitisation agents repository is private. Contact the development team for access.
 
 ## Features
 
