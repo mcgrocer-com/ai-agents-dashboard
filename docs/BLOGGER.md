@@ -23,9 +23,9 @@ Generate professional blog content that:
 │  │   FRONTEND UI    │    │   AI SERVICES    │    │  EXTERNAL APIs   │       │
 │  ├──────────────────┤    ├──────────────────┤    ├──────────────────┤       │
 │  │ BloggerCreatePage│───▶│ gemini-content   │───▶│ Google Gemini    │       │
-│  │ BloggerDashboard │    │ ai.service       │    │ Decodo (Keywords)│       │
+│  │ BloggerDashboard │    │ ai.service       │    │ Decodo (Scraping)│       │
 │  │ BloggerDetailPage│    │ shopify.service  │    │ Shopify GraphQL  │       │
-│  │ 6-Step Wizard    │    │ seo-validator    │    │ Railway API      │       │
+│  │ 6-Step Wizard    │    │ seo-validator    │    │                  │       │
 │  └──────────────────┘    └──────────────────┘    └──────────────────┘       │
 │           │                      │                        │                  │
 │           │                      │                        │                  │
@@ -496,10 +496,9 @@ blogger_blog_products (
 
 | API | Purpose | Authentication |
 |-----|---------|----------------|
-| **Google Gemini** | AI content generation | `VITE_GEMINI_API_KEY` |
-| **Decodo** | Keyword research (Google Suggest) | Proxy via Edge Function |
+| **Google Gemini** | AI content generation, SEO validation | `VITE_GEMINI_API_KEY` |
+| **Decodo** | Keyword research, web scraping, article extraction | Proxy via Edge Function |
 | **Shopify GraphQL** | Product search, blog publishing | `SHOPIFY_API_KEY` |
-| **Railway API** | Alternative blog generation | Public endpoint |
 
 ## Configuration
 

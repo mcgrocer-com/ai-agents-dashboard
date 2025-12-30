@@ -184,7 +184,8 @@ Supabase Realtime for live dashboard metrics and product updates.
 
 ### API Integration
 - Supabase PostgreSQL database
-- Railway API for blog generation
+- Google Gemini AI for content generation
+- Decodo API for web scraping and keyword research
 - Shopify GraphQL for product/blog sync
 - ERPNext REST API for inventory
 
