@@ -105,18 +105,54 @@ When `parse: false` (default for keyword research):
 {
   "results": [
     {
-      "content": "[[\"baby oil\",[\"baby oil\",\"baby oil for skin\",\"baby oil for hair\",\"baby oil uses\",\"baby oil on face\",\"baby oil for adults\",\"baby oil in bath\",\"baby oil for massage\",\"baby oil sunscreen\",\"baby oil tanning\"],[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"],{\"google:suggestsubtypes\":[[],[],[],[],[],[],[],[],[],[]]}]]"
+      "content": "[[\"baby oil\",[\"baby oil\",\"baby oil for skin\",\"baby oil for hair\",\"baby oil uses\",\"baby oil for adults\"],[],{\"google:suggestsubtypes\":[[],[],[],[],[]]},{\"google:suggestrelevance\":[1250,601,600,554,553]}]]"
     }
   ]
 }
 ```
 
-The `content` field contains a JSON string with Google's autocomplete suggestions. Parse it to extract keyword suggestions:
+**Response Structure Breakdown:**
+
+The `content` field contains a JSON array with this structure:
+```javascript
+[
+  "original query",           // [0] - The search query
+  ["suggestion1", "..."],     // [1] - Array of keyword suggestions (up to 10)
+  [],                         // [2] - Empty (descriptions, not used)
+  { "google:suggestsubtypes": [...] },  // [3] - Suggestion metadata
+  { "google:suggestrelevance": [...] }  // [4] - RELEVANCE SCORES (0-1250)
+]
+```
+
+**Extracting Keywords with Relevance Scores:**
 ```javascript
 const data = JSON.parse(response.results[0].content);
-const keywords = data[0][1]; // Array of keyword suggestions
-// ["baby oil", "baby oil for skin", "baby oil for hair", ...]
+const keywords = data[0][1];           // Array of keyword suggestions
+const relevanceScores = data[0][4]?.['google:suggestrelevance'] || [];
+
+// Map keywords with their relevance scores
+const keywordsWithScores = keywords.map((keyword, index) => ({
+  keyword,
+  relevance: relevanceScores[index] || 0,  // Score 0-1250 (higher = more relevant)
+  // Convert to difficulty: higher relevance = lower difficulty
+  difficulty: Math.round(100 - (relevanceScores[index] / 12.5))
+}));
+
+// Example output:
+// [
+//   { keyword: "baby oil", relevance: 1250, difficulty: 0 },
+//   { keyword: "baby oil for skin", relevance: 601, difficulty: 52 },
+//   { keyword: "baby oil for hair", relevance: 600, difficulty: 52 }
+// ]
 ```
+
+**Relevance Score Interpretation:**
+| Score Range | Meaning | Difficulty |
+|-------------|---------|------------|
+| 1000-1250 | Very high relevance (trending/popular) | Low (0-20) |
+| 600-999 | High relevance | Medium (20-50) |
+| 300-599 | Moderate relevance | Medium-High (50-75) |
+| 0-299 | Lower relevance | High (75-100) |
 
 When `parse: true`:
 ```json
@@ -247,15 +283,24 @@ Returns parsed search results with organic listings, paid ads, knowledge graph, 
 
 ### Google Suggest (Keyword Research)
 
-- `parse: false` (default): Returns raw Google autocomplete response in `results[0].content` as a JSON string
-- `parse: true`: Returns parsed `suggestions` array directly
+- `parse: false` (default): Returns raw Google autocomplete response with relevance scores
+- `parse: true`: Returns parsed `suggestions` array directly (without scores)
 
-**Extracting keywords from raw response:**
+**Response array structure** (when `parse: false`):
+- `[0]` - Original query string
+- `[1]` - Keyword suggestions array (up to 10)
+- `[2]` - Empty descriptions array
+- `[3]` - Suggestion subtypes metadata
+- `[4]` - **`google:suggestrelevance`** - Relevance scores (0-1250)
+
+**Extracting keywords with scores:**
 ```javascript
-const rawContent = response.results[0].content;
-const parsed = JSON.parse(rawContent);
-const keywords = parsed[0][1]; // Array of 10 keyword suggestions
+const parsed = JSON.parse(response.results[0].content);
+const keywords = parsed[0][1];  // ["baby oil", "baby oil for skin", ...]
+const scores = parsed[0][4]?.['google:suggestrelevance'] || [];  // [1250, 601, 600, ...]
 ```
+
+See [ai.service.ts](../../src/services/blogger/ai.service.ts) `researchKeywords()` for implementation example.
 
 ### Image Proxy
 
