@@ -171,6 +171,284 @@ Fine-tune SEO elements:
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Keyword Research System
+
+The keyword research system uses Google Suggest via the Decodo API to discover high-value keywords.
+
+### Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        KEYWORD RESEARCH PIPELINE                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. USER INPUT                                                               │
+│     └── Topic: "baby oil"                                                    │
+│                                                                              │
+│  2. DECODO GOOGLE SUGGEST API                                                │
+│     ├── Call: POST /functions/v1/decodo-proxy                                │
+│     ├── Target: google_suggest                                               │
+│     └── Parse: false (get raw response with scores)                          │
+│                                                                              │
+│  3. RESPONSE PARSING                                                         │
+│     ├── [0] Original query: "baby oil"                                       │
+│     ├── [1] Suggestions: ["baby oil", "baby oil for skin", ...]              │
+│     └── [4] Relevance scores: {"google:suggestrelevance": [1250, 601, ...]}  │
+│                                                                              │
+│  4. SCORE CONVERSION                                                         │
+│     ├── Relevance: 0-1250 (higher = more popular/trending)                   │
+│     ├── Difficulty: 100 - (relevance / 10) (lower = easier to rank)          │
+│     └── Volume proxy: Use relevance score as search volume indicator         │
+│                                                                              │
+│  5. OUTPUT                                                                   │
+│     └── [{keyword, volume, difficulty}, ...]                                 │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Relevance Score Interpretation
+
+| Score Range | Meaning | SEO Difficulty |
+|-------------|---------|----------------|
+| 1000-1250 | Very high relevance (trending/popular) | Low (0-20) |
+| 600-999 | High relevance | Medium (20-50) |
+| 300-599 | Moderate relevance | Medium-High (50-75) |
+| 0-299 | Lower relevance | High (75-100) |
+
+### Implementation
+
+```javascript
+// ai.service.ts - researchKeywords()
+const response = await callDecodoProxy({
+  target: 'google_suggest',
+  query: topic,
+  parse: false  // Get raw response with relevance scores
+});
+
+// Parse response
+const contentArray = JSON.parse(data.results[0].content);
+const suggestions = contentArray[1];  // Keyword suggestions
+const relevanceScores = contentArray[4]?.['google:suggestrelevance'] || [];
+
+// Convert to keyword objects
+keywords = suggestions.map((suggestion, index) => ({
+  keyword: suggestion,
+  volume: relevanceScores[index] || 0,  // Use relevance as volume proxy
+  difficulty: Math.round(100 - (relevanceScores[index] / 10))
+}));
+```
+
+---
+
+## Competitive Article Scraping
+
+The system scrapes top-ranking articles to analyze competitor content strategies.
+
+### Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      ARTICLE SCRAPING PIPELINE                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. GOOGLE SEARCH (via Decodo)                                               │
+│     ├── Query: "{keyword} article" (focuses on editorial content)            │
+│     ├── Target: google_search                                                │
+│     ├── Region: UK (gl: 'uk', domain: google.co.uk)                          │
+│     └── Date filter: qdr:y (past year for freshness)                         │
+│                                                                              │
+│  2. CACHE CHECK (scraped_articles_cache table)                               │
+│     ├── Hash URL → Check for non-expired entry                               │
+│     ├── HIT: Return cached content, increment hit_count                      │
+│     └── MISS: Proceed to scraping                                            │
+│                                                                              │
+│  3. DECODO WEB SCRAPER                                                       │
+│     ├── Fetch raw HTML with anti-bot bypass                                  │
+│     ├── Desktop user agent                                                   │
+│     └── Returns full page HTML                                               │
+│                                                                              │
+│  4. GEMINI LLM EXTRACTION                                                    │
+│     ├── Pre-clean: Remove scripts, styles, SVGs, comments                    │
+│     ├── Limit to ~100KB to stay within token limits                          │
+│     ├── Extract: title, text, headings, summary                              │
+│     └── Separate regex extraction for images (LLM misses these)              │
+│                                                                              │
+│  5. CACHE STORE                                                              │
+│     ├── Store extracted content                                              │
+│     ├── TTL: 7 days                                                          │
+│     └── Upsert on URL conflict                                               │
+│                                                                              │
+│  6. FALLBACK (if Decodo fails)                                               │
+│     └── Stagehand on RunPod (if VITE_RUNPOD_API_URL configured)              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Cache Schema
+
+```sql
+scraped_articles_cache (
+  id UUID PRIMARY KEY,
+  url TEXT UNIQUE NOT NULL,
+  url_hash TEXT NOT NULL,          -- Fast lookup hash
+  title TEXT,
+  text TEXT,                        -- Extracted article content
+  headings TEXT[],                  -- Section headings array
+  summary TEXT,                     -- AI-generated summary
+  word_count INTEGER,
+  html_size INTEGER,
+  scrape_duration_ms INTEGER,
+  extract_duration_ms INTEGER,
+  images JSONB,                     -- [{src, alt, caption, summary}]
+  created_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,           -- TTL: 7 days
+  hit_count INTEGER DEFAULT 0,
+  last_accessed_at TIMESTAMPTZ
+)
+```
+
+### Image Extraction
+
+Images are extracted separately from LLM processing (LLM tends to miss them):
+
+1. **Priority 1**: Extract from `<figure>` tags (usually article images with captions)
+2. **Priority 2**: Extract from standalone `<img>` tags
+3. **Filter out**: logos, icons, avatars, tracking pixels
+4. **Limit**: Maximum 10 images per article
+
+### Batch Processing
+
+```javascript
+// scrapeArticlesBatch() - Parallel processing
+const results = await Promise.all(
+  urls.map(url => scrapeWithDecodo(url))
+);
+
+// Returns: { url, title, text, wordCount, headings, images, success, cached }
+```
+
+---
+
+## SEO Grading System
+
+The SEO validator uses AI agents to validate and fix content for Yoast SEO compliance.
+
+### Grading Scale
+
+| Grade | Score | Description |
+|-------|-------|-------------|
+| **A** | 90-100 | Excellent - Fully optimized |
+| **B** | 80-89 | Good - Minor improvements possible |
+| **C** | 70-79 | Average - Needs optimization |
+| **D** | 60-69 | Below average - Significant issues |
+| **F** | 0-59 | Failing - Major problems |
+
+### Issue Severity & Point Deductions
+
+| Severity | Point Deduction | Examples |
+|----------|-----------------|----------|
+| **Critical** | -25 points | Empty meta title, AI self-introduction in content |
+| **Error** | -15 points | Title too long, missing keyword, placeholder links |
+| **Warning** | -5 points | Excerpt too short, missing alt text |
+| **Info** | -1 point | Suggestions for improvement |
+
+### Validation Categories
+
+| Category | What's Checked | AI Agent Validates |
+|----------|----------------|---------------------|
+| **Title** | Length (50-60 chars), keyword inclusion, readability | ✓ |
+| **Description** | Length (140-160 chars), keyword, CTA, no AI patterns | ✓ |
+| **Excerpt** | Length (100-200 chars), uniqueness from description | ✓ |
+| **Headings** | No H1, sequential hierarchy (H2→H3→H4), no empty | ✓ |
+| **Links** | No placeholders (#, PRODUCT_URL), external rel="nofollow" | ✓ |
+| **Images** | Alt text present and descriptive | ✓ |
+| **AI Content** | No self-intro, no reasoning leaks, no meta bleed | ✓ |
+| **Tags** | 3-7 relevant tags, includes primary keyword | ✓ |
+
+### AI Content Detection Patterns
+
+The validator detects and flags these AI-generated patterns:
+
+**Critical (Must Remove):**
+- Self-introduction: "I am a writer/blogger", "My name is...", "With X years of experience"
+- AI reasoning: "I selected this keyword because...", "Based on my analysis..."
+- Meta bleed: "Selected keyword: ...", "SEO Strategy: ...", "Word count: ..."
+
+**Warning (Should Improve):**
+- Weak openings: "In this article, we will...", "Let's dive into..."
+- Generic phrases: "This blog post covers...", "Here's what you need to know..."
+
+### Iterative Fix Loop
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        SEO FIX ITERATION LOOP                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Initial Validation                                                          │
+│     └── Score: 65/100 (Grade: D)                                             │
+│                                                                              │
+│  Iteration 1                                                                 │
+│     ├── Issues: Title too long, missing keyword in description               │
+│     ├── AI Fix Agent: Generate fixes                                         │
+│     ├── Apply fixes                                                          │
+│     └── Re-validate: Score 78/100 (Grade: C)                                 │
+│                                                                              │
+│  Iteration 2                                                                 │
+│     ├── Issues: External links missing nofollow                              │
+│     ├── AI Fix Agent: Add rel="nofollow" to external links                   │
+│     ├── Apply content fixes                                                  │
+│     └── Re-validate: Score 92/100 (Grade: A) ✓                               │
+│                                                                              │
+│  STOP: Target score (90+) achieved                                           │
+│                                                                              │
+│  Configuration:                                                              │
+│     ├── Max iterations: 5-10 (user configurable)                             │
+│     ├── Target score: 90 (Grade A)                                           │
+│     └── Best version tracking (prevents score regression)                    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Score Calculation
+
+```javascript
+// seo-validator.service.ts
+calculateScore(): number {
+  let score = 100;
+  for (const issue of this.issues) {
+    switch (issue.severity) {
+      case 'critical': score -= 25; break;
+      case 'error': score -= 15; break;
+      case 'warning': score -= 5; break;
+      case 'info': score -= 1; break;
+    }
+  }
+  return Math.max(0, score);
+}
+```
+
+### Readability Score (Flesch Reading Ease)
+
+The system also calculates readability using an approximation of the Flesch Reading Ease formula:
+
+```javascript
+// Score = 206.835 - (1.015 × avg words per sentence) - (84.6 × avg syllables per word)
+// Normalized to 0-100 where higher = easier to read
+
+| Score | Difficulty | Grade Level |
+|-------|------------|-------------|
+| 90-100 | Very Easy | 5th grade |
+| 80-89 | Easy | 6th grade |
+| 70-79 | Fairly Easy | 7th grade |
+| 60-69 | Standard | 8th-9th grade |
+| 50-59 | Fairly Difficult | 10th-12th grade |
+| 30-49 | Difficult | College |
+| 0-29 | Very Difficult | College graduate |
+```
+
+---
+
 ## Database Schema
 
 ### Tables
