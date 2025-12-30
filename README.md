@@ -9,6 +9,7 @@ A real-time dashboard for monitoring and managing AI agents for the MCGrocer e-c
 ## Documentation
 
 - **[FRONTEND.md](./FRONTEND.md)** - Complete frontend architecture, components, services, and development guidelines
+- **[Blogger](./docs/BLOGGER.md)** - AI-powered blog content generator (architecture, services, output)
 - **[Edge Functions](./supabase/functions/README.md)** - Supabase Edge Functions documentation (27+ functions)
 - **[Shopify Functions](./supabase/functions/SHOPIFY_FUNCTIONS.md)** - Shopify-specific edge functions
 - **[Tunnel Maintenance](./docs/TUNNEL-MAINTENANCE.md)** - Infrastructure documentation
@@ -126,8 +127,9 @@ ai-dashboard/
 ├── supabase/           # Backend (Edge Functions, migrations)
 ├── public/             # Static assets
 ├── docs/               # Infrastructure documentation
+│   ├── BLOGGER.md      # Blogger feature documentation
+│   └── TUNNEL-MAINTENANCE.md
 ├── FRONTEND.md         # Frontend documentation
-├── CLAUDE.md           # Development guidelines
 └── package.json        # Dependencies
 ```
 
@@ -248,7 +250,7 @@ See [FRONTEND.md](./FRONTEND.md) for detailed troubleshooting.
 ## Contributing
 
 1. Create feature branch from `main`
-2. Follow code guidelines in [CLAUDE.md](./CLAUDE.md)
+2. Follow code quality guidelines (see Development section)
 3. Test changes locally
 4. Submit pull request with clear description
 
