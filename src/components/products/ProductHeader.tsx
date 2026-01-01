@@ -189,7 +189,7 @@ export function ProductHeader({
         </div>
 
         {/* Product Info */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 mb-2">{name}</h1>

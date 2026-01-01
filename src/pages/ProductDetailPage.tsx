@@ -646,6 +646,7 @@ export function ProductDetailPage() {
         open={priceCompareOpen}
         onClose={() => setPriceCompareOpen(false)}
         productName={product.name || ''}
+        productDescription={product.description || product.ai_description || ''}
       />
     </div>
   )

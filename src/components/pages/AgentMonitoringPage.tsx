@@ -88,6 +88,7 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
   const [isBulkResyncing, setIsBulkResyncing] = useState(false)
   const [isBulkResetting, setIsBulkResetting] = useState(false)
+  const [isBulkRemoving, setIsBulkRemoving] = useState(false)
 
   const { metrics } = useAgentMetrics()
   const { vendors } = useVendors()
@@ -296,23 +297,18 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     setIsBulkResyncing(true)
 
     const productIdsArray = Array.from(selectedProductIds)
-    let successCount = 0
-    let errorCount = 0
 
-    for (const productId of productIdsArray) {
-      try {
-        const { data, error } = await supabase.functions.invoke('resync-product-to-erpnext', {
-          body: { productId }
-        })
-        if (error || !data?.success) {
-          errorCount++
-        } else {
-          successCount++
-        }
-      } catch {
-        errorCount++
-      }
-    }
+    // Run all resyncs in parallel for better performance
+    const results = await Promise.allSettled(
+      productIdsArray.map((productId) =>
+        supabase.functions.invoke('resync-product-to-erpnext', { body: { productId } })
+      )
+    )
+
+    const successCount = results.filter(
+      (r) => r.status === 'fulfilled' && r.value.data?.success
+    ).length
+    const errorCount = productIdsArray.length - successCount
 
     setIsBulkResyncing(false)
     clearSelection()
@@ -336,26 +332,21 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     setIsBulkResetting(true)
 
     const productIdsArray = Array.from(selectedProductIds)
-    let successCount = 0
-    let errorCount = 0
 
-    for (const productId of productIdsArray) {
-      try {
-        // Reset the copyright_status to pending
-        const { error } = await supabase
+    // Run all resets in parallel for better performance
+    const results = await Promise.allSettled(
+      productIdsArray.map((productId) =>
+        supabase
           .from('pending_products')
           .update({ copyright_status: 'pending' })
           .eq('id', productId)
+      )
+    )
 
-        if (error) {
-          errorCount++
-        } else {
-          successCount++
-        }
-      } catch {
-        errorCount++
-      }
-    }
+    const successCount = results.filter(
+      (r) => r.status === 'fulfilled' && !r.value.error
+    ).length
+    const errorCount = productIdsArray.length - successCount
 
     setIsBulkResetting(false)
     clearSelection()
@@ -369,6 +360,41 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
     } else {
       setToast({
         message: `Reset ${successCount} product(s), ${errorCount} failed`,
+        type: errorCount === productIdsArray.length ? 'error' : 'info'
+      })
+    }
+  }
+
+  const handleBulkRemoveFromQueue = async () => {
+    if (selectedProductIds.size === 0) return
+    setIsBulkRemoving(true)
+
+    const productIdsArray = Array.from(selectedProductIds)
+
+    // Run all removals in parallel for better performance
+    const results = await Promise.allSettled(
+      productIdsArray.map((productId) =>
+        supabase.functions.invoke('remove-product-from-copyright', { body: { productId } })
+      )
+    )
+
+    const successCount = results.filter(
+      (r) => r.status === 'fulfilled' && r.value.data?.success
+    ).length
+    const errorCount = productIdsArray.length - successCount
+
+    setIsBulkRemoving(false)
+    clearSelection()
+    refresh()
+
+    if (errorCount === 0) {
+      setToast({
+        message: `Successfully removed ${successCount} product(s) from queue`,
+        type: 'success'
+      })
+    } else {
+      setToast({
+        message: `Removed ${successCount} product(s), ${errorCount} failed`,
         type: errorCount === productIdsArray.length ? 'error' : 'info'
       })
     }
@@ -588,7 +614,7 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleBulkResyncToErpnext}
-                    disabled={isBulkResyncing || isBulkResetting}
+                    disabled={isBulkResyncing || isBulkResetting || isBulkRemoving}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
                   >
                     <CloudUpload className={`h-4 w-4 ${isBulkResyncing ? 'animate-pulse' : ''}`} />
@@ -596,11 +622,19 @@ export function AgentMonitoringPage({ agentType, config }: AgentMonitoringPagePr
                   </button>
                   <button
                     onClick={handleBulkResetCompleted}
-                    disabled={isBulkResyncing || isBulkResetting}
+                    disabled={isBulkResyncing || isBulkResetting || isBulkRemoving}
                     className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
                   >
                     <RotateCcw className={`h-4 w-4 ${isBulkResetting ? 'animate-spin' : ''}`} />
                     <span>{isBulkResetting ? 'Resetting...' : 'Reset to Pending'}</span>
+                  </button>
+                  <button
+                    onClick={handleBulkRemoveFromQueue}
+                    disabled={isBulkResyncing || isBulkResetting || isBulkRemoving}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                  >
+                    <Trash2 className={`h-4 w-4 ${isBulkRemoving ? 'animate-pulse' : ''}`} />
+                    <span>{isBulkRemoving ? 'Removing...' : 'Remove from Queue'}</span>
                   </button>
                 </div>
               </div>

@@ -2,11 +2,12 @@
  * PriceComparisonDialog Component
  *
  * Modal dialog for displaying price comparison results from various retailers.
+ * Supports optional product description for better AI matching accuracy.
  */
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Scale, X, ExternalLink, Loader2, AlertTriangle } from 'lucide-react'
+import { Scale, X, ExternalLink, Loader2, AlertTriangle, ToggleLeft, ToggleRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 
 interface PriceComparisonProduct {
@@ -14,6 +15,7 @@ interface PriceComparisonProduct {
   product_name: string
   price: number
   source_url: string
+  availability: 'In Stock' | 'Out of Stock' | 'Unsure'
 }
 
 interface PriceComparisonResults {
@@ -21,6 +23,7 @@ interface PriceComparisonResults {
   products?: PriceComparisonProduct[]
   metadata?: {
     execution_time: number
+    description?: string | null
   }
   debug?: Record<string, unknown>
   error?: string
@@ -30,12 +33,19 @@ interface PriceComparisonDialogProps {
   open: boolean
   onClose: () => void
   productName: string
+  productDescription?: string
 }
 
-export function PriceComparisonDialog({ open, onClose, productName }: PriceComparisonDialogProps) {
+export function PriceComparisonDialog({
+  open,
+  onClose,
+  productName,
+  productDescription,
+}: PriceComparisonDialogProps) {
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<PriceComparisonResults | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [includeDescription, setIncludeDescription] = useState(true)
 
   const fetchPriceComparison = async () => {
     if (!productName) return
@@ -45,11 +55,18 @@ export function PriceComparisonDialog({ open, onClose, productName }: PriceCompa
     setResults(null)
 
     try {
+      const requestBody: Record<string, unknown> = {
+        query: productName,
+        limit: 6,
+      }
+
+      // Include description if toggle is on and description exists
+      if (includeDescription && productDescription) {
+        requestBody.description = productDescription
+      }
+
       const { data, error: fetchError } = await supabase.functions.invoke('price-comparison', {
-        body: {
-          query: productName,
-          limit: 6,
-        },
+        body: requestBody,
       })
 
       if (fetchError) throw fetchError
@@ -99,6 +116,17 @@ export function PriceComparisonDialog({ open, onClose, productName }: PriceCompa
     }
   }, [open])
 
+  const getAvailabilityStyle = (availability: string) => {
+    switch (availability) {
+      case 'In Stock':
+        return 'bg-green-100 text-green-700'
+      case 'Out of Stock':
+        return 'bg-red-100 text-red-700'
+      default:
+        return 'bg-gray-100 text-gray-600'
+    }
+  }
+
   if (!open) return null
 
   return createPortal(
@@ -127,13 +155,32 @@ export function PriceComparisonDialog({ open, onClose, productName }: PriceCompa
                 <p className="text-sm text-gray-600 truncate max-w-md">{productName}</p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Close dialog"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Description Toggle */}
+              {productDescription && (
+                <button
+                  onClick={() => setIncludeDescription(!includeDescription)}
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg hover:bg-orange-100 transition-colors"
+                  title={includeDescription ? 'Description included in search' : 'Description not included'}
+                >
+                  {includeDescription ? (
+                    <ToggleRight className="h-5 w-5 text-orange-600" />
+                  ) : (
+                    <ToggleLeft className="h-5 w-5 text-gray-400" />
+                  )}
+                  <span className={includeDescription ? 'text-orange-600' : 'text-gray-500'}>
+                    Desc
+                  </span>
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {/* Content */}
@@ -197,7 +244,7 @@ export function PriceComparisonDialog({ open, onClose, productName }: PriceCompa
                         }`}
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span
                               className={`text-xs font-medium px-2 py-0.5 rounded ${
                                 index === 0
@@ -212,6 +259,14 @@ export function PriceComparisonDialog({ open, onClose, productName }: PriceCompa
                                 Best Price
                               </span>
                             )}
+                            {/* Availability Badge */}
+                            <span
+                              className={`text-xs font-medium px-2 py-0.5 rounded ${getAvailabilityStyle(
+                                item.availability
+                              )}`}
+                            >
+                              {item.availability}
+                            </span>
                           </div>
                           <p
                             className="text-sm text-gray-700 mt-1 truncate"
