@@ -2,7 +2,7 @@
 
 Advanced product price comparison function that searches across multiple UK retailers using Serper Search API, AI verification with Gemini, and availability checking. Results are cached with TTL to reduce API costs.
 
-**Current Version:** v23
+**Current Version:** v24
 
 ## Endpoint
 
@@ -390,7 +390,14 @@ The `debug` object provides insights into the search process:
 
 ## Version History
 
-### v23 (Current)
+### v24 (Current)
+- Removed price requirement from broader search filter
+- Broader search now scrapes ALL valid product page URLs (not just ones with Serper price data)
+- Fixes issue where fashion/specialty retailers don't expose structured prices in search results
+- Scraper extracts prices from JSON-LD for these retailers
+- Enables price comparison for non-grocery retailers (fashion, boutiques, specialty stores)
+
+### v23
 - Added vendor URL pattern validation for 27 retailers
 - Fast regex pre-filter catches category pages BEFORE expensive scraping/AI calls
 - Product/category URL templates per vendor in `vendor-url-patterns.ts`

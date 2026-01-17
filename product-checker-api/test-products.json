@@ -1,0 +1,471 @@
+{
+  "description": "Comprehensive test products for Product Checker API - Production Readiness Test",
+  "lastUpdated": "2026-01-10",
+  "notes": "70 products (5 per vendor × 14 vendors) fetched from Supabase scraped_products table for production validation testing.",
+  "vendors": [
+    "argos",
+    "asda",
+    "boots",
+    "cafepod",
+    "cocacola",
+    "costco",
+    "harrods",
+    "johnlewis",
+    "lego",
+    "m&s",
+    "next",
+    "ocado",
+    "sainsbury",
+    "superdrug"
+  ],
+  "products": {
+    "argos": [
+      {
+        "url": "https://www.argos.co.uk/product/2158675",
+        "name": "Slumberdown Wonderful Wool Medium Weight Duvet - Superking",
+        "expectedPrice": "142.80",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.argos.co.uk/product/2158228",
+        "name": "Argos Home Crushed Velvet Lined Eyelet Curtains - Charcoal",
+        "expectedPrice": "77.50",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.argos.co.uk/product/2154789",
+        "name": "Silentnight Kingsize 4 Drawer Divan Bed Base - Sandstone",
+        "expectedPrice": "474.50",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.argos.co.uk/product/2154765",
+        "name": "Silentnight Kingsize Divan Bed Base - Sandstone",
+        "expectedPrice": "351.00",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.argos.co.uk/product/2154693",
+        "name": "Silentnight Small Double 4 Drawer Divan Bed Base - Sandstone",
+        "expectedPrice": "390.00",
+        "expectedStock": "in stock"
+      }
+    ],
+    "asda": [
+      {
+        "url": "https://groceries.asda.com/product/1000383178259",
+        "name": "Paw Patrol True Metal Diecast Gift Pack",
+        "expectedPrice": "46.50",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://groceries.asda.com/product/1000383178281",
+        "name": "Nulicious Pear 6 Months",
+        "expectedPrice": "4.38",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://groceries.asda.com/product/1000000443267",
+        "name": "KTC Kewra water",
+        "expectedPrice": "1.96",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://groceries.asda.com/product/1000383179398",
+        "name": "George Home Disney Nightmare Before Christmas Fleece Blanket",
+        "expectedPrice": "6.09",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://groceries.asda.com/product/1000383178390",
+        "name": "George Home Friend Birthday Card",
+        "expectedPrice": "3.50",
+        "expectedStock": "in stock"
+      }
+    ],
+    "boots": [
+      {
+        "url": "https://www.boots.com/chanel-le-volume-ultra-noir-de-chanel-le-volume-ultra-noir-de-chanel-new-10269615",
+        "name": "CHANEL LE VOLUME ULTRA-NOIR Le Volume Ultra-Noir De Chanel New",
+        "expectedPrice": "57.35",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.boots.com/chanel-demaquillant-yeux-intense-gentle-biphase-eye-makeup-remover-bottle-100ml-10326079",
+        "name": "CHANEL DEMAQUILLANT YEUX INTENSE GENTLE BIPHASE EYE MAKEUP REMOVER",
+        "expectedPrice": "48.05",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.boots.com/chanel-le-lift-pro-retexturizing-aha-peel-corrects-exfoliates-resurfaces-tube-100ml-10343831",
+        "name": "CHANEL LE LIFT PRO RETEXTURIZING AHA PEEL",
+        "expectedPrice": "238.00",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.boots.com/chanel-allure-homme-sport-all-over-spray-100ml-10325045",
+        "name": "CHANEL ALLURE HOMME SPORT ALL-OVER SPRAY",
+        "expectedPrice": "122.45",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.boots.com/chanel-intimiable-waterproof-volume-length-curl-separation-10064481",
+        "name": "CHANEL INIMITABLE WATERPROOF Volume - Length - Curl - Separation 5g",
+        "expectedPrice": "57.35",
+        "expectedStock": "in stock"
+      }
+    ],
+    "cafepod": [
+      {
+        "url": "https://www.cafepod.com/products/decaf-brunch-blend-nespresso-compatible-coffee-pods",
+        "name": "Decaf Brunch Blend",
+        "expectedPrice": "8.22",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.cafepod.com/products/intense-roast-nespresso-compatible-coffee-pods",
+        "name": "Intense Roast",
+        "expectedPrice": "7.88",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.cafepod.com/products/supercharger-espresso-nespresso-compatible-coffee-pods",
+        "name": "Supercharger Espresso",
+        "expectedPrice": "8.05",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.cafepod.com/products/brunch-blend-nespresso-compatible-coffee-pods",
+        "name": "Brunch Blend",
+        "expectedPrice": "7.88",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.cafepod.com/products/nespresso-pods-strong-pack?variant=32793992953940",
+        "name": "Strong Coffee Bundle",
+        "expectedPrice": "43.18",
+        "expectedStock": "in stock"
+      }
+    ],
+    "cocacola": [
+      {
+        "url": "https://www.yourcoca-cola.co.uk/fanta-pear-24-x-330ml/17353187.html",
+        "name": "Fanta Pear 24 x 330ml",
+        "expectedPrice": "22.95",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.yourcoca-cola.co.uk/innocent-kids-apples-and-strawberries-juicy-water-30-x-200ml/17028305.html",
+        "name": "Innocent Kids Apples Strawberries Juicy Water 30 x 200ml",
+        "expectedPrice": "39.20",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.yourcoca-cola.co.uk/innocent-kids-apples-mangoes-juicy-water-30-x-200ml/17028287.html",
+        "name": "Innocent Kids Apples Mangoes Juicy Water 30 x 200ml",
+        "expectedPrice": "39.20",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.yourcoca-cola.co.uk/costa-coffee-double-shot-plus-caramel-12-x-250ml/16912906.html",
+        "name": "Costa Coffee Double Shot Plus Caramel 12 x 250ml",
+        "expectedPrice": "32.73",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.yourcoca-cola.co.uk/monster-energy-drink-lando-norris-zero-sugar-12-x-500ml/16904533.html",
+        "name": "Monster Energy Drink Lando Norris Zero Sugar 12 x 500ml",
+        "expectedPrice": "26.77",
+        "expectedStock": "in stock"
+      }
+    ],
+    "costco": [
+      {
+        "url": "https://www.costco.co.uk/Grocery-Household/Grocery-Delivery/Hennessy-VS-Cognac-70cl/p/55371",
+        "name": "Hennessy VS Cognac 70cl",
+        "expectedPrice": "47.72",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.costco.co.uk/Grocery-Household/Chilled-Foods/Meat-Meat-Boxes/Taste-Tradition-Rare-Breed-Suckling-Pig-8-12kg-Serves-8-12-people/p/141221",
+        "name": "Taste Tradition Rare Breed Suckling Pig 8-12kg Serves 8-12 people",
+        "expectedPrice": "153.99",
+        "expectedStock": "out of stock"
+      },
+      {
+        "url": "https://www.costco.co.uk/Grocery-Household/Chilled-Foods/Meat-Meat-Boxes/Taste-Tradition-Mixed-Lamb-Box-49kg/p/142751",
+        "name": "Taste Tradition Mixed Lamb Box 49kg",
+        "expectedPrice": "108.48",
+        "expectedStock": "out of stock"
+      },
+      {
+        "url": "https://www.costco.co.uk/Grocery-Household/Chilled-Foods/Meat-Meat-Boxes/Taste-Tradition-Fresh-Porchetta-with-Italian-Herbs-45kg-Serves-10-16-people/p/144612",
+        "name": "Taste Tradition Fresh Porchetta with Italian Herbs 45kg Serves 10-16 people",
+        "expectedPrice": "108.48",
+        "expectedStock": "out of stock"
+      },
+      {
+        "url": "https://www.costco.co.uk/Grocery-Household/Chilled-Foods/Meat-Meat-Boxes/Taste-Tradition-Fresh-Porchetta-with-Italian-Herbs-22kg-Serves-8-10-people/p/142740",
+        "name": "Taste Tradition Fresh Porchetta with Italian Herbs 22kg Serves 8-10 people",
+        "expectedPrice": "61.98",
+        "expectedStock": "out of stock"
+      }
+    ],
+    "harrods": [
+      {
+        "url": "https://www.harrods.com/en-us/p/chanel-rouge-coco-baume-000000000007399438",
+        "name": "CHANEL Rouge Coco Baume",
+        "expectedPrice": "79.05",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.harrods.com/en-us/p/chanel-rouge-coco-baume-000000000007138712",
+        "name": "CHANEL Rouge Coco Baume",
+        "expectedPrice": "79.05",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.harrods.com/en-us/p/chanel-rouge-allure-lipstick-000000000007243218",
+        "name": "CHANEL Rouge Allure Lipstick",
+        "expectedPrice": "82.15",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.harrods.com/en-us/p/balenciaga-acetate-06e000315-sunglasses-000000000007487080",
+        "name": "BALENCIAGA Acetate Sunglasses",
+        "expectedPrice": "1070.00",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.harrods.com/en-us/p/balenciaga-shrunken-windbreaker-000000000007812243",
+        "name": "BALENCIAGA Shrunken Windbreaker",
+        "expectedPrice": "2780.00",
+        "expectedStock": "in stock"
+      }
+    ],
+    "johnlewis": [
+      {
+        "url": "https://www.johnlewis.com/hachette-book-group-workman-absolutely-chanel-book/p112770696",
+        "name": "Hachette Book Group Workman Absolutely Chanel Book",
+        "expectedPrice": "50.00",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.johnlewis.com/chanel-coco-mademoiselle-eau-de-parfum-intense-spray/p3445306",
+        "name": "CHANEL Coco Mademoiselle Eau de Parfum Intense Spray",
+        "expectedPrice": "283.50",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.johnlewis.com/chanel-allure-homme-edition-blanche-eau-de-toilette-concentree-spray/p1685477",
+        "name": "CHANEL Allure Homme Edition Blanche Eau de Toilette Concentree Spray",
+        "expectedPrice": "231.28",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.johnlewis.com/chanel-le-volume-de-chanel-waterproof-mascara/p1723642",
+        "name": "CHANEL Le Volume De CHANEL Waterproof Mascara - 20 Brun",
+        "expectedPrice": "55.80",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.johnlewis.com/chanel-inimitable-volume-length-curl-separation/p1723610",
+        "name": "CHANEL Inimitable Volume - Length - Curl - Separation",
+        "expectedPrice": "86.49",
+        "expectedStock": "in stock"
+      }
+    ],
+    "lego": [
+      {
+        "url": "https://www.lego.com/en-gb/product/backpack-space-cadet-5008685",
+        "name": "Backpack - Space Cadet",
+        "expectedPrice": "74.38",
+        "expectedStock": "out of stock"
+      },
+      {
+        "url": "https://www.lego.com/en-gb/product/albus-dumbledore-plush-5007454",
+        "name": "Albus Dumbledore Plush",
+        "expectedPrice": "39.98",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.lego.com/en-gb/product/at-st-walker-75417",
+        "name": "AT-ST Walker",
+        "expectedPrice": "251.99",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.lego.com/en-gb/product/a-spellbinding-guide-to-hogwarts-houses-5007615",
+        "name": "A Spellbinding Guide to Hogwarts Houses",
+        "expectedPrice": "22.08",
+        "expectedStock": "out of stock"
+      },
+      {
+        "url": "https://www.lego.com/en-gb/product/backpack-cars-in-blue-5008688",
+        "name": "Backpack - Cars in Blue",
+        "expectedPrice": "52.68",
+        "expectedStock": "in stock"
+      }
+    ],
+    "m&s": [
+      {
+        "url": "https://www.marksandspencer.com/autumn-walk-3-wick-candle/p/hbp60742027",
+        "name": "Autumn Walk 3 Wick Candle",
+        "expectedPrice": "28.90",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.marksandspencer.com/bramble-platter/p/hbp60747457",
+        "name": "Bramble Platter",
+        "expectedPrice": "32.00",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.marksandspencer.com/black-tea-cologne-100ml/p/hbp60600806",
+        "name": "Black Tea Cologne 100ml",
+        "expectedPrice": "153.45",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.marksandspencer.com/body-mist-collection/p/hbp60743506",
+        "name": "Body Mist Collection",
+        "expectedPrice": "14.00",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.marksandspencer.com/aramis-intuition-50ml/p/hbp60772447",
+        "name": "Aramis Intuition Eau de Parfum 50ml",
+        "expectedPrice": "103.85",
+        "expectedStock": "in stock"
+      }
+    ],
+    "next": [
+      {
+        "url": "https://www.next.co.uk/style/su215660/430465#430465",
+        "name": "Set of 3 Black Moderna Storage Tins",
+        "expectedPrice": "32.00",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.next.co.uk/style/su795502/w79540#w79540",
+        "name": "MONHOUSE White 600ml Mini Moisture Absorber Dehumidifier",
+        "expectedPrice": "77.50",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.next.co.uk/style/su679982/f89276#f89276",
+        "name": "Black & Blum Orange Stainless Steel Sandwich Box",
+        "expectedPrice": "51.15",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.next.co.uk/style/su563029/ay5618#ay5618",
+        "name": "Bath & Body Works A Thousand Wishes 3 Wick Candle 411g",
+        "expectedPrice": "33.15",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.next.co.uk/style/su563029/f57494#f57494",
+        "name": "Bath & Body Works Clear 3 Wick Candle 411g",
+        "expectedPrice": "33.15",
+        "expectedStock": "in stock"
+      }
+    ],
+    "ocado": [
+      {
+        "url": "https://www.ocado.com/products/m-s-girls-disney-frozen-knickers-4-5-years-multi/662193011",
+        "name": "M&S Girls Disney Frozen Knickers, 4-5 Years, Multi",
+        "expectedPrice": "16.62",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.ocado.com/products/m-s-boys-collection-cotton-rich-chinos-7-8-years-navy/661989011",
+        "name": "M&S Boys Collection, Cotton Rich Chinos, 7-8 Years, Navy",
+        "expectedPrice": "20.40",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.ocado.com/products/m-s-boys-collection-cotton-rich-chinos-11-12-years-stone/662226011",
+        "name": "M&S Boys Collection, Cotton Rich Chinos, 11-12 Years, Stone",
+        "expectedPrice": "20.40",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.ocado.com/products/m-s-girls-crease-resistant-school-skirts-6-7-years-black/543738011",
+        "name": "M&S Girls Crease Resistant School Skirts, 6-7 Years, Black",
+        "expectedPrice": "20.40",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.ocado.com/products/j2o-glitterberry/564169011",
+        "name": "J2O Glitterberry",
+        "expectedPrice": "18.36",
+        "expectedStock": "in stock"
+      }
+    ],
+    "sainsbury": [
+      {
+        "url": "https://www.sainsburys.co.uk/gol-ui/product/sainsburys-cauliflower-cheese-kit-55g",
+        "name": "Sainsbury's Cauliflower Cheese Kit 55g",
+        "expectedPrice": "2.63",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.sainsburys.co.uk/gol-ui/product/sainsburys-north-indian-style-karahi-taste-the-difference-340g",
+        "name": "Sainsbury's North Indian Style Karahi Curry Sauce, Taste the Difference 340g",
+        "expectedPrice": "4.39",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.sainsburys.co.uk/gol-ui/product/sainsburys-high-juice-blackcurrant-squash--no-added-sugar-1l",
+        "name": "Sainsbury's High Juice Blackcurrant Squash, No Added Sugar 1L",
+        "expectedPrice": "3.94",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.sainsburys.co.uk/gol-ui/product/sainsburys-green-care-mandarin-lime-kitchen-cleaner-750ml",
+        "name": "Sainsbury's Green Care Mandarin & Lime Kitchen Cleaner 750ml",
+        "expectedPrice": "3.41",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.sainsburys.co.uk/gol-ui/product/sainsburys-british-spring-water-12x500ml",
+        "name": "Sainsbury's British Bottled Sparkling Spring Water 12x500ml",
+        "expectedPrice": "5.26",
+        "expectedStock": "in stock"
+      }
+    ],
+    "superdrug": [
+      {
+        "url": "https://www.superdrug.com/toiletries/bathing-accessories/bath-sponges-body-puffs/bomb-cosmetics-body-buffer-soap-sponge-cosmo-cocktail/p/mp-00160038",
+        "name": "Bomb Cosmetics Body Buffer Soap Sponge - Cosmo Cocktail",
+        "expectedPrice": "20.38",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.superdrug.com/hair/hair-conditioners/colour-protect-conditioner/goldwell-dualsenses-blonde-highlight-anti-yellow-conditioner/p/mp-00057070",
+        "name": "Goldwell Dualsenses Blonde Highlight Anti Yellow Conditioner",
+        "expectedPrice": "38.32",
+        "expectedStock": "out of stock"
+      },
+      {
+        "url": "https://www.superdrug.com/skin/face-skin-care/face-cream/purito-timeless-bloom-retinol-spot-cream-30ml/p/mp-00136722",
+        "name": "PURITO Timeless Bloom Retinol Spot Cream 30ml",
+        "expectedPrice": "33.60",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.superdrug.com/make-up/lips/liquid-lipsticks/guerlain-kisskiss-pink-liquid-lipstick-l367-alluring-matte/p/mp-00067185",
+        "name": "Guerlain KissKiss Pink Liquid Lipstick L367 Alluring Matte",
+        "expectedPrice": "48.05",
+        "expectedStock": "in stock"
+      },
+      {
+        "url": "https://www.superdrug.com/hair/pre-shampoo-treatment/sunny-isle-jamaican-black-castor-oil-natural-curly-styling-c/p/mp-00070302",
+        "name": "Sunny Isle Jamaican Black Castor Oil Natural Curly Styling C",
+        "expectedPrice": "18.68",
+        "expectedStock": "in stock"
+      }
+    ]
+  }
+}
