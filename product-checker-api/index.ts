@@ -5,8 +5,49 @@
  */
 import "dotenv/config";
 import express from "express";
+import { existsSync, readdirSync } from "fs";
 import { checkProduct, checkProductWithPage, ProductCheckResult } from "./product-checker";
-import { getGlobalPool, shutdownGlobalPool } from "./browser-pool";
+import { getGlobalPool, shutdownGlobalPool, restartGlobalPool } from "./browser-pool";
+
+// Dynamically set CHROME_PATH if not already set (needed for Stagehand AI extraction)
+if (!process.env.CHROME_PATH) {
+  const playwrightDir = "/root/.cache/ms-playwright";
+  if (existsSync(playwrightDir)) {
+    try {
+      const dirs = readdirSync(playwrightDir).filter(d => d.match(/^chromium-\d+$/));
+      if (dirs.length > 0) {
+        // Sort by version number and take the latest
+        dirs.sort((a, b) => {
+          const vA = parseInt(a.split("-")[1], 10);
+          const vB = parseInt(b.split("-")[1], 10);
+          return vB - vA;
+        });
+        const latestChromium = dirs[0];
+        // Try chrome-linux64 first (newer structure), then chrome-linux (older)
+        for (const subdir of ["chrome-linux64", "chrome-linux"]) {
+          const chromePath = `${playwrightDir}/${latestChromium}/${subdir}/chrome`;
+          if (existsSync(chromePath)) {
+            process.env.CHROME_PATH = chromePath;
+            console.log(`[Server] Auto-detected CHROME_PATH: ${chromePath}`);
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[Server] Error auto-detecting CHROME_PATH:", e);
+    }
+  }
+  // Fallback to common system paths
+  if (!process.env.CHROME_PATH) {
+    for (const path of ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"]) {
+      if (existsSync(path)) {
+        process.env.CHROME_PATH = path;
+        console.log(`[Server] Using system Chrome: ${path}`);
+        break;
+      }
+    }
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -49,7 +90,7 @@ async function processWithConcurrency<T, R>(
 }
 
 // Health check endpoint
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   const pool = usePool ? getGlobalPool() : null;
   const poolStats = pool?.getStats();
   res.json({
@@ -59,12 +100,38 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Restart browser pool endpoint - refreshes all browser instances
+app.post("/restart-pool", async (_req, res) => {
+  try {
+    console.log(`[${new Date().toISOString()}] Restarting browser pool...`);
+    const result = await restartGlobalPool();
+    console.log(`[${new Date().toISOString()}] Pool restarted: ${result.browsers} browsers`);
+    res.json({
+      success: true,
+      message: "Browser pool restarted successfully",
+      browsers: result.browsers,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Error restarting pool:`, error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to restart browser pool",
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
 // Product check endpoint - uses browser pool for parallel processing
 app.post("/check", async (req, res) => {
-  const { url, productName } = req.body;
+  const { url, productName, geminiApiKey } = req.body;
 
   if (!url) {
     return res.status(400).json({ error: "URL is required" });
+  }
+
+  if (!geminiApiKey) {
+    return res.status(400).json({ error: "geminiApiKey is required" });
   }
 
   try {
@@ -78,13 +145,13 @@ app.post("/check", async (req, res) => {
       const { page, release } = await pool.acquire();
 
       try {
-        result = await checkProductWithPage(page, url, productName);
+        result = await checkProductWithPage(page, url, productName, geminiApiKey);
       } finally {
         await release();
       }
     } else {
       // Fallback to original method (creates new browser each time)
-      result = await checkProduct(url, productName);
+      result = await checkProduct(url, productName, geminiApiKey);
     }
 
     console.log(`[${new Date().toISOString()}] Result:`, result);
@@ -102,9 +169,14 @@ app.post("/check", async (req, res) => {
 app.get("/check", async (req, res) => {
   const url = req.query.url as string;
   const productName = req.query.productName as string | undefined;
+  const geminiApiKey = req.query.geminiApiKey as string;
 
   if (!url) {
     return res.status(400).json({ error: "URL query parameter is required" });
+  }
+
+  if (!geminiApiKey) {
+    return res.status(400).json({ error: "geminiApiKey query parameter is required" });
   }
 
   try {
@@ -117,12 +189,12 @@ app.get("/check", async (req, res) => {
       const { page, release } = await pool.acquire();
 
       try {
-        result = await checkProductWithPage(page, url, productName);
+        result = await checkProductWithPage(page, url, productName, geminiApiKey);
       } finally {
         await release();
       }
     } else {
-      result = await checkProduct(url, productName);
+      result = await checkProduct(url, productName, geminiApiKey);
     }
 
     console.log(`[${new Date().toISOString()}] Result:`, result);
@@ -148,10 +220,14 @@ interface BatchResult extends ProductCheckResult {
 }
 
 app.post("/check-batch", async (req, res) => {
-  const { items, concurrency } = req.body as { items: BatchItem[]; concurrency?: number };
+  const { items, concurrency, geminiApiKey } = req.body as { items: BatchItem[]; concurrency?: number; geminiApiKey: string };
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "items array is required" });
+  }
+
+  if (!geminiApiKey) {
+    return res.status(400).json({ error: "geminiApiKey is required" });
   }
 
   // With browser pool, we can handle more concurrent requests
@@ -173,12 +249,12 @@ app.post("/check-batch", async (req, res) => {
           const { page, release } = await pool.acquire();
 
           try {
-            result = await checkProductWithPage(page, item.url, item.productName);
+            result = await checkProductWithPage(page, item.url, item.productName, geminiApiKey);
           } finally {
             await release();
           }
         } else {
-          result = await checkProduct(item.url, item.productName);
+          result = await checkProduct(item.url, item.productName, geminiApiKey);
         }
 
         return { ...result, success: true };
@@ -235,8 +311,8 @@ async function startServer() {
     console.log(`Product Checker API v2 running on port ${PORT}`);
     console.log(`Browser Pool: ${usePool ? `enabled (${POOL_SIZE} browsers)` : "disabled"}`);
     console.log(`Health: http://localhost:${PORT}/health`);
-    console.log(`Check:  POST http://localhost:${PORT}/check { "url": "...", "productName": "optional hint" }`);
-    console.log(`Batch:  POST http://localhost:${PORT}/check-batch { "items": [...], "concurrency": ${POOL_SIZE} }`);
+    console.log(`Check:  POST http://localhost:${PORT}/check { "url": "...", "productName": "optional", "geminiApiKey": "required" }`);
+    console.log(`Batch:  POST http://localhost:${PORT}/check-batch { "items": [...], "concurrency": ${POOL_SIZE}, "geminiApiKey": "required" }`);
   });
 
   // Graceful shutdown

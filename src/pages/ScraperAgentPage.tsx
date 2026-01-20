@@ -4,13 +4,14 @@
  * Displays Scraper Products with tabs for All Products and Pinned Products.
  */
 
-import { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, Search, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send } from 'lucide-react'
+import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send } from 'lucide-react'
 import { productsService } from '@/services'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
 import { Pagination } from '@/components/ui/Pagination'
+import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput'
 import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/components/filters/AdvancedFilterBuilder'
 import { VendorStatistics } from '@/components/scraper/VendorStatistics'
 import { VendorSelectionDialog } from '@/components/scraper/VendorSelectionDialog'
@@ -87,6 +88,7 @@ export function ScraperAgentPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const fetchRequestIdRef = useRef(0) // Track latest request to ignore stale responses
   const [sortField, setSortField] = useState<SortField>('created_at')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [page, setPage] = useState(1)
@@ -172,6 +174,9 @@ export function ScraperAgentPage() {
   }
 
   const fetchProducts = useCallback(async () => {
+    // Increment request ID to track this specific request
+    const currentRequestId = ++fetchRequestIdRef.current
+
     setIsLoading(true)
     setError(null)
 
@@ -187,6 +192,11 @@ export function ScraperAgentPage() {
     const result = activeTab === 'pinned'
       ? await productsService.getPinnedProducts(productFilters)
       : await productsService.getProducts(productFilters)
+
+    // Ignore stale responses - only process if this is still the latest request
+    if (currentRequestId !== fetchRequestIdRef.current) {
+      return
+    }
 
     if (result.error) {
       setError(result.error)
@@ -207,8 +217,8 @@ export function ScraperAgentPage() {
     setIsLoading(false)
   }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters])
 
-  const handleSearch = useCallback((value: string) => {
-    setSearchTerm(value)
+  const handleSearch = useCallback((term: string) => {
+    setSearchTerm(term)
     setPage(1)
   }, [])
 
@@ -439,16 +449,12 @@ export function ScraperAgentPage() {
         )}
 
         {/* Search Input */}
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary-400" />
-          <input
-            type="text"
-            placeholder={`Search ${activeTab === 'pinned' ? 'pinned ' : ''}products...`}
-            value={searchTerm}
-            onChange={(e) => handleSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
-        </div>
+        <DebouncedSearchInput
+          placeholder={`Search ${activeTab === 'pinned' ? 'pinned ' : ''}products...`}
+          onSearch={handleSearch}
+          className="flex-1"
+          key={activeTab} // Reset input when tab changes
+        />
 
         {/* Filter Button */}
         <button
@@ -569,15 +575,9 @@ export function ScraperAgentPage() {
           )}
         </div>
         {searchTerm && (
-          <button
-            onClick={() => {
-              setSearchTerm('')
-              setPage(1)
-            }}
-            className="text-primary-600 hover:text-primary-700 font-medium"
-          >
-            Clear search
-          </button>
+          <span className="text-secondary-500 text-sm">
+            Searching for: &quot;{searchTerm}&quot;
+          </span>
         )}
       </div>
 

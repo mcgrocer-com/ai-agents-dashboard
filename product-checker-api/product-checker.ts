@@ -1,7 +1,7 @@
 /**
  * Product Checker Service
  * Uses Stagehand with Gemini AI for product extraction from UK retailer sites
- * Supports proxy via pure Playwright when USE_PROXY=true, with direct fallback
+ * Requires Oxylabs residential proxy for reliable access (USE_PROXY=true)
  * Uses playwright-extra with stealth plugin to bypass anti-bot detection
  */
 import { Stagehand } from "@browserbasehq/stagehand";
@@ -49,9 +49,76 @@ function getRetryDelay(attempt: number): number {
 }
 
 /**
- * Check product details from a given URL with automatic retry logic
+ * Tracking parameters that cause blocking or navigation issues on retailer sites
+ * These are added by Google, Facebook, and other ad platforms for click tracking
  */
-export async function checkProduct(url: string, expectedProductName?: string): Promise<ProductCheckResult> {
+const TRACKING_PARAMS_TO_REMOVE = [
+  'srsltid',     // Google search result tracking (causes Access Denied on many sites)
+  'gclid',       // Google Ads click ID
+  'gclsrc',      // Google Ads source
+  'fbclid',      // Facebook click ID
+  'msclkid',     // Microsoft/Bing Ads click ID
+  'dclid',       // DoubleClick click ID
+  'twclid',      // Twitter click ID
+  'igshid',      // Instagram share ID
+  'mc_cid',      // Mailchimp campaign ID
+  'mc_eid',      // Mailchimp email ID
+  '_ga',         // Google Analytics
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'utm_id',
+];
+
+/**
+ * Clean URL by removing tracking parameters that cause blocking/navigation issues
+ * Preserves product-relevant query params while stripping ad tracking
+ */
+function cleanTrackingParams(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    let paramsRemoved = 0;
+
+    for (const param of TRACKING_PARAMS_TO_REMOVE) {
+      if (urlObj.searchParams.has(param)) {
+        urlObj.searchParams.delete(param);
+        paramsRemoved++;
+      }
+    }
+
+    if (paramsRemoved > 0) {
+      console.log(`[ProductChecker] Removed ${paramsRemoved} tracking params from URL`);
+    }
+
+    return urlObj.toString();
+  } catch {
+    // If URL parsing fails, return original
+    return url;
+  }
+}
+
+/**
+ * Check product details from a given URL with automatic retry logic
+ * Requires proxy configuration (USE_PROXY=true with PROXY_* env vars)
+ * @param geminiApiKey - Gemini API key for AI extraction (required, passed from edge function)
+ */
+export async function checkProduct(url: string, expectedProductName: string | undefined, geminiApiKey: string): Promise<ProductCheckResult> {
+  // Clean tracking parameters from URL (srsltid, gclid, etc. cause Access Denied on many sites)
+  const cleanedUrl = cleanTrackingParams(url);
+
+  // Validate proxy configuration upfront
+  const useProxy = process.env.USE_PROXY === "true";
+  const proxyServer = process.env.PROXY_SERVER;
+  const proxyUsername = process.env.PROXY_USERNAME;
+  const proxyPassword = process.env.PROXY_PASSWORD;
+
+  if (!useProxy || !proxyServer || !proxyUsername || !proxyPassword) {
+    throw new Error("Proxy configuration required. Set USE_PROXY=true and PROXY_SERVER, PROXY_USERNAME, PROXY_PASSWORD");
+  }
+
+  const proxy = { server: proxyServer, username: proxyUsername, password: proxyPassword };
   let lastError: Error | null = null;
   let lastResult: ProductCheckResult | null = null;
 
@@ -63,7 +130,7 @@ export async function checkProduct(url: string, expectedProductName?: string): P
     }
 
     try {
-      const result = await attemptProductCheck(url, expectedProductName, attempt);
+      const result = await attemptProductCheck(cleanedUrl, expectedProductName, attempt, proxy, geminiApiKey);
 
       if (result.price !== "Unknown" && result.price !== "Price not found") {
         console.log(`[ProductChecker] Success on attempt ${attempt + 1}`);
@@ -196,27 +263,86 @@ interface ProxyConfig {
 }
 
 /**
- * Product check using pure Playwright with proxy support
- * Falls back to direct access if proxy is blocked
+ * Perform AI extraction with Stagehand using proxy
  */
-async function attemptProductCheckWithProxy(
+async function performAIExtractionWithProxy(
+  url: string,
+  expectedProductName: string | undefined,
+  proxy: ProxyConfig,
+  geminiApiKey: string
+): Promise<ProductCheckResult> {
+  const hasDisplay = !!process.env.DISPLAY;
+  console.log(`[ProductChecker] Using AI extraction with proxy...`);
+
+  const stagehand = new Stagehand({
+    env: "LOCAL",
+    // Pass API key directly in model config for proper initialization
+    model: { modelName: "gemini-2.0-flash", apiKey: geminiApiKey },
+    localBrowserLaunchOptions: {
+      headless: !hasDisplay,
+      viewport: { width: 1280, height: 720 },
+      connectTimeoutMs: 60000,
+      args: BROWSER_ARGS,
+      proxy: {
+        server: proxy.server,
+        username: proxy.username,
+        password: proxy.password,
+      },
+    },
+  });
+
+  try {
+    await stagehand.init();
+    const stagehandPage = stagehand.context.pages()[0];
+
+    await stagehandPage.goto(url, { waitUntil: "domcontentloaded", timeoutMs: 60000 });
+
+    try {
+      await stagehand.act("wait for the product details and price to be visible on the page");
+    } catch {
+      // Content wait completed or timed out
+    }
+
+    const productData = await performAIExtraction(stagehand, expectedProductName);
+
+    return {
+      url,
+      product: productData.productName,
+      price: productData.price,
+      availability: productData.availability,
+      originalPrice: productData.originalPrice,
+      currency: productData.currency,
+      extractionMethod: "ai",
+      checkedAt: new Date().toISOString(),
+    };
+  } finally {
+    await stagehand.close();
+  }
+}
+
+/**
+ * Single attempt to check product using proxy
+ * Tries CSS extraction first, falls back to AI extraction (both use proxy)
+ */
+async function attemptProductCheck(
   url: string,
   expectedProductName: string | undefined,
   attempt: number,
-  proxy: ProxyConfig
+  proxy: ProxyConfig,
+  geminiApiKey: string
 ): Promise<ProductCheckResult> {
-  console.log(`[ProductChecker] Using proxy: ${proxy.server}`);
-
   const hasDisplay = !!process.env.DISPLAY;
+  console.log(`[ProductChecker] Attempt ${attempt + 1}: proxy=${proxy.server}, headless=${!hasDisplay}`);
+
   let browser: Browser | null = null;
 
   try {
-    // Pass proxy at browser launch level (like sainsbury.py does)
+    // Launch browser with proxy
     browser = await chromium.launch({
       headless: !hasDisplay,
       args: BROWSER_ARGS,
       proxy: {
-        server: proxy.server,  // No http:// prefix, just host:port
+        server: proxy.server,
         username: proxy.username,
         password: proxy.password,
       },
@@ -239,19 +365,10 @@ async function attemptProductCheckWithProxy(
 
     const page: Page = await context.newPage();
 
-    // Log messages from the browser console to help debug extractors
-    page.on("console", (msg) => {
-      const text = msg.text();
-      // Skip noise but keep our extractor logs
-      if (text.includes("[BootsExtractor]") || text.includes("[SiteExtractor]")) {
-        console.log(`[Browser] ${text}`);
-      }
-    });
-
     // Add random delay to appear more human-like
     await page.waitForTimeout(1000 + Math.random() * 2000);
 
-    // Simulate mouse movement before navigation (helps bypass behavioral detection)
+    // Simulate mouse movement before navigation
     await page.mouse.move(100 + Math.random() * 200, 100 + Math.random() * 200);
 
     console.log(`[ProductChecker] Navigating to ${url} via proxy`);
@@ -262,19 +379,11 @@ async function attemptProductCheckWithProxy(
       const errorMsg = e instanceof Error ? e.message : String(e);
       console.log(`[ProductChecker] Navigation error:`, errorMsg);
 
-      // If proxy tunnel fails completely, fall back to direct access
-      if (errorMsg.includes("ERR_TUNNEL_CONNECTION_FAILED") || errorMsg.includes("ERR_PROXY")) {
-        console.log(`[ProductChecker] Proxy tunnel blocked, falling back to direct access...`);
-        await browser.close();
-        browser = null;
-        return await attemptProductCheckDirect(url, expectedProductName, attempt);
-      }
-
-      // Otherwise retry with networkidle
+      // Retry with networkidle
       await page.goto(url, { waitUntil: "networkidle", timeout: 90000 });
     }
 
-    // Simulate human behavior: random wait, mouse movements, and scroll
+    // Simulate human behavior
     await page.waitForTimeout(1500 + Math.random() * 1500);
     await page.mouse.move(300 + Math.random() * 400, 200 + Math.random() * 300);
     await page.evaluate(() => window.scrollBy(0, 100 + Math.random() * 200));
@@ -287,13 +396,14 @@ async function attemptProductCheckWithProxy(
       throw new Error(`Navigation failed - page shows ${currentUrl}`);
     }
 
-    // Try CSS extraction
+    // Try CSS extraction first
     if (needsSiteSpecificExtraction(url)) {
-      console.log(`[ProductChecker] Attempting CSS extraction via proxy...`);
+      console.log(`[ProductChecker] Attempting CSS extraction...`);
       const siteData = await extractWithSiteSpecific(
         url,
         page as unknown as Parameters<typeof extractWithSiteSpecific>[1]
       );
+
       if (siteData && siteData.productName !== "Unknown" && siteData.price !== "Unknown") {
         console.log(`[ProductChecker] CSS extraction successful:`, siteData);
         return {
@@ -307,141 +417,10 @@ async function attemptProductCheckWithProxy(
           checkedAt: new Date().toISOString(),
         };
       }
-      console.log(`[ProductChecker] CSS extraction incomplete, falling back to direct + AI`);
-    }
 
-    // Close proxy browser and fall back to direct Stagehand for AI extraction
-    await browser.close();
-    browser = null;
-    return await attemptProductCheckDirect(url, expectedProductName, attempt);
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-}
-
-/**
- * Single attempt to check product using Stagehand with CSS extraction + AI fallback (direct, no proxy)
- */
-async function attemptProductCheckDirect(
-  url: string,
-  expectedProductName: string | undefined,
-  attempt: number
-): Promise<ProductCheckResult> {
-  const hasDisplay = !!process.env.DISPLAY;
-  console.log(`[ProductChecker] Direct access attempt: DISPLAY=${process.env.DISPLAY}, using headless=${!hasDisplay}`);
-
-  const stagehand = new Stagehand({
-    env: "LOCAL",
-    model: "gemini-2.0-flash",
-    localBrowserLaunchOptions: {
-      headless: !hasDisplay,
-      viewport: { width: 1280, height: 720 },
-      connectTimeoutMs: 60000,
-      args: BROWSER_ARGS,
-    },
-  });
-
-  try {
-    await stagehand.init();
-    const page = stagehand.context.pages()[0];
-
-    // Log messages from the browser console to help debug extractors
-    page.on("console", (msg) => {
-      const text = msg.text();
-      // Skip noise but keep our extractor logs
-      if (text.includes("[BootsExtractor]") || text.includes("[SiteExtractor]")) {
-        console.log(`[Browser] ${text}`);
-      }
-    });
-
-    console.log(`[ProductChecker] Navigating to ${url} (direct)`);
-    let navigationSucceeded = false;
-
-    try {
-      const response = await page.goto(url, { waitUntil: "domcontentloaded", timeoutMs: 60000 });
-      if (response) {
-        const finished = await response.finished();
-        const status = response.status();
-        if (finished instanceof Error) {
-          console.log(`[ProductChecker] Navigation failed:`, finished.message);
-        } else if (status >= 200 && status < 400) {
-          navigationSucceeded = true;
-          console.log(`[ProductChecker] Navigation succeeded, status: ${status}`);
-        } else {
-          console.log(`[ProductChecker] Navigation returned error status: ${status}`);
-        }
-      }
-    } catch (e) {
-      console.log(`[ProductChecker] Navigation error:`, e instanceof Error ? e.message : e);
-    }
-
-    let currentUrl = page.url();
-    console.log(`[ProductChecker] Page URL after goto: ${currentUrl}`);
-
-    if (!navigationSucceeded || currentUrl.includes("chrome-error://") || currentUrl === "about:blank") {
-      console.log(`[ProductChecker] Initial navigation failed, retrying with networkidle...`);
-      await new Promise((r) => setTimeout(r, 2000));
-
-      try {
-        const response = await page.goto(url, { waitUntil: "networkidle", timeoutMs: 90000 });
-        if (response) {
-          const finished = await response.finished();
-          if (!(finished instanceof Error)) {
-            navigationSucceeded = true;
-            console.log(`[ProductChecker] Retry navigation succeeded`);
-          }
-        }
-      } catch (e) {
-        console.log(`[ProductChecker] Retry navigation error:`, e instanceof Error ? e.message : e);
-      }
-      currentUrl = page.url();
-      console.log(`[ProductChecker] Page URL after retry: ${currentUrl}`);
-    }
-
-    console.log(`[ProductChecker] Waiting for product content to load...`);
-    try {
-      await stagehand.act("wait for the product details and price to be visible on the page");
-    } catch {
-      console.log(`[ProductChecker] Content wait completed or timed out`);
-    }
-
-    currentUrl = page.url();
-    console.log(`[ProductChecker] Final page URL: ${currentUrl}`);
-
-    if (currentUrl.includes("chrome-error://") || currentUrl === "about:blank") {
-      throw new Error(`Navigation failed - page shows ${currentUrl}`);
-    }
-
-    // Try CSS extraction first
-    if (needsSiteSpecificExtraction(url)) {
-      console.log(`[ProductChecker] Attempting CSS extraction...`);
-      const siteData = await extractWithSiteSpecific(url, page as unknown as Parameters<typeof extractWithSiteSpecific>[1]);
-
-      // Accept CSS extraction if we have good data (both name and price)
-      // OR if we have valid availability (not Unknown) - availability is critical for price comparison
-      const hasGoodData = siteData && siteData.productName !== "Unknown" && siteData.price !== "Unknown";
-      const hasValidAvailability = siteData && siteData.availability !== "Unknown";
-
-      if (hasGoodData) {
-        console.log(`[ProductChecker] CSS extraction successful:`, siteData);
-        return {
-          url,
-          product: siteData.productName.replace(/\s+/g, " ").trim(),
-          price: siteData.price || "Unknown",
-          availability: siteData.availability,
-          originalPrice: siteData.originalPrice,
-          currency: siteData.currency,
-          extractionMethod: "css",
-          checkedAt: new Date().toISOString(),
-        };
-      }
-
-      // If we have valid availability but incomplete data, return it anyway
-      // This is better than waiting for AI fallback to fail
-      if (hasValidAvailability) {
-        console.log(`[ProductChecker] CSS extraction partial (availability=${siteData.availability}):`, siteData);
+      // Accept partial data if we have valid availability
+      if (siteData && siteData.availability !== "Unknown") {
+        console.log(`[ProductChecker] CSS extraction partial:`, siteData);
         return {
           url,
           product: siteData.productName !== "Unknown" ? siteData.productName.replace(/\s+/g, " ").trim() : "Unknown",
@@ -457,52 +436,17 @@ async function attemptProductCheckDirect(
       console.log(`[ProductChecker] CSS extraction incomplete, falling back to AI`);
     }
 
-    // Fall back to AI extraction
-    const productData = await performAIExtraction(stagehand, expectedProductName);
+    // Close browser before AI extraction (Stagehand needs its own browser)
+    await browser.close();
+    browser = null;
 
-    return {
-      url,
-      product: productData.productName,
-      price: productData.price,
-      availability: productData.availability,
-      originalPrice: productData.originalPrice,
-      currency: productData.currency,
-      extractionMethod: "ai",
-      checkedAt: new Date().toISOString(),
-    };
+    // Fall back to AI extraction with proxy
+    return await performAIExtractionWithProxy(url, expectedProductName, proxy, geminiApiKey);
   } finally {
-    await stagehand.close();
+    if (browser) {
+      await browser.close();
+    }
   }
-}
-
-/**
- * Single attempt to check product - uses proxy if configured, with direct fallback
- */
-async function attemptProductCheck(
-  url: string,
-  expectedProductName: string | undefined,
-  attempt: number
-): Promise<ProductCheckResult> {
-  const hasDisplay = !!process.env.DISPLAY;
-  console.log(`[ProductChecker] Attempt ${attempt + 1}: DISPLAY=${process.env.DISPLAY}, using headless=${!hasDisplay}`);
-
-  // Check if proxy is configured
-  const useProxy = process.env.USE_PROXY === "true";
-  const proxyServer = process.env.PROXY_SERVER;
-  const proxyUsername = process.env.PROXY_USERNAME;
-  const proxyPassword = process.env.PROXY_PASSWORD;
-
-  // Use proxy if configured
-  if (useProxy && proxyServer && proxyUsername && proxyPassword) {
-    return attemptProductCheckWithProxy(url, expectedProductName, attempt, {
-      server: proxyServer,
-      username: proxyUsername,
-      password: proxyPassword,
-    });
-  }
-
-  // Direct access (no proxy)
-  return attemptProductCheckDirect(url, expectedProductName, attempt);
 }
 
 /**
@@ -598,11 +542,14 @@ function validateAvailability(
 /**
  * Check product using a provided page from the browser pool
  * This is more efficient as it doesn't need to launch a new browser
+ * Browser pool already has proxy configured
+ * @param geminiApiKey - Gemini API key for AI extraction (required, passed from edge function)
  */
 export async function checkProductWithPage(
   page: Page,
   url: string,
-  expectedProductName?: string
+  expectedProductName: string | undefined,
+  geminiApiKey: string
 ): Promise<ProductCheckResult> {
   console.log(`[ProductChecker] Navigating to ${url} with pooled browser`);
 
@@ -676,27 +623,26 @@ export async function checkProductWithPage(
     console.log(`[ProductChecker] CSS extraction incomplete, falling back to AI`);
   }
 
-  // Fall back to AI extraction using Stagehand
-  // Note: This creates a new Stagehand instance since it needs its own browser context
+  // Fall back to AI extraction using Stagehand with proxy
   console.log(`[ProductChecker] Using AI extraction fallback...`);
   const hasDisplay = !!process.env.DISPLAY;
 
   // Get proxy configuration for Stagehand fallback
-  const useProxy = process.env.USE_PROXY === "true";
   const proxyServer = process.env.PROXY_SERVER;
   const proxyUsername = process.env.PROXY_USERNAME;
   const proxyPassword = process.env.PROXY_PASSWORD;
 
   const stagehand = new Stagehand({
     env: "LOCAL",
-    model: "gemini-2.0-flash",
+    // Pass API key directly in model config for proper initialization
+    model: { modelName: "gemini-2.0-flash", apiKey: geminiApiKey },
     localBrowserLaunchOptions: {
       headless: !hasDisplay,
       viewport: { width: 1280, height: 720 },
       connectTimeoutMs: 60000,
       args: BROWSER_ARGS,
-      // Add proxy configuration if available
-      ...(useProxy && proxyServer && proxyUsername && proxyPassword
+      // Proxy is required - browser pool already has it configured
+      ...(proxyServer && proxyUsername && proxyPassword
         ? {
             proxy: {
               server: proxyServer,

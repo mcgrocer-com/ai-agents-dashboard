@@ -9,7 +9,8 @@ import { useState } from 'react'
 import { AgentMonitoringPage, type AgentConfig } from '@/components/pages/AgentMonitoringPage'
 import { WarehouseDataUpload } from '@/components/warehouse/WarehouseDataUpload'
 import { AgentGuidelinesDialog } from '@/components/agents/AgentGuidelinesDialog'
-import { Scale, Database, MessageSquare } from 'lucide-react'
+import { LowConfidenceAnalysisDialog } from '@/components/weight/LowConfidenceAnalysisDialog'
+import { Scale, Database, MessageSquare, BarChart3 } from 'lucide-react'
 
 // Configuration for Weight Agent
 const weightAgentConfig: AgentConfig = {
@@ -51,11 +52,19 @@ const weightAgentConfig: AgentConfig = {
 export function WeightAgentPage() {
   const [showWarehouseUpload, setShowWarehouseUpload] = useState(false)
   const [showGuidelines, setShowGuidelines] = useState(false)
+  const [showLowConfidenceAnalysis, setShowLowConfidenceAnalysis] = useState(false)
 
   return (
     <>
       {/* Action Buttons - Positioned above the page */}
       <div className="mb-6 flex gap-3 justify-end">
+        <button
+          onClick={() => setShowLowConfidenceAnalysis(true)}
+          className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors flex items-center gap-2 text-sm font-medium"
+        >
+          <BarChart3 className="h-4 w-4" />
+          <span>Low Confidence Analysis</span>
+        </button>
         <button
           onClick={() => setShowGuidelines(true)}
           className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 text-sm font-medium"
@@ -92,6 +101,12 @@ export function WeightAgentPage() {
         onSuccess={() => {
           console.log('Guidelines sent successfully')
         }}
+      />
+
+      {/* Low Confidence Analysis Dialog */}
+      <LowConfidenceAnalysisDialog
+        open={showLowConfidenceAnalysis}
+        onClose={() => setShowLowConfidenceAnalysis(false)}
       />
     </>
   )

@@ -235,6 +235,80 @@ class ScraperProductsService {
   }
 
   /**
+   * Get products that failed to sync to ERPNext
+   */
+  async getFailedSyncProducts(
+    vendor: string,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{
+    products: Array<{
+      id: string
+      url: string
+      name: string | null
+      vendor: string | null
+      failed_sync_error_message: string | null
+      failed_sync_at: string | null
+    }>
+    count: number
+    error: Error | null
+  }> {
+    try {
+      const { limit = 50, offset = 0 } = options
+
+      let query = supabase
+        .from('pending_products')
+        .select(
+          `
+          id,
+          url,
+          vendor,
+          failed_sync_error_message,
+          failed_sync_at,
+          scraped_products!inner(name)
+        `,
+          { count: 'exact' }
+        )
+        .not('failed_sync_error_message', 'is', null)
+        .order('failed_sync_at', { ascending: false })
+
+      // Apply vendor filter if not 'all'
+      if (vendor && vendor !== 'all') {
+        query = query.eq('vendor', vendor)
+      }
+
+      // Pagination
+      query = query.range(offset, offset + limit - 1)
+
+      const { data, error, count } = await query
+
+      if (error) throw error
+
+      // Transform the data to flatten the nested structure
+      const products = (data || []).map((item: any) => ({
+        id: item.id,
+        url: item.url,
+        name: item.scraped_products?.name || null,
+        vendor: item.vendor,
+        failed_sync_error_message: item.failed_sync_error_message,
+        failed_sync_at: item.failed_sync_at,
+      }))
+
+      return {
+        products,
+        count: count || 0,
+        error: null,
+      }
+    } catch (error) {
+      console.error('Error fetching failed sync products:', error)
+      return {
+        products: [],
+        count: 0,
+        error: error as Error,
+      }
+    }
+  }
+
+  /**
    * Get agent-specific vendor statistics from pending_products table
    */
   async getAgentVendorStatistics(agentType: AgentType, vendor: string): Promise<AgentVendorStatistics | null> {

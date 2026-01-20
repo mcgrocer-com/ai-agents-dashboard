@@ -22,7 +22,7 @@ Configuration parameters can be provided in the POST request body. If not provid
 
 ```json
 {
-  "batchSize": 20,        // Max products to query per run (default: 20)
+  "batchSize": 50,        // Max products to query per run (default: 50)
   "apiBatchSize": 5,      // Products per ERPNext API batch (default: 5)
   "vendor": "vendorName"  // Optional: sync specific vendor only
 }
@@ -317,7 +317,7 @@ The function provides detailed console logging for debugging:
 
 ## Performance Notes
 
-- **Batch Size**: Default 20 products queried per run
+- **Batch Size**: Default 50 products queried per run
 - **API Batch Size**: Default 5 products per ERPNext API call
 - **Classification**: Parallel batch processing for optimal speed
 - **Verification**: Parallel verification of all created/updated items

@@ -67,13 +67,72 @@ For each product, verify:
 | Price | Check `price` field | Look for elements with `£X.XX` | Should match exactly |
 | Availability | Check `availability` field | Look for Add button or "Out of Stock" text | Should match |
 
+## Vendor-Specific Extraction Details
+
+### Sainsbury's (2024+ Layout)
+
+Sainsbury's uses a complex nested structure for product pages. The extractor uses multiple fallback methods:
+
+#### Page Structure (verified via Playwright snapshot)
+```yaml
+main:
+  - heading [level=1]: "Product Name"
+  - generic:
+    - generic: "£3.30"       # Nectar price
+    - generic: "with Nectar"
+  - generic:
+    - generic: "£4.95"       # Regular price
+    - generic: "£2.48 / 100ml"  # Unit price
+  - button: "Add [product name] to trolley"
+```
+
+#### Extraction Methods (in priority order)
+
+| Method | Description | When Used |
+|--------|-------------|-----------|
+| Method 1 | Scoped leaf node scan within main product area | Primary method - finds container with H1 + Add button |
+| Method 2 | Find Add button, extract price from parent container | When Method 1 returns no prices |
+| Method 3 | Look for "with Nectar" pattern sibling structure | Fallback for Nectar-priced products |
+| Method 4 | data-testid selector (older layout) | Legacy pages with `[data-testid="pd-retail-price"]` |
+| Method 5 | Full page leaf node scan | Last resort - may include similar products prices |
+
+#### Price Extraction Rules
+- Uses regex `/^£\d+\.\d{2}$/` to match ONLY exact price format
+- Rejects concatenated prices like "£4.95£2.48 / 100ml"
+- Sorts prices descending, takes highest as regular price
+- Supports pence format (e.g., "15p" → "£0.15")
+
+#### Availability Detection
+- Primary: Look for main Add button containing "to trolley" + product name
+- Secondary: Any button with text "add", "to trolley", "to basket"
+- Out of Stock: Disabled button with "out of stock" or main content text
+- Excludes "Similar Products" section from out of stock text search
+
+#### Known Issues
+- "Similar Products" section has concatenated prices (e.g., "£3.50£23.33 / ltr")
+- Nectar prices shown alongside regular prices - we extract the higher (regular) price
+- Some products may show "Nectar Price" badge without regular price displayed
+- **Sainsbury's detects headless browsers** - requires `HEADLESS=false` with Xvfb virtual display
+
+#### Test URL
+```
+https://www.sainsburys.co.uk/gol-ui/product/dove-advanced-care-original-anti-perspirant-deodorant-spray-200ml
+```
+
+Expected extraction:
+- Product: "Dove Women Original 72h Advanced Care Antiperspirant Deodorant 200ml"
+- Price: "£4.95" (regular) or "£3.30" (Nectar)
+- Availability: "In Stock"
+
+---
+
 ## Common Issues and Fixes
 
 ### 1. Price Concatenation Issue (Sainsbury's)
 
 **Problem:** Sainsbury's concatenates price and unit price (e.g., "£1.5578p / kg" instead of "£1.55" and "78p / kg").
 
-**Solution:** Use element-level extraction with strict regex `/^£\d+\.\d{2}$/` to match elements containing ONLY a price.
+**Solution:** Use element-level extraction with strict regex `/^£\d+\.\d{2}$/` to match elements containing ONLY a price. The extractor now scopes the search to the main product area to avoid similar products.
 
 ### 2. Stock Detection False Positives
 
@@ -87,6 +146,8 @@ if (hasAddButton) {
   availability = "Out of Stock";
 }
 ```
+
+The extractor also explicitly excludes text containing "similar products" from out-of-stock detection.
 
 ### 3. Intermittent Website Errors
 
@@ -102,6 +163,15 @@ if (hasAddButton) {
 ```typescript
 const proxyBypassDomains = ["www.argos.co.uk", "argos.co.uk"];
 ```
+
+### 5. Multiple Prices on Page (Sainsbury's, Tesco)
+
+**Problem:** Pages show multiple prices (regular, Nectar/Clubcard, unit price) and "Similar Products" section has additional prices.
+
+**Solution:**
+- Scope extraction to main product container (area with H1 + Add button)
+- Use leaf node detection to avoid concatenated prices
+- Sort prices descending and take highest as regular retail price
 
 ## Test Products File
 

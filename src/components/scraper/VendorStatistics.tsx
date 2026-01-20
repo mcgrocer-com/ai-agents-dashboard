@@ -11,6 +11,7 @@ import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/useToast'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
+import { FailedSyncDialog } from '@/components/scraper/FailedSyncDialog'
 import type { VendorStatistics as VendorStats } from '@/types/statistics'
 
 interface VendorStatisticsProps {
@@ -32,6 +33,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
   const [showCopyrightConfirm, setShowCopyrightConfirm] = useState(false)
   const [showResyncConfirm, setShowResyncConfirm] = useState(false)
   const [showPushToQueueConfirm, setShowPushToQueueConfirm] = useState(false)
+  const [showFailedSyncDialog, setShowFailedSyncDialog] = useState(false)
 
   useEffect(() => {
     if (!vendor) {
@@ -225,6 +227,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
       icon: CheckCircle,
       color: 'green' as const,
       description: 'Products with category and weight data',
+      onClick: undefined as (() => void) | undefined,
     },
     {
       title: 'All Data Complete',
@@ -233,6 +236,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
       icon: Database,
       color: 'indigo' as const,
       description: 'Products with category, weight, and SEO data',
+      onClick: undefined as (() => void) | undefined,
     },
     {
       title: 'Synced to ERPNext',
@@ -241,6 +245,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
       icon: CloudUpload,
       color: 'blue' as const,
       description: `Today: ${stats.syncedToday} | Yesterday: ${stats.syncedYesterday} | This week: ${stats.syncedThisWeek}`,
+      onClick: undefined as (() => void) | undefined,
     },
     {
       title: 'Failed to Sync',
@@ -249,6 +254,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
       icon: AlertCircle,
       color: 'red' as const,
       description: 'Products with sync errors',
+      onClick: () => setShowFailedSyncDialog(true),
     },
   ]
 
@@ -420,7 +426,15 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
         {statCards.map((card, index) => (
           <div
             key={index}
-            className="bg-white rounded-lg shadow-sm border border-secondary-200 p-6 hover:shadow-md"
+            onClick={card.onClick}
+            className={`bg-white rounded-lg shadow-sm border border-secondary-200 p-6 hover:shadow-md transition-all ${
+              card.onClick
+                ? 'cursor-pointer hover:border-primary-300 hover:ring-2 hover:ring-primary-100'
+                : ''
+            }`}
+            role={card.onClick ? 'button' : undefined}
+            tabIndex={card.onClick ? 0 : undefined}
+            onKeyDown={card.onClick ? (e) => e.key === 'Enter' && card.onClick?.() : undefined}
           >
             <div className="flex items-center justify-between">
               <div className="flex-1">
@@ -480,6 +494,13 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
         cancelText="Cancel"
         variant="info"
         loading={isPushing}
+      />
+
+      {/* Failed Sync Products Dialog */}
+      <FailedSyncDialog
+        open={showFailedSyncDialog}
+        onClose={() => setShowFailedSyncDialog(false)}
+        vendor={vendor}
       />
     </div>
   )

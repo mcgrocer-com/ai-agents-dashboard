@@ -70,6 +70,12 @@ const toolConfigs: Record<string, { icon: any; color: string; description: strin
     description: 'Decodo API for Google Suggest keyword research and competitive intelligence',
     docsUrl: 'https://decodo.com',
   },
+  'oxylabs-proxy': {
+    icon: Globe,
+    color: 'purple',
+    description: 'Oxylabs residential proxy for UK IP access in price comparison scraping',
+    docsUrl: 'https://oxylabs.io/docs',
+  },
 }
 
 export function AgentToolsPage() {
@@ -241,6 +247,12 @@ export function AgentToolsPage() {
         border: 'border-green-200',
         icon: 'text-green-600',
         button: 'bg-green-600 hover:bg-green-700',
+      },
+      purple: {
+        bg: 'bg-purple-50',
+        border: 'border-purple-200',
+        icon: 'text-purple-600',
+        button: 'bg-purple-600 hover:bg-purple-700',
       },
     }
     return colors[color] || colors.blue

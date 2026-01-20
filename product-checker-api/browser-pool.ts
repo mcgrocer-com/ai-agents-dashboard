@@ -29,13 +29,22 @@ interface BrowserPoolConfig {
   headless: boolean;
 }
 
-const BROWSER_ARGS = [
+// Base browser args (headless mode is controlled separately)
+const BASE_BROWSER_ARGS = [
   "--no-sandbox",
   "--disable-setuid-sandbox",
   "--disable-blink-features=AutomationControlled",
   "--disable-dev-shm-usage",
   "--disable-gpu",
 ];
+
+// Get browser args based on headless mode
+function getBrowserArgs(headless: boolean): string[] {
+  if (headless) {
+    return [...BASE_BROWSER_ARGS, "--headless=new"];
+  }
+  return BASE_BROWSER_ARGS;
+}
 
 const CONTEXT_OPTIONS = {
   viewport: { width: 1920, height: 1080 },
@@ -107,9 +116,10 @@ export class BrowserPool {
   private async launchBrowser(id: number): Promise<PooledBrowser> {
     console.log(`[BrowserPool] Launching browser ${id + 1}...`);
 
+    // Get browser args based on headless mode setting
     const launchOptions: Parameters<typeof chromium.launch>[0] = {
       headless: this.config.headless,
-      args: BROWSER_ARGS,
+      args: getBrowserArgs(this.config.headless),
     };
 
     if (this.config.proxy) {
@@ -253,6 +263,17 @@ export class BrowserPool {
   }
 
   /**
+   * Restart the pool - close all browsers and reinitialize
+   */
+  async restart(): Promise<void> {
+    console.log(`[BrowserPool] Restarting pool...`);
+    await this.shutdown();
+    this.initializing = false; // Reset initializing flag
+    await this.initialize();
+    console.log(`[BrowserPool] Pool restarted successfully`);
+  }
+
+  /**
    * Check if pool is initialized
    */
   isInitialized(): boolean {
@@ -268,13 +289,22 @@ let globalPool: BrowserPool | null = null;
  */
 export function getGlobalPool(): BrowserPool {
   if (!globalPool) {
-    const hasDisplay = !!process.env.DISPLAY;
     const useProxy = process.env.USE_PROXY === "true";
     const poolSize = parseInt(process.env.BROWSER_POOL_SIZE || "4", 10);
+    // HEADLESS env var: "true" (default) for headless, "false" for headed mode
+    const headless = process.env.HEADLESS !== "false";
+
+    // CRITICAL WARNING: Headed mode (headless=false) is required for production
+    if (headless) {
+      console.warn("⚠️  [BrowserPool] WARNING: Running in HEADLESS mode!");
+      console.warn("⚠️  [BrowserPool] This will reduce extraction success rates from 57% to 43%");
+      console.warn("⚠️  [BrowserPool] Boots and Superdrug CSS extractors may fail");
+      console.warn("⚠️  [BrowserPool] Set HEADLESS=false in .env or use start.sh script");
+    }
 
     const config: BrowserPoolConfig = {
       size: poolSize,
-      headless: !hasDisplay,
+      headless,
     };
 
     if (useProxy && process.env.PROXY_SERVER && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
@@ -300,4 +330,18 @@ export async function shutdownGlobalPool(): Promise<void> {
     await globalPool.shutdown();
     globalPool = null;
   }
+}
+
+/**
+ * Restart the global pool - close all browsers and reinitialize
+ */
+export async function restartGlobalPool(): Promise<{ success: boolean; browsers: number }> {
+  if (globalPool) {
+    await globalPool.restart();
+    return { success: true, browsers: globalPool.getStats().total };
+  }
+  // If no pool exists, create a new one
+  const pool = getGlobalPool();
+  await pool.initialize();
+  return { success: true, browsers: pool.getStats().total };
 }

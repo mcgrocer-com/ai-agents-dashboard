@@ -62,7 +62,6 @@
       "Bash(timeout:*)",
       "Bash(ping:*)",
       "Bash(npm run screenshot:ai:*)",
-      "Bash(GOOGLE_GENERATIVE_AI_API_KEY=\"AIzaSyCBO9Mv9RNJXPfYqcH2OMMUGR9zg5a6_zk\" npx tsx stagehand-ai.ts https://example.com ./screenshots/stagehand-test.png)",
       "Bash(npm start)",
       "Bash(PORT=3003 npm start:*)",
       "Bash(taskkill:*)",
@@ -126,7 +125,14 @@
       "mcp__supabase-mcp__list_edge_functions",
       "mcp__supabase-mcp__get_edge_function",
       "mcp__supabase-mcp__deploy_edge_function",
-      "Bash(curl.exe:*)"
+      "Bash(curl.exe:*)",
+      "Bash(npm run build:*)",
+      "mcp__playwright__browser_type",
+      "Bash(wc:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git -C \"c:\\\\Users\\\\Izzy\\\\OneDrive\\\\Documents\\\\Projects\\\\mcgrocer-project\\\\ai-dashboard\" log -p --all -S \"price_comparison_cache\" -- \"*.sql\")",
+      "Bash(supabase functions deploy:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []
