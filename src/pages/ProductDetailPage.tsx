@@ -469,12 +469,14 @@ export function ProductDetailPage() {
         vendor={product.vendor || undefined}
         price={product.price || undefined}
         originalPrice={product.original_price || undefined}
+        stockStatus={product.stock_status || undefined}
         imageUrl={product.main_image || undefined}
         alternativeImages={alternativeImages}
         productUrl={product.url || undefined}
         productId={product.id || undefined}
         erpnextUpdatedAt={product.erpnext_updated_at || undefined}
         failedSyncAt={product.failed_sync_at || undefined}
+        scraperUpdatedAt={product.scraper_updated_at || undefined}
         pinned={product.pinned || false}
         onTogglePin={handleTogglePin}
         togglingPin={togglingPin}

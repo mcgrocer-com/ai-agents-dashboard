@@ -13,12 +13,14 @@ interface ProductHeaderProps {
   vendor?: string
   price?: number
   originalPrice?: number
+  stockStatus?: string
   imageUrl?: string
   alternativeImages?: string[]
   productUrl?: string
   productId?: string
   erpnextUpdatedAt?: string | null
   failedSyncAt?: string | null
+  scraperUpdatedAt?: string | null
   pinned?: boolean
   onTogglePin?: () => void
   togglingPin?: boolean
@@ -35,12 +37,14 @@ export function ProductHeader({
   vendor,
   price,
   originalPrice,
+  stockStatus,
   imageUrl,
   alternativeImages = [],
   productUrl,
   productId,
   erpnextUpdatedAt,
   failedSyncAt,
+  scraperUpdatedAt,
   pinned = false,
   onTogglePin,
   togglingPin = false,
@@ -204,6 +208,29 @@ export function ProductHeader({
                   <div>
                     <span className="text-gray-500">Vendor:</span>{' '}
                     <span className="font-medium capitalize">{vendor}</span>
+                  </div>
+                )}
+                {stockStatus && (
+                  <div>
+                    <span className="text-gray-500">Stock:</span>{' '}
+                    <span
+                      className={`font-medium ${
+                        stockStatus.toLowerCase().includes('in stock') ||
+                        stockStatus.toLowerCase() === 'available'
+                          ? 'text-green-600'
+                          : stockStatus.toLowerCase().includes('out of stock')
+                          ? 'text-red-600'
+                          : 'text-yellow-600'
+                      }`}
+                    >
+                      {stockStatus}
+                    </span>
+                  </div>
+                )}
+                {scraperUpdatedAt && (
+                  <div>
+                    <span className="text-gray-500">Last Price Update:</span>{' '}
+                    <span className="font-medium">{formatDateTime(scraperUpdatedAt)}</span>
                   </div>
                 )}
               </div>

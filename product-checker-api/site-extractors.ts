@@ -19,6 +19,8 @@ import {
   extractOcado,
   extractSainsburys,
   extractSuperdrug,
+  extractTesco,
+  extractWaitrose,
   SiteExtractionResult,
   PageWithEvaluate,
   waitForContent,
@@ -42,6 +44,8 @@ const VENDOR_EXTRACTORS: Record<string, (page: PageWithEvaluate) => Promise<Site
   "ocado.com": extractOcado,
   "sainsburys.co.uk": extractSainsburys,
   "superdrug.com": extractSuperdrug,
+  "tesco.com": extractTesco,
+  "waitrose.com": extractWaitrose,
   "yourcoca-cola.co.uk": extractCocaCola,
 };
 

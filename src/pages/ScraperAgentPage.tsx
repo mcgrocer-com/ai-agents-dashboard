@@ -22,9 +22,9 @@ import type { SyncDataSource } from '@/services/user.service'
 import type { ScrapedProduct, ProductFilters } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
-type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at'
+type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
 type SortDirection = 'asc' | 'desc'
-type TabType = 'all' | 'pinned'
+type TabType = 'all' | 'pinned' | 'price_updated'
 
 // All available columns including vendor (for default filter column selector)
 const ALL_COLUMNS: FilterColumn[] = [
@@ -44,6 +44,7 @@ const ALL_COLUMNS: FilterColumn[] = [
   { label: 'Variant Count', value: 'variant_count', type: 'number' },
   { label: 'Created Date', value: 'created_at', type: 'date' },
   { label: 'Updated Date', value: 'updated_at', type: 'date' },
+  { label: 'Price Updated Date', value: 'scraper_updated_at', type: 'date' },
 ]
 
 // Filter columns for user-added filters (Vendor is handled by default filter)
@@ -180,13 +181,28 @@ export function ScraperAgentPage() {
     setIsLoading(true)
     setError(null)
 
+    // Build dynamic filters
+    let dynamicFilters = filters.length > 0 ? convertToDynamicFilters(filters) : []
+
+    // For price_updated tab, add filter for scraper_updated_at IS NOT NULL
+    if (activeTab === 'price_updated') {
+      dynamicFilters = [
+        ...dynamicFilters,
+        {
+          field: 'scraper_updated_at',
+          operator: 'is not null',
+          value: null,
+        },
+      ]
+    }
+
     const productFilters: ProductFilters = {
       search: searchTerm || undefined,
-      sortBy: sortField,
-      sortOrder: sortDirection,
+      sortBy: activeTab === 'price_updated' ? 'scraper_updated_at' : sortField,
+      sortOrder: activeTab === 'price_updated' ? 'desc' : sortDirection,
       limit: pageSize,
       offset: (page - 1) * pageSize,
-      dynamicFilters: filters.length > 0 ? convertToDynamicFilters(filters) : undefined,
+      dynamicFilters: dynamicFilters.length > 0 ? dynamicFilters : undefined,
     }
 
     const result = activeTab === 'pinned'
@@ -395,6 +411,18 @@ export function ScraperAgentPage() {
               Pinned Products
             </div>
           </button>
+          <button
+            onClick={() => handleTabChange('price_updated')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'price_updated'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              Price Updated
+            </div>
+          </button>
         </nav>
       </div>
 
@@ -489,6 +517,8 @@ export function ScraperAgentPage() {
           <option value="created_at-asc">Oldest First</option>
           <option value="updated_at-desc">Recently Updated</option>
           <option value="updated_at-asc">Least Recently Updated</option>
+          <option value="scraper_updated_at-desc">Recently Price Updated</option>
+          <option value="scraper_updated_at-asc">Least Recently Price Updated</option>
           <option value="erpnext_updated_at-desc">Recently Synced to ERPNext</option>
           <option value="erpnext_updated_at-asc">Least Recently Synced to ERPNext</option>
           <option value="failed_sync_at-desc">Recently Failed Syncs</option>
@@ -566,7 +596,8 @@ export function ScraperAgentPage() {
       <div className="flex-shrink-0 flex items-center justify-between text-sm">
         <div className="flex items-center gap-4">
           <p className="text-secondary-600">
-            Showing {products.length} of {count.toLocaleString()} {activeTab === 'pinned' ? 'pinned ' : ''}products
+            Showing {products.length} of {count.toLocaleString()}{' '}
+            {activeTab === 'pinned' ? 'pinned ' : activeTab === 'price_updated' ? 'price-updated ' : ''}products
           </p>
           {selectionMode && selectedProductIds.size > 0 && (
             <p className="text-primary-600 font-medium">
@@ -593,6 +624,7 @@ export function ScraperAgentPage() {
               products={products}
               isLoading={isLoading}
               showPinned={activeTab === 'pinned'}
+              tabType={activeTab}
               onRefresh={fetchProducts}
               selectionMode={selectionMode}
               selectedProductIds={selectedProductIds}
@@ -821,13 +853,14 @@ interface ProductsListProps {
   products: ScrapedProduct[]
   isLoading: boolean
   showPinned?: boolean
+  tabType?: TabType
   onRefresh?: () => void
   selectionMode?: boolean
   selectedProductIds?: Set<string>
   onToggleSelection?: (productId: string) => void
 }
 
-const ProductsList = memo(({ products, isLoading, showPinned = false, onRefresh, selectionMode = false, selectedProductIds = new Set(), onToggleSelection }: ProductsListProps) => {
+const ProductsList = memo(({ products, isLoading, showPinned = false, tabType = 'all', onRefresh, selectionMode = false, selectedProductIds = new Set(), onToggleSelection }: ProductsListProps) => {
   if (isLoading) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-secondary-200">
@@ -862,26 +895,45 @@ const ProductsList = memo(({ products, isLoading, showPinned = false, onRefresh,
   }
 
   if (!products || products.length === 0) {
+    const getEmptyStateContent = () => {
+      switch (tabType) {
+        case 'pinned':
+          return {
+            icon: <Pin className="w-10 h-10 text-yellow-500" />,
+            gradient: 'from-yellow-100 via-yellow-50 to-amber-100 border-yellow-200',
+            title: 'No pinned products found',
+            message: 'Pin products from the product detail page to see them here'
+          }
+        case 'price_updated':
+          return {
+            icon: <Clock className="w-10 h-10 text-blue-500" />,
+            gradient: 'from-blue-100 via-blue-50 to-indigo-100 border-blue-200',
+            title: 'No price-updated products found',
+            message: 'Products updated through price comparison sync will appear here'
+          }
+        default:
+          return {
+            icon: <Package className="w-10 h-10 text-primary-400" />,
+            gradient: 'from-primary-100 via-primary-50 to-purple-100 border-primary-200',
+            title: 'No products found',
+            message: 'Try adjusting your search term'
+          }
+      }
+    }
+
+    const emptyState = getEmptyStateContent()
+
     return (
       <div className="bg-white rounded-lg shadow-sm border border-secondary-200">
         <div className="flex flex-col items-center justify-center py-12">
-          <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${showPinned
-            ? 'from-yellow-100 via-yellow-50 to-amber-100 border-yellow-200'
-            : 'from-primary-100 via-primary-50 to-purple-100 border-primary-200'
-            } flex items-center justify-center mb-4 border`}>
-            {showPinned ? (
-              <Pin className="w-10 h-10 text-yellow-500" />
-            ) : (
-              <Package className="w-10 h-10 text-primary-400" />
-            )}
+          <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${emptyState.gradient} flex items-center justify-center mb-4 border`}>
+            {emptyState.icon}
           </div>
           <p className="text-secondary-600 text-center font-medium">
-            {showPinned ? 'No pinned products found' : 'No products found'}
+            {emptyState.title}
           </p>
           <p className="text-sm text-secondary-500 text-center mt-2">
-            {showPinned
-              ? 'Pin products from the product detail page to see them here'
-              : 'Try adjusting your search term'}
+            {emptyState.message}
           </p>
         </div>
       </div>

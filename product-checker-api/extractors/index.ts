@@ -17,6 +17,8 @@ export { extractNext } from "./next";
 export { extractOcado } from "./ocado";
 export { extractSainsburys } from "./sainsburys";
 export { extractSuperdrug } from "./superdrug";
+export { extractTesco } from "./tesco";
+export { extractWaitrose } from "./waitrose";
 
 export type { SiteExtractionResult, PageWithEvaluate, AvailabilityStatus } from "./types";
 export { validateAvailability, extractCurrency, waitForContent } from "./types";
