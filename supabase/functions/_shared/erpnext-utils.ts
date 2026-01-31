@@ -49,7 +49,7 @@ export interface PendingProduct {
   // FAQ fields
   faqs: Array<{ question: string; answer: string }> | null;
 
-  // Product data from scraped_products join
+  // Product data from scraped_product`s join
   name: string | null;
   price: number | string | null;
   original_price: number | string | null;
