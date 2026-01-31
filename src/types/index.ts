@@ -15,6 +15,7 @@ export type {
   RecentActivity,
   DashboardMetrics,
   ProductFilters,
+  FaqItem,
 } from './database'
 
 // Export filter types from filters module

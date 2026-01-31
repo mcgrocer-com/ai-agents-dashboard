@@ -27,6 +27,7 @@ const agentNames: Record<AgentType, string> = {
   scraper: 'Scraper',
   copyright: 'Copyright Agent',
   classification: 'Classification Agent',
+  faq: 'FAQ Generator',
 }
 
 const agentColors: Record<AgentType, string> = {
@@ -36,6 +37,7 @@ const agentColors: Record<AgentType, string> = {
   scraper: 'green',
   copyright: 'orange',
   classification: 'emerald',
+  faq: 'teal',
 }
 
 export function AgentGuidelinesDialog({
