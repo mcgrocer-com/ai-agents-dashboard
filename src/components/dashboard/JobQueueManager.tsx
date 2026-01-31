@@ -63,6 +63,7 @@ const AGENT_OPTIONS = [
   { value: 'weight-dimension', label: 'Weight & Dimension' },
   { value: 'seo', label: 'SEO Optimizer' },
   { value: 'copyright', label: 'Copyright Detector' },
+  { value: 'faq', label: 'FAQ Generator' },
 ]
 
 const AGENT_LABELS: Record<string, string> = {
@@ -70,6 +71,7 @@ const AGENT_LABELS: Record<string, string> = {
   weight_dimension: 'weight and dimension',
   seo: 'SEO',
   copyright: 'copyright',
+  faq: 'FAQ',
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -77,6 +79,7 @@ const AGENT_COLORS: Record<string, string> = {
   'weight-dimension': 'bg-green-100 text-green-700',
   seo: 'bg-purple-100 text-purple-700',
   copyright: 'bg-orange-100 text-orange-700',
+  faq: 'bg-teal-100 text-teal-700',
 }
 
 const STATUS_COLORS = {

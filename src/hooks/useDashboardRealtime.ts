@@ -51,14 +51,15 @@ export function useDashboardRealtime() {
  * Subscribe to agent-specific realtime updates
  * Optimized for individual agent pages
  */
-export function useAgentRealtime(agentType: 'category' | 'weight_dimension' | 'seo') {
+export function useAgentRealtime(agentType: 'category' | 'weight_dimension' | 'seo' | 'faq') {
   useEffect(() => {
-    const statusField =
-      agentType === 'category'
-        ? 'category_status'
-        : agentType === 'weight_dimension'
-        ? 'weight_and_dimension_status'
-        : 'seo_status'
+    const statusFieldMap: Record<string, string> = {
+      category: 'category_status',
+      weight_dimension: 'weight_and_dimension_status',
+      seo: 'seo_status',
+      faq: 'faq_status',
+    }
+    const statusField = statusFieldMap[agentType]
 
     // Subscribe to changes for this specific agent
     const channel = supabase

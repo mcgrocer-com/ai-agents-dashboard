@@ -87,6 +87,7 @@ export interface PendingProduct {
   weight_and_dimension_status: AgentStatus
   seo_status: AgentStatus
   copyright_status: AgentStatus | null
+  faq_status: AgentStatus | null
 
   // Feedback fields for retry guidance
   category_feedback: string | null
@@ -143,6 +144,13 @@ export interface PendingProduct {
   copyright_reasoning: string | null
   copyright_tools_used: Record<string, any> | null
 
+  // FAQ agent results
+  faq: FaqItem[] | null
+  faq_confidence: number | null
+  faq_cost: number | null
+  faq_reasoning: string | null
+  faq_tools_used: Record<string, any> | null
+
   item_code: string | null
   erpnext_updated_at: string | null
   failed_sync_at: string | null
@@ -156,6 +164,11 @@ export interface PendingProduct {
 // ============================================================================
 
 export type AgentStatus = 'pending' | 'processing' | 'complete' | 'failed'
+
+export interface FaqItem {
+  question: string
+  answer: string
+}
 
 export interface MapperAgentProduct {
   id: string
@@ -233,7 +246,7 @@ export interface Category {
 
 export interface AgentResource {
   id: string
-  agent_type: 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright'
+  agent_type: 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright' | 'faq'
   resource_type: 'prompt' | 'guideline' | 'context' | 'template'
   title: string
   content: string
@@ -308,7 +321,7 @@ export interface DashboardMetrics {
 }
 
 export interface AgentMetrics {
-  agentType: 'category' | 'weight_dimension' | 'seo' | 'copyright'
+  agentType: 'category' | 'weight_dimension' | 'seo' | 'copyright' | 'faq'
   totalProducts: number
   pending: number
   processing: number
@@ -340,6 +353,7 @@ export interface RecentActivity {
   weightStatus?: AgentStatus
   seoStatus?: AgentStatus
   copyrightStatus?: AgentStatus
+  faqStatus?: AgentStatus
 }
 
 // ============================================================================
@@ -357,7 +371,7 @@ export interface ProductFilters {
   vendor?: string
   status?: AgentStatus | string
   dynamicFilters?: DynamicFilter[]
-  sortBy?: 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at'
+  sortBy?: 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
   sortOrder?: 'asc' | 'desc'
   limit?: number
   offset?: number

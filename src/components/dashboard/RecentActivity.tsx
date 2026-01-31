@@ -64,6 +64,7 @@ export function RecentActivity() {
     if (agent.includes('Weight') || agent.includes('Dimension')) return 'text-green-600'
     if (agent.includes('SEO')) return 'text-purple-600'
     if (agent.includes('Copyright')) return 'text-orange-600'
+    if (agent.includes('FAQ')) return 'text-teal-600'
     return 'text-gray-600'
   }
   const fetchCompleteActivities = async () => {
@@ -102,6 +103,7 @@ export function RecentActivity() {
           weightStatus: item.weight_and_dimension_status as AgentStatus,
           seoStatus: item.seo_status as AgentStatus,
           copyrightStatus: item.copyright_status as AgentStatus,
+          faqStatus: item.faq_status as AgentStatus,
         })
       })
 
@@ -186,6 +188,20 @@ export function RecentActivity() {
             imageUrl,
             agent: 'Copyright Detection',
             status: item.copyright_status as AgentStatus,
+            timestamp: item.updated_at ?? '',
+            productId: item.scraped_product_id || item.id,
+          })
+        }
+
+        // FAQ agent activity
+        if (item.faq_status && item.faq_status !== 'pending') {
+          freshActivities.push({
+            id: `faq-${item.id}`,
+            productName,
+            vendor,
+            imageUrl,
+            agent: 'FAQ Generator',
+            status: item.faq_status as AgentStatus,
             timestamp: item.updated_at ?? '',
             productId: item.scraped_product_id || item.id,
           })
@@ -448,6 +464,21 @@ export function RecentActivity() {
               />
               <span className="text-xs text-orange-600 font-medium">Copyright</span>
             </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedAgents.includes('faq')}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedAgents([...selectedAgents, 'faq'])
+                  } else {
+                    setSelectedAgents(selectedAgents.filter((a) => a !== 'faq'))
+                  }
+                }}
+                className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+              />
+              <span className="text-xs text-teal-600 font-medium">FAQ</span>
+            </label>
 
             {/* Vendor dropdown */}
             <div className="flex items-center gap-2 ml-4">
@@ -593,6 +624,18 @@ export function RecentActivity() {
                         >
                           <span className="text-orange-600 mr-1">CR</span>
                           {activity.copyrightStatus}
+                        </span>
+                      )}
+                      {/* FAQ Agent Status */}
+                      {activity.faqStatus && activity.faqStatus !== 'pending' && (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                            activity.faqStatus
+                          )}`}
+                          title={`FAQ: ${activity.faqStatus}`}
+                        >
+                          <span className="text-teal-600 mr-1">F</span>
+                          {activity.faqStatus}
                         </span>
                       )}
                     </div>

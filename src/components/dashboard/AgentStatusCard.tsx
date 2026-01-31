@@ -11,7 +11,7 @@ import { formatNumber, formatPercentage } from '@/lib/utils/format'
 interface AgentStatusCardProps {
   agent: AgentMetrics
   icon: LucideIcon
-  color: 'blue' | 'green' | 'purple' | 'orange'
+  color: 'blue' | 'green' | 'purple' | 'orange' | 'teal'
   name: string
 }
 
@@ -40,6 +40,12 @@ const colorClasses = {
     icon: 'bg-orange-100 text-orange-600',
     text: 'text-orange-900',
   },
+  teal: {
+    bg: 'bg-teal-50',
+    border: 'border-teal-200',
+    icon: 'bg-teal-100 text-teal-600',
+    text: 'text-teal-900',
+  },
 }
 
 export function AgentStatusCard({
@@ -56,64 +62,67 @@ export function AgentStatusCard({
 
   return (
     <div
-      className={`${colors.bg} border ${colors.border} rounded-lg p-6 hover:shadow-md transition-shadow`}
+      className={`${colors.bg} border ${colors.border} rounded-lg p-3 hover:shadow-md transition-shadow`}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${colors.icon}`}>
-            <Icon className="h-5 w-5" />
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className={`p-1.5 rounded-lg ${colors.icon}`}>
+            <Icon className="h-4 w-4" />
           </div>
-          <h3 className={`font-semibold ${colors.text}`}>{name}</h3>
+          <h3 className={`text-sm font-semibold ${colors.text}`}>{name}</h3>
         </div>
-        <span className="text-xs text-gray-500">
+        <span className="text-[10px] text-gray-500">
           {agent.lastRun
-            ? `Last: ${new Date(agent.lastRun).toLocaleDateString()}`
+            ? `${new Date(agent.lastRun).toLocaleDateString()}`
             : 'Never run'}
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      {/* Main Stats */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
         <div>
-          <p className="text-xs text-gray-600">Total Products</p>
-          <p className="text-lg font-bold text-gray-900">
+          <p className="text-[10px] text-gray-600">Total</p>
+          <p className="text-sm font-bold text-gray-900">
             {formatNumber(agent.totalProducts)}
           </p>
         </div>
         <div>
-          <p className="text-xs text-gray-600">Success Rate</p>
-          <p className="text-lg font-bold text-gray-900">{formatPercentage(successRate)}</p>
+          <p className="text-[10px] text-gray-600">Success</p>
+          <p className="text-sm font-bold text-gray-900">{formatPercentage(successRate)}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-600">Avg Confidence</p>
-          <p className="text-lg font-bold text-gray-900">
+          <p className="text-[10px] text-gray-600">Confidence</p>
+          <p className="text-sm font-bold text-gray-900">
             {formatPercentage(agent.avgConfidence)}
           </p>
         </div>
       </div>
 
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="grid grid-cols-4 gap-2 text-center">
+      {/* Status Breakdown */}
+      <div className="pt-2 border-t border-gray-200">
+        <div className="grid grid-cols-4 gap-1 text-center">
           <div>
-            <p className="text-xs text-gray-500">Pending</p>
-            <p className="text-sm font-semibold text-yellow-600">
+            <p className="text-[10px] text-gray-500">Pending</p>
+            <p className="text-xs font-semibold text-yellow-600">
               {formatNumber(agent.pending)}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Processing</p>
-            <p className="text-sm font-semibold text-blue-600">
+            <p className="text-[10px] text-gray-500">Active</p>
+            <p className="text-xs font-semibold text-blue-600">
               {formatNumber(agent.processing)}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Complete</p>
-            <p className="text-sm font-semibold text-green-600">
+            <p className="text-[10px] text-gray-500">Done</p>
+            <p className="text-xs font-semibold text-green-600">
               {formatNumber(agent.complete)}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Failed</p>
-            <p className="text-sm font-semibold text-red-600">
+            <p className="text-[10px] text-gray-500">Failed</p>
+            <p className="text-xs font-semibold text-red-600">
               {formatNumber(agent.failed)}
             </p>
           </div>

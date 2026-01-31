@@ -19,7 +19,7 @@ function normalizeUuid(uuid: string): string {
   return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20, 32)}`
 }
 
-export type AgentType = 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright' | 'classification'
+export type AgentType = 'category' | 'weight_dimension' | 'seo' | 'scraper' | 'copyright' | 'classification' | 'faq'
 
 export interface TriggerAgentParams {
   agentType: AgentType
@@ -270,6 +270,12 @@ class AgentsService {
           copyright_cost: item.copyright_cost,
           copyright_reasoning: item.copyright_reasoning,
           copyright_tools_used: item.copyright_tools_used,
+          faq_status: item.faq_status,
+          faq: item.faq,
+          faq_confidence: item.faq_confidence,
+          faq_cost: item.faq_cost,
+          faq_reasoning: item.faq_reasoning,
+          faq_tools_used: item.faq_tools_used,
           item_code: item.item_code,
           erpnext_updated_at: item.erpnext_updated_at,
           failed_sync_at: item.failed_sync_at,
@@ -405,6 +411,12 @@ class AgentsService {
           copyright_cost: item.copyright_cost,
           copyright_reasoning: item.copyright_reasoning,
           copyright_tools_used: item.copyright_tools_used,
+          faq_status: item.faq_status,
+          faq: item.faq,
+          faq_confidence: item.faq_confidence,
+          faq_cost: item.faq_cost,
+          faq_reasoning: item.faq_reasoning,
+          faq_tools_used: item.faq_tools_used,
           item_code: item.item_code,
           erpnext_updated_at: item.erpnext_updated_at,
           failed_sync_at: item.failed_sync_at,
@@ -514,6 +526,7 @@ class AgentsService {
       scraper: 'status', // Special case
       copyright: 'copyright_status',
       classification: 'classification_status',
+      faq: 'faq_status',
     }
     return fieldMap[agentType]
   }
@@ -529,6 +542,7 @@ class AgentsService {
       scraper: 'failed_sync_error_message', // For scraper, we use the error message field
       copyright: 'copyright_feedback',
       classification: 'classification_feedback',
+      faq: 'faq_status', // FAQ doesn't have feedback field, use status
     }
     return fieldMap[agentType]
   }

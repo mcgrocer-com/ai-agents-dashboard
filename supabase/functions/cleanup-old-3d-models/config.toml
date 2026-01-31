@@ -1,0 +1,11 @@
+# Edge Function Configuration
+# This function runs as a weekly cron job to clean up old 3D models
+
+[function]
+name = "cleanup-old-3d-models"
+
+# Run every Sunday at 2 AM UTC
+# Cron expression: minute hour day month day-of-week
+# 0 2 * * 0 = At 2:00 AM every Sunday
+[function.cron]
+schedule = "0 2 * * 0"

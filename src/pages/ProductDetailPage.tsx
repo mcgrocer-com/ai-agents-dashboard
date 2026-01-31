@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield, Package2, AlertTriangle } from 'lucide-react'
+import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield, Package2, AlertTriangle, HelpCircle } from 'lucide-react'
 import { productsService, erpnextService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
@@ -16,6 +16,7 @@ import { CategoryTab } from '@/components/products/tabs/CategoryTab'
 import { WeightDimensionTab } from '@/components/products/tabs/WeightDimensionTab'
 import { SeoTab } from '@/components/products/tabs/SeoTab'
 import { CopyrightTab } from '@/components/products/tabs/CopyrightTab'
+import { FaqTab } from '@/components/products/tabs/FaqTab'
 import { VariantsTab } from '@/components/products/tabs/VariantsTab'
 import { RawDataTab } from '@/components/products/tabs/RawDataTab'
 import { RetryButton } from '@/components/ui/RetryButton'
@@ -325,6 +326,21 @@ export function ProductDetailPage() {
       ),
     },
     {
+      id: 'faq',
+      label: 'FAQ',
+      icon: <HelpCircle className="h-4 w-4" />,
+      content: (
+        <FaqTab
+          status={product.faq_status || null}
+          faq={product.faq}
+          confidence={product.faq_confidence}
+          reasoning={product.faq_reasoning}
+          toolsUsed={product.faq_tools_used}
+          updatedAt={product.updated_at}
+        />
+      ),
+    },
+    {
       id: 'variants',
       label: 'Variants',
       icon: <Package2 className="h-4 w-4" />,
@@ -348,6 +364,7 @@ export function ProductDetailPage() {
   const weightStatus = product.weight_and_dimension_status || 'pending'
   const seoStatus = product.seo_status || 'pending'
   const copyrightStatus = product.copyright_status || null
+  const faqStatus = product.faq_status || null
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -509,7 +526,7 @@ export function ProductDetailPage() {
       )}
 
       {/* Agent Status Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Category Agent */}
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex items-start justify-between mb-3 min-h-[60px]">
@@ -616,6 +633,35 @@ export function ProductDetailPage() {
               productId={product.id}
               agentType="copyright"
               agentName="Copyright Agent"
+              onRetry={handleRetry}
+              className="w-full justify-center"
+            />
+          </div>
+        </div>
+
+        {/* FAQ Agent */}
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex items-start justify-between mb-3 min-h-[60px]">
+            <div className="flex-1">
+              <p className="text-xs text-gray-500 uppercase mb-2">FAQ Generation</p>
+              <p className={`text-sm font-semibold ${getStatusColor(faqStatus || 'pending')}`}>
+                {getStatusText(faqStatus || 'pending')}
+              </p>
+              {product.faq && product.faq.length > 0 ? (
+                <p className="text-xs text-gray-600 mt-1">
+                  {product.faq.length} FAQ{product.faq.length === 1 ? '' : 's'} generated
+                </p>
+              ) : (
+                <p className="text-xs text-gray-600 mt-1 invisible">placeholder</p>
+              )}
+            </div>
+            <HelpCircle className={`h-6 w-6 ${getStatusColor(faqStatus || 'pending')}`} />
+          </div>
+          <div className={faqStatus === 'pending' || faqStatus === 'processing' || !faqStatus ? 'opacity-50 pointer-events-none' : ''}>
+            <RetryButton
+              productId={product.id}
+              agentType="faq"
+              agentName="FAQ Agent"
               onRetry={handleRetry}
               className="w-full justify-center"
             />

@@ -4,7 +4,7 @@
 
 import { supabase } from '@/lib/supabase/client'
 
-export type AgentFilter = 'category' | 'weight_dimension' | 'seo' | 'copyright'
+export type AgentFilter = 'category' | 'weight_dimension' | 'seo' | 'copyright' | 'faq'
 
 export interface ActivityStats {
   today: number

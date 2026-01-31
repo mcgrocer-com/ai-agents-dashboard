@@ -14,6 +14,7 @@ interface ProcessingQueueProps {
   weightAgent: AgentMetrics
   seoAgent: AgentMetrics
   copyrightAgent?: AgentMetrics | undefined
+  faqAgent?: AgentMetrics | undefined
 }
 
 export function ProcessingQueue({
@@ -21,6 +22,7 @@ export function ProcessingQueue({
   weightAgent,
   seoAgent,
   copyrightAgent,
+  faqAgent,
 }: ProcessingQueueProps) {
   const queues = [
     {
@@ -52,6 +54,17 @@ export function ProcessingQueue({
             complete: copyrightAgent.complete,
             color: 'orange',
             href: '/agents/copyright',
+          },
+        ]
+      : []),
+    ...(faqAgent
+      ? [
+          {
+            name: 'FAQ Generator',
+            pending: faqAgent.pending,
+            complete: faqAgent.complete,
+            color: 'teal',
+            href: '/agents/faq',
           },
         ]
       : []),
@@ -128,6 +141,7 @@ function QueueItem({
     green: 'bg-green-500',
     purple: 'bg-purple-500',
     orange: 'bg-orange-500',
+    teal: 'bg-teal-500',
   }
 
   return (
