@@ -150,6 +150,8 @@ interface SearchResult {
   // Raw scraped data for AI to reason through
   rawJsonLd?: any | null;
   scrapedPrice?: number | null;
+  // Stock status from scraped_products (if available)
+  stockStatus?: 'In Stock' | 'Out of Stock' | 'Unsure';
 }
 
 interface ScrapeResult {
@@ -302,7 +304,122 @@ const PRIORITY_VENDORS = [
   { name: 'Waitrose', domain: 'waitrose.com' },
 ];
 
+// Vendor display name mapping (scraped_products uses lowercase, we want proper display names)
+const VENDOR_DISPLAY_NAMES: Record<string, string> = {
+  'sainsbury': "Sainsbury's",
+  'johnlewis': 'John Lewis',
+  'm&s': 'M&S',
+  'holland&barret': 'Holland & Barrett',
+  'superdrug': 'Superdrug',
+  'ocado': 'Ocado',
+  'next': 'Next',
+  'boots': 'Boots',
+  'asda': 'ASDA',
+  'argos': 'Argos',
+  'lego': 'LEGO',
+  'costco': 'Costco UK',
+  'harrods': 'Harrods',
+  'cocacola': 'Coca-Cola',
+  'cafepod': 'CafePod',
+  'hipp': 'HiPP',
+  'waitrose': 'Waitrose',
+  'tesco': 'Tesco',
+  'morrisons': 'Morrisons',
+  'iceland': 'Iceland',
+  'lidl': 'Lidl',
+  'lush': 'Lush',
+  'aptamil': 'Aptamil',
+  'kendamil': 'Kendamil',
+  'orientalmart': 'Orientalmart',
+};
+
 // BLOCKED_DOMAINS and isBlockedDomain imported from ./blocked-domains.ts
+
+/**
+ * Search scraped_products table for matching products using trigram similarity
+ * Returns products from multiple vendors before falling back to external search
+ */
+async function searchScrapedProducts(
+  supabase: ReturnType<typeof createClient>,
+  query: string,
+  limit: number
+): Promise<SearchResult[]> {
+  console.log(`[ScrapedProducts] Searching for "${query}" in scraped_products...`);
+
+  try {
+    // Use raw SQL with trigram similarity for best matching
+    const { data, error } = await supabase.rpc('search_products_similarity', {
+      search_query: query,
+      result_limit: limit * 3 // Get more results for variety across vendors
+    });
+
+    if (error) {
+      // Fallback to ILIKE if RPC doesn't exist
+      console.log(`[ScrapedProducts] RPC not available, using ILIKE fallback...`);
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('scraped_products')
+        .select('name, vendor, price, url, stock_status')
+        .ilike('name', `%${query}%`)
+        .gt('price', 0)
+        .or('rejected.is.null,rejected.eq.false')
+        .limit(limit * 3);
+
+      if (fallbackError) {
+        console.error(`[ScrapedProducts] Fallback error:`, fallbackError);
+        return [];
+      }
+
+      const results: SearchResult[] = (fallbackData || []).map((item: any) => {
+        // Parse stock status from scraped_products
+        const stockStr = (item.stock_status || '').toLowerCase();
+        const stockStatus: 'In Stock' | 'Out of Stock' | 'Unsure' =
+          stockStr.includes('in stock') || stockStr === 'in_stock' ? 'In Stock' :
+          stockStr.includes('out of stock') || stockStr === 'out_of_stock' ? 'Out of Stock' : 'Unsure';
+
+        return {
+          title: item.name,
+          url: item.url,
+          price: parseFloat(item.price) || null,
+          currency: 'GBP',
+          vendor: VENDOR_DISPLAY_NAMES[item.vendor?.toLowerCase()] ||
+                  (item.vendor ? item.vendor.charAt(0).toUpperCase() + item.vendor.slice(1) : 'Unknown'),
+          snippet: `Stock: ${item.stock_status || 'Unknown'}`,
+          stockStatus
+        };
+      });
+
+      console.log(`[ScrapedProducts] Found ${results.length} products via ILIKE`);
+      return results;
+    }
+
+    // Map RPC results to SearchResult format
+    const results: SearchResult[] = (data || []).map((item: any) => {
+      // Parse stock status from scraped_products
+      const stockStr = (item.stock_status || '').toLowerCase();
+      const stockStatus: 'In Stock' | 'Out of Stock' | 'Unsure' =
+        stockStr.includes('in stock') || stockStr === 'in_stock' ? 'In Stock' :
+        stockStr.includes('out of stock') || stockStr === 'out_of_stock' ? 'Out of Stock' : 'Unsure';
+
+      return {
+        title: item.name,
+        url: item.url,
+        price: parseFloat(item.price) || null,
+        currency: 'GBP',
+        vendor: VENDOR_DISPLAY_NAMES[item.vendor?.toLowerCase()] ||
+                (item.vendor ? item.vendor.charAt(0).toUpperCase() + item.vendor.slice(1) : 'Unknown'),
+        snippet: `Stock: ${item.stock_status || 'Unknown'} | Score: ${(item.score * 100).toFixed(0)}%`,
+        stockStatus
+      };
+    });
+
+    console.log(`[ScrapedProducts] Found ${results.length} products via trigram similarity`);
+    return results;
+
+  } catch (e) {
+    console.error(`[ScrapedProducts] Error:`, e);
+    return [];
+  }
+}
 
 /**
  * Filter out blocked domains from search results (before scraping)
@@ -966,17 +1083,28 @@ async function enrichProductsWithChecker(
     return [];
   }
 
-  console.log(`[ProductChecker] Enriching ${products.length} products...`);
+  // OPTIMIZATION: Products that already have definite availability (from scraped_products)
+  // don't need to be checked - only check products with 'Unsure' status
+  const productsWithKnownStatus = products.filter(p => p.availability !== 'Unsure');
+  const productsNeedingEnrichment = products.filter(p => p.availability === 'Unsure');
 
-  // OPTIMIZATION: Check scraped_products for recent data first
-  // This avoids redundant API calls when cache TTL expired but scraped_products has fresh data
+  console.log(`[ProductChecker] ${productsWithKnownStatus.length} products already have stock status, ${productsNeedingEnrichment.length} need checking`);
+
+  // If no products need enrichment, return early
+  if (productsNeedingEnrichment.length === 0) {
+    return products;
+  }
+
+  console.log(`[ProductChecker] Enriching ${productsNeedingEnrichment.length} products...`);
+
+  // For products with 'Unsure' status, try to get fresh data from scraped_products first
   const FRESHNESS_THRESHOLD_HOURS = 24;
   const productsNeedingCheck: ProductResult[] = [];
   const productsWithFreshData: ProductResult[] = [];
 
   if (supabase) {
     // Normalize URLs and query scraped_products for matches
-    const normalizedUrls = products.map(p => normalizeUrl(p.source_url));
+    const normalizedUrls = productsNeedingEnrichment.map(p => normalizeUrl(p.source_url));
     const cutoffTime = new Date(Date.now() - FRESHNESS_THRESHOLD_HOURS * 60 * 60 * 1000).toISOString();
 
     const { data: freshProducts, error } = await supabase
@@ -987,13 +1115,13 @@ async function enrichProductsWithChecker(
 
     if (error) {
       console.error(`[ProductChecker] Error checking scraped_products:`, error);
-      // Fall through to check all products via API
-      productsNeedingCheck.push(...products);
+      productsNeedingCheck.push(...productsNeedingEnrichment);
     } else if (freshProducts && freshProducts.length > 0) {
-      // Build a map of URL -> fresh data
+      // Build a map of normalized URL -> fresh data
       const freshDataMap = new Map<string, { price: number | null; stock_status: string; updated_at: string }>();
       for (const fp of freshProducts) {
-        freshDataMap.set(fp.url, {
+        // Normalize the URL from scraped_products too for consistent matching
+        freshDataMap.set(normalizeUrl(fp.url), {
           price: fp.price,
           stock_status: fp.stock_status,
           updated_at: fp.scraper_updated_at
@@ -1002,15 +1130,16 @@ async function enrichProductsWithChecker(
 
       console.log(`[ProductChecker] Found ${freshProducts.length} products with fresh data in scraped_products`);
 
-      // Separate products into those with fresh data and those needing API check
-      for (const product of products) {
+      for (const product of productsNeedingEnrichment) {
         const normalizedUrl = normalizeUrl(product.source_url);
         const freshData = freshDataMap.get(normalizedUrl);
 
         if (freshData) {
-          // Use fresh data from scraped_products
-          const availability = freshData.stock_status === 'in_stock' ? 'In Stock' :
-                              freshData.stock_status === 'out_of_stock' ? 'Out of Stock' : 'Unsure';
+          // Parse stock status (handle both 'in stock' and 'in_stock' formats)
+          const stockStr = (freshData.stock_status || '').toLowerCase();
+          const availability: 'In Stock' | 'Out of Stock' | 'Unsure' =
+            stockStr.includes('in stock') || stockStr === 'in_stock' ? 'In Stock' :
+            stockStr.includes('out of stock') || stockStr === 'out_of_stock' ? 'Out of Stock' : 'Unsure';
           const isPriority = isPriorityVendor(product.vendor);
 
           if (isPriority && freshData.price !== null) {
@@ -1027,18 +1156,16 @@ async function enrichProductsWithChecker(
 
       console.log(`[ProductChecker] ${productsWithFreshData.length} from cache, ${productsNeedingCheck.length} need API check`);
     } else {
-      // No fresh data found, check all via API
-      productsNeedingCheck.push(...products);
+      productsNeedingCheck.push(...productsNeedingEnrichment);
     }
   } else {
-    // No Supabase client, check all via API
-    productsNeedingCheck.push(...products);
+    productsNeedingCheck.push(...productsNeedingEnrichment);
   }
 
-  // If all products have fresh data, return early
+  // If all 'Unsure' products got fresh data, combine with known status products and return
   if (productsNeedingCheck.length === 0) {
-    console.log(`[ProductChecker] All ${products.length} products had fresh cached data, skipping API call`);
-    return productsWithFreshData;
+    console.log(`[ProductChecker] All products resolved from cache`);
+    return [...productsWithKnownStatus, ...productsWithFreshData];
   }
 
   console.log(`[ProductChecker] Calling batch API for ${productsNeedingCheck.length} products (6 parallel browsers)...`);
@@ -1089,11 +1216,11 @@ async function enrichProductsWithChecker(
     enrichedProducts.push(...fallbackResults);
   }
 
-  // Combine products with fresh cached data + products enriched via API
-  const allEnrichedProducts = [...productsWithFreshData, ...enrichedProducts];
+  // Combine: products with known status + fresh cached data + products enriched via API
+  const allEnrichedProducts = [...productsWithKnownStatus, ...productsWithFreshData, ...enrichedProducts];
 
   const withAvailability = allEnrichedProducts.filter(p => p.availability !== 'Unsure').length;
-  console.log(`[ProductChecker] Got availability for ${withAvailability}/${products.length} products (${productsWithFreshData.length} cached, ${enrichedProducts.length} API)`);
+  console.log(`[ProductChecker] Got availability for ${withAvailability}/${products.length} products (${productsWithKnownStatus.length} already known, ${productsWithFreshData.length} cached, ${enrichedProducts.length} API)`);
 
   return allEnrichedProducts;
 }
@@ -1156,7 +1283,7 @@ async function verifySingleProduct(
     ? `\nPRODUCT DESCRIPTION (use this to help identify the correct product):\n"${description}"\n`
     : '';
 
-  const prompt = `You are a product matching assistant. Your job is to verify if search results are likely the same product the user is looking for. Be GENEROUS - if the product appears to match, ACCEPT it.
+  const prompt = `You are a STRICT product matching assistant. Your job is to verify if search results are THE EXACT SAME product the user is looking for. Be STRICT - only accept exact matches.
 
 USER QUERY: "${userQuery}"
 ${descriptionContext}
@@ -1167,55 +1294,40 @@ SEARCH RESULT:
 - Price from search: £${result.price}
 ${result.snippet ? `- Snippet: "${result.snippet}"` : ''}
 
-MATCHING RULES:
+CRITICAL MATCHING RULES:
 
-1. URL VALIDATION:
-   - REJECT if URL is a category page (/c/, /category/, /browse/, /shop/, /search)
-   - REJECT if URL is a comparison site or marketplace
-   - Product URLs have product IDs, SKUs, or specific product slugs
+1. VARIANT/SHADE/COLOR MATCHING (STRICTEST RULE):
+   - If query contains a shade code (e.g., "12N", "9N", "8.5C", "01", "Fair"), the product MUST have the EXACT same shade
+   - "12N Ebony" ≠ "9N Truffle" - these are COMPLETELY DIFFERENT products, REJECT
+   - "Shade 01" ≠ "Shade 02" - REJECT
+   - "Rose Gold" ≠ "Silver" - REJECT
+   - "Size M" ≠ "Size L" - REJECT
+   - If query has a specific variant and product has a DIFFERENT variant, ALWAYS REJECT
 
-2. SIZE/WEIGHT MATCHING (for groceries, beverages, household items):
-   - ONLY applies to products with measurable sizes: grams (g), ml, L, kg, oz, packs
-   - If query has a size (e.g., "450g", "2L", "6x330ml"), verify it matches
-   - SIZE MUST MATCH EXACTLY - 450g ≠ 475g, 2L ≠ 1.5L
-   - REJECT if multi-pack vs single item mismatch
-   - Normalize units: 1000ml = 1L, 1000g = 1kg
+2. SIZE/WEIGHT MATCHING:
+   - If query has a size (e.g., "450g", "2L"), it MUST match exactly
+   - 450g ≠ 475g, 2L ≠ 1.5L - REJECT
+   - Multi-pack vs single: "415g" ≠ "4x415g" - REJECT
 
-3. VARIANT MATCHING (for cosmetics, fashion, electronics):
-   - Variants include: colors, shades, sizes (S/M/L), model numbers
-   - If search title EXACTLY matches query variant, ACCEPT with 0.9 confidence
-   - Examples: "Shade 01", "Fair to Medium", "Rose Gold", "Size M"
-   - Don't require variant confirmation in URL for non-grocery items
-
-4. PRODUCT MATCHING:
+3. PRODUCT MATCHING:
    - Brand and product type must match
-   - REJECT if it's an accessory, case, or related item
+   - REJECT accessories, cases, or related items
 
-5. PRICE CHECK:
-   - Price should be reasonable (not shipping cost, not suspiciously low)
+4. URL VALIDATION:
+   - REJECT category pages (/c/, /category/, /browse/, /shop/, /search)
 
 EXAMPLES:
-✓ ACCEPT: Query "HP Sauce 450g" → Title "HP Brown Sauce 450g" (size match)
-✓ ACCEPT: Query "Burberry Palette Shade 01" → Title "Burberry Palette Shade 01" (exact match)
-✓ ACCEPT: Query "Burberry Glow Palette Shade 01 - Fair to Medium" → Title "Burberry Glow Palette Shade 01 - Fair to Medium 130/1423" (same product with SKU)
-✓ ACCEPT: Query "iPhone 15 Pro 256GB" → Title "iPhone 15 Pro 256GB" (model match)
-✓ ACCEPT: Query "Product Name Long" → Title "Product Name Long | Argos" (same product with site suffix)
-✓ ACCEPT: Query "Product Name" → Title "Product Name - Buy at Store" (same product with marketing text)
-✗ REJECT: Query "Beans 415g" → "Beans 4x415g" (single vs multi-pack)
-✗ REJECT: Query "Milk 2L" → "Milk 1L" (volume mismatch)
-✗ REJECT: Query "Palette Shade 01" → "Palette Shade 02" (wrong variant)
-
-IMPORTANT: If the search title contains ALL the key words from the query (brand + product + variant), ACCEPT it even if there are extra words like SKUs, store names, or "Buy Now". Truncated titles should be accepted if they match up to the truncation.
+✓ ACCEPT: Query "Foundation 12N Ebony" → Title "Foundation 12N Ebony" (exact shade match)
+✓ ACCEPT: Query "HP Sauce 450g" → Title "HP Brown Sauce 450g" (same product, size matches)
+✗ REJECT: Query "Foundation 12N Ebony" → Title "Foundation 9N Truffle" (WRONG SHADE - different product!)
+✗ REJECT: Query "Foundation 12N Ebony" → Title "Foundation 8.5C Pecan" (WRONG SHADE!)
+✗ REJECT: Query "Foundation 12N Ebony" → Title "Foundation 4N Beige" (WRONG SHADE!)
+✗ REJECT: Query "Palette Shade 01" → Title "Palette Shade 02" (wrong variant)
+✗ REJECT: Query "Beans 415g" → Title "Beans 4x415g" (single vs multi-pack)
 
 RESPOND WITH ONLY ONE OF:
-A) If match: {"match": true, "product_name": "...", "price": 1.23, "confidence": 0.7-0.9, "reason": "explanation"}
-B) If NOT a match: {"match": false, "reason": "why it doesn't match"}
-
-CONFIDENCE RULES:
-- 0.9 = search title contains all key product words from query
-- 0.8 = brand and main product name match, minor differences
-- 0.7 = product likely matches but some details unclear
-- DEFAULT TO ACCEPTING with 0.8 confidence if brand and product type clearly match`;
+A) If EXACT match: {"match": true, "product_name": "...", "price": 1.23, "confidence": 0.9, "reason": "explanation"}
+B) If NOT exact match: {"match": false, "reason": "why it doesn't match - be specific about what's different"}`;
 
   try {
     const response = await fetch(
@@ -1248,8 +1360,9 @@ CONFIDENCE RULES:
     const aiResult = JSON.parse(jsonText);
 
     if (aiResult.match) {
-      // Availability set to "Unsure" - product-checker API will update it later
-      console.log(`[AI] ✓ ${result.vendor}: matched with confidence ${aiResult.confidence} - ${aiResult.reason || 'no reason'}`);
+      // Use stockStatus from scraped_products if available, otherwise 'Unsure'
+      const availability = result.stockStatus || 'Unsure';
+      console.log(`[AI] ✓ ${result.vendor}: matched with confidence ${aiResult.confidence}, stock: ${availability} - ${aiResult.reason || 'no reason'}`);
       return {
         product_name: aiResult.product_name || result.title,
         price: typeof aiResult.price === 'number' ? aiResult.price : (result.price || 0),
@@ -1257,7 +1370,7 @@ CONFIDENCE RULES:
         source_url: result.url,
         vendor: result.vendor,
         confidence: aiResult.confidence || 0.7,
-        availability: 'Unsure', // Will be updated by enrichProductsWithChecker
+        availability, // Use scraped_products stock_status if available
         reason: aiResult.reason || 'Product verified by AI'
       };
     } else {
@@ -1305,6 +1418,10 @@ interface FindProductsResult {
   products: ProductResult[];
   products_without_price: ProductResult[];
   debug: {
+    scraped_products_found: number;
+    scraped_products_verified: number;
+    scraped_vendors: string[];
+    serper_vendors_searched: number;
     priority_results: number;
     after_dedup: number;
     before_ai: number;
@@ -1327,6 +1444,10 @@ async function findProducts(
   supabase?: ReturnType<typeof createClient> | null
 ): Promise<FindProductsResult> {
   const debug: FindProductsResult['debug'] = {
+    scraped_products_found: 0,
+    scraped_products_verified: 0,
+    scraped_vendors: [],
+    serper_vendors_searched: 0,
     priority_results: 0,
     after_dedup: 0,
     before_ai: 0,
@@ -1336,36 +1457,84 @@ async function findProducts(
     vendors_before_ai: []
   };
 
-  // STEP 1: Search all priority vendors in parallel
-  console.log(`[Main] Searching ${PRIORITY_VENDORS.length} priority vendors in parallel...`);
-  const vendorSearches = PRIORITY_VENDORS.map(vendor =>
-    searchVendor(serperKey, userQuery, vendor.name, vendor.domain)
+  // STEP 1: Search scraped_products first (if Supabase client available)
+  let verified: ProductResult[] = [];
+  const seenVendors = new Map<string, SearchResult>();
+
+  if (supabase) {
+    console.log(`[Main] STEP 1: Searching scraped_products first...`);
+    const scrapedResults = await searchScrapedProducts(supabase, userQuery, limit);
+    debug.scraped_products_found = scrapedResults.length;
+
+    if (scrapedResults.length > 0) {
+      // AI verify scraped products
+      const scrapedVerified = await verifyWithAI(geminiKey, userQuery, description, scrapedResults, limit + 5);
+      debug.scraped_products_verified = scrapedVerified.length;
+
+      // Filter by confidence
+      const scrapedConfidence = filterByConfidence(scrapedVerified, 0.7);
+
+      // DEDUPLICATE: Keep only the best (first) result per vendor
+      for (const result of scrapedConfidence.filtered) {
+        const vendorKey = normalizeVendor(result.vendor);
+        if (!seenVendors.has(vendorKey)) {
+          seenVendors.set(vendorKey, result as any);
+          verified.push(result); // Only add first product per vendor
+        }
+      }
+      debug.scraped_vendors = Array.from(seenVendors.keys());
+      console.log(`[Main] Found ${verified.length} verified products from scraped_products (vendors: ${debug.scraped_vendors.join(', ')})`);
+    }
+  }
+
+  // STEP 2: Search Serper ONLY for vendors NOT found in scraped_products
+  const vendorsToSearch = PRIORITY_VENDORS.filter(v =>
+    !seenVendors.has(normalizeVendor(v.name))
   );
-  const vendorResults = await Promise.all(vendorSearches);
-  let allResults: SearchResult[] = vendorResults.flat();
-  debug.priority_results = allResults.length;
+  debug.serper_vendors_searched = vendorsToSearch.length;
 
-  // STEP 2: Deduplicate by vendor
-  const { deduplicated, seenVendors } = deduplicateByVendor(allResults);
-  allResults = deduplicated;
-  debug.after_dedup = allResults.length;
+  let allResults: SearchResult[] = [];
+  if (vendorsToSearch.length > 0 && verified.length < limit) {
+    console.log(`[Main] STEP 2: Searching ${vendorsToSearch.length} remaining vendors via Serper...`);
+    const vendorSearches = vendorsToSearch.map(vendor =>
+      searchVendor(serperKey, userQuery, vendor.name, vendor.domain)
+    );
+    const vendorResults = await Promise.all(vendorSearches);
+    allResults = vendorResults.flat();
+    debug.priority_results = allResults.length;
 
-  // STEP 3: Filter blocked domains BEFORE AI verification
-  const blockFilter1 = filterBlockedSearchResults(allResults);
-  allResults = blockFilter1.filtered;
-  debug.before_ai = allResults.length;
-  debug.vendors_before_ai = allResults.map(r => `${r.vendor}: £${r.price}`);
+    // Deduplicate by vendor
+    const { deduplicated } = deduplicateByVendor(allResults);
+    allResults = deduplicated;
+    debug.after_dedup = allResults.length;
 
-  // STEP 4: AI Verification (parallel, each product independently)
-  let verified = await verifyWithAI(geminiKey, userQuery, description, allResults, limit + 10);
-  debug.after_ai = verified.length;
+    // Filter blocked domains
+    const blockFilter1 = filterBlockedSearchResults(allResults);
+    allResults = blockFilter1.filtered;
+    debug.before_ai = allResults.length;
+    debug.vendors_before_ai = allResults.map(r => `${r.vendor}: £${r.price}`);
 
-  // STEP 5: Filter by confidence (90%+)
-  const confidenceFilter = filterByConfidence(verified, 0.7);
-  verified = confidenceFilter.filtered;
-  debug.filtered_low_confidence = confidenceFilter.removedCount;
+    // AI Verification for Serper results
+    if (allResults.length > 0) {
+      const serperVerified = await verifyWithAI(geminiKey, userQuery, description, allResults, limit + 10);
+      debug.after_ai = serperVerified.length;
 
-  // STEP 6: Fallback search if not enough results
+      // Filter by confidence and add to verified results
+      const confidenceFilter = filterByConfidence(serperVerified, 0.7);
+      for (const result of confidenceFilter.filtered) {
+        const vendorKey = normalizeVendor(result.vendor);
+        if (!seenVendors.has(vendorKey)) {
+          seenVendors.set(vendorKey, result as any);
+          verified.push(result);
+        }
+      }
+      debug.filtered_low_confidence = confidenceFilter.removedCount;
+    }
+  } else {
+    console.log(`[Main] Skipping Serper search - have ${verified.length} results from scraped_products`);
+  }
+
+  // STEP 3: Fallback broader search if not enough results
   if (verified.length < limit) {
     console.log(`[Main] Only ${verified.length} results, need ${limit}. Running fallback...`);
     let fallbackResults = await searchBroader(serperKey, userQuery, limit * 2, learnedPatterns, supabaseUrl, authHeader);
@@ -1394,7 +1563,7 @@ async function findProducts(
     console.log(`[Main] After fallback: ${verified.length} total results`);
   }
 
-  // STEP 9: Enrich ALL products with fresh availability from product-checker API
+  // STEP 4: Enrich ALL products with fresh availability from product-checker API
   // Optimization: checks scraped_products for recent data first to avoid redundant API calls
   const enrichedProducts = await enrichProductsWithChecker(verified, serperKey, geminiKey, supabase);
 
