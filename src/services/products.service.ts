@@ -124,7 +124,8 @@ class ProductsService {
             failed_sync_at,
             failed_sync_error_message,
             item_code,
-            ai_title
+            ai_title,
+            validation_error
           )
         `, { count: 'planned' })
 
@@ -235,6 +236,7 @@ class ProductsService {
           sync_status,
           item_code: pending?.item_code,
           failed_sync_error_message: pending?.failed_sync_error_message,
+          validation_error: pending?.validation_error,
         } as ScrapedProduct
       })
 
@@ -244,6 +246,69 @@ class ProductsService {
       return {
         products: productsWithSyncStatus,
         count: actualCount,
+        error: null,
+      }
+    } catch (error) {
+      return {
+        products: [],
+        count: 0,
+        error: error as Error,
+      }
+    }
+  }
+
+  /**
+   * Get products with validation errors
+   * Uses RPC function to filter products where validation_error IS NOT NULL
+   */
+  async getProductsWithValidationErrors(filters: ProductFilters = {}) {
+    try {
+      const limit = filters.limit || 20
+      const offset = filters.offset || 0
+      const sortBy = filters.sortBy || 'updated_at'
+      const sortOrder = filters.sortOrder || 'desc'
+
+      // Get vendor from dynamic filters if present
+      let vendor: string | null = filters.vendor || null
+      if (!vendor && filters.dynamicFilters) {
+        const vendorFilter = filters.dynamicFilters.find(f => f.field === 'vendor')
+        if (vendorFilter && vendorFilter.value && vendorFilter.value !== 'all') {
+          vendor = vendorFilter.value
+        }
+      }
+
+      const { data, error } = await supabase.rpc('get_products_with_validation_errors', {
+        p_limit: limit,
+        p_offset: offset,
+        p_ascending: sortOrder === 'asc',
+        p_search: filters.search || null,
+        p_vendor: vendor,
+        p_sort_by: sortBy,
+      })
+
+      if (error) throw error
+
+      const products = (data || []).map((product: any) => {
+        // Calculate sync_status from timestamps
+        let sync_status: 'synced' | 'failed' | 'pending' = 'pending'
+        if (product.erpnext_updated_at && (!product.failed_sync_at || new Date(product.failed_sync_at) < new Date(product.erpnext_updated_at))) {
+          sync_status = 'synced'
+        } else if (product.failed_sync_at && (!product.erpnext_updated_at || new Date(product.failed_sync_at) > new Date(product.erpnext_updated_at))) {
+          sync_status = 'failed'
+        }
+
+        const { total_count, ...productData } = product
+        return {
+          ...productData,
+          sync_status,
+        } as ScrapedProduct
+      })
+
+      const totalCount = data && data.length > 0 ? Number(data[0].total_count) : 0
+
+      return {
+        products,
+        count: totalCount,
         error: null,
       }
     } catch (error) {
@@ -807,7 +872,8 @@ class ProductsService {
             failed_sync_at,
             failed_sync_error_message,
             item_code,
-            ai_title
+            ai_title,
+            validation_error
           )
         `, { count: 'planned' })
         .eq('pinned', true)
@@ -914,6 +980,7 @@ class ProductsService {
           sync_status,
           item_code: pending?.item_code,
           failed_sync_error_message: pending?.failed_sync_error_message,
+          validation_error: pending?.validation_error,
         } as ScrapedProduct
       })
 

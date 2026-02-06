@@ -19,7 +19,8 @@ export type IssueCategory =
   | 'links'
   | 'images'
   | 'ai-content'
-  | 'tags';
+  | 'tags'
+  | 'readability';
 
 export interface SeoIssue {
   id: string;
@@ -55,9 +56,10 @@ export interface SeoValidationReport {
     excerpt: { passed: boolean; value: string; length: number };
     headings: { passed: boolean; hierarchy: string[]; issues: string[] };
     links: { passed: boolean; total: number; invalid: number; external: number; nofollow: number };
-    images: { passed: boolean; total: number; withAlt: number; withoutAlt: number };
+    images: { passed: boolean; total: number; withAlt: number; withoutAlt: number; suggestedAlts?: Array<{ src: string; suggestedAlt: string }> };
     aiContent: { passed: boolean; issues: string[]; patterns: string[] };
     tags: { passed: boolean; tags: string[]; issues: string[]; suggestedTags?: string[] };
+    readability: { passed: boolean; score: number; grade: string; issues: string[] };
   };
 }
 
@@ -95,16 +97,17 @@ export class SeoValidator {
     const skip = new Set(skipCategories);
 
     // Run AI validations in parallel (skip already-passed categories)
-    const [titleCheck, descCheck, excerptCheck, headingCheck, linkCheck, imageCheck, aiContentCheck, tagsCheck] =
+    const [titleCheck, descCheck, excerptCheck, headingCheck, linkCheck, imageCheck, aiContentCheck, tagsCheck, readabilityCheck] =
       await Promise.all([
         skip.has('title') ? Promise.resolve({ passed: true }) : this.validateTitleWithAI(metaTitle, primaryKeyword),
         skip.has('description') ? Promise.resolve({ passed: true }) : this.validateDescriptionWithAI(metaDescription, primaryKeyword),
         skip.has('excerpt') ? Promise.resolve({ passed: true }) : this.validateExcerptWithAI(excerpt, primaryKeyword, metaDescription),
         skip.has('headings') ? Promise.resolve({ passed: true, hierarchy: [], issues: [] }) : this.validateHeadingsWithAI(content),
         skip.has('links') ? Promise.resolve({ passed: true, total: 0, invalid: 0, external: 0, nofollow: 0 }) : this.validateLinksWithAI(content),
-        skip.has('images') ? Promise.resolve({ passed: true, total: 0, withAlt: 0, withoutAlt: 0 }) : this.validateImagesWithAI(content),
+        skip.has('images') ? Promise.resolve({ passed: true, total: 0, withAlt: 0, withoutAlt: 0, suggestedAlts: [] }) : this.validateImagesWithAI(content),
         skip.has('ai-content') ? Promise.resolve({ passed: true, issues: [], patterns: [] }) : this.validateAiContentWithAI(content),
         skip.has('tags') ? Promise.resolve({ passed: true, tags: [], issues: [], suggestedTags: [] }) : this.validateTagsWithAI(tags, content, primaryKeyword, metaTitle),
+        skip.has('readability') ? Promise.resolve({ passed: true, score: 70, grade: 'Good', issues: [] }) : this.validateReadability(content),
       ]);
 
     // Calculate score based on issues
@@ -133,6 +136,7 @@ export class SeoValidator {
         images: imageCheck,
         aiContent: aiContentCheck,
         tags: tagsCheck,
+        readability: readabilityCheck,
       },
     };
   }
@@ -445,11 +449,11 @@ RESPOND WITH JSON ONLY:
   }
 
   /**
-   * AI Agent: Validate images
+   * AI Agent: Validate images and suggest alt text for missing ones
    */
   private async validateImagesWithAI(
     content: string
-  ): Promise<{ passed: boolean; total: number; withAlt: number; withoutAlt: number }> {
+  ): Promise<{ passed: boolean; total: number; withAlt: number; withoutAlt: number; suggestedAlts: Array<{ src: string; suggestedAlt: string }> }> {
     const imgPattern = /<img([^>]*)>/gi;
     const images: string[] = [];
     let match;
@@ -458,7 +462,7 @@ RESPOND WITH JSON ONLY:
     }
 
     if (images.length === 0) {
-      return { passed: true, total: 0, withAlt: 0, withoutAlt: 0 };
+      return { passed: true, total: 0, withAlt: 0, withoutAlt: 0, suggestedAlts: [] };
     }
 
     try {
@@ -471,9 +475,13 @@ ${images.join('\n')}
 
 VALIDATION CRITERIA:
 1. All images must have alt attributes
-2. Alt text should be descriptive (not empty, not just "image")
-3. Alt text should be relevant to the image context
-4. File names should be descriptive (not random strings)
+2. Alt text should be descriptive (10-125 characters, not empty, not just "image")
+3. Alt text should describe what's in the image, not be generic
+4. For product images, include the product name
+
+For any image missing alt text or with poor alt text, suggest an appropriate alt based on:
+- The image URL/filename (extract product names, descriptions)
+- The surrounding context in the content
 
 RESPOND WITH JSON ONLY:
 {
@@ -481,7 +489,8 @@ RESPOND WITH JSON ONLY:
   "total": number,
   "withAlt": number,
   "withoutAlt": number,
-  "issues": [{ "severity": "warning", "message": "issue", "suggestion": "fix" }]
+  "issues": [{ "severity": "warning", "message": "issue", "suggestion": "fix" }],
+  "suggestedAlts": [{ "src": "image URL", "suggestedAlt": "descriptive alt text" }]
 }`,
       });
 
@@ -491,7 +500,7 @@ RESPOND WITH JSON ONLY:
         const result = JSON.parse(jsonMatch[0]);
         if (result.issues) {
           for (const issue of result.issues) {
-            this.addIssue({ severity: issue.severity, category: 'images', message: issue.message, suggestion: issue.suggestion, autoFixable: false });
+            this.addIssue({ severity: issue.severity, category: 'images', message: issue.message, suggestion: issue.suggestion, autoFixable: true });
           }
         }
         return {
@@ -499,13 +508,14 @@ RESPOND WITH JSON ONLY:
           total: result.total || images.length,
           withAlt: result.withAlt || 0,
           withoutAlt: result.withoutAlt || 0,
+          suggestedAlts: result.suggestedAlts || [],
         };
       }
     } catch (error) {
       console.error('[SEO Validator] AI images validation failed:', error);
     }
 
-    return { passed: true, total: images.length, withAlt: images.length, withoutAlt: 0 };
+    return { passed: true, total: images.length, withAlt: images.length, withoutAlt: 0, suggestedAlts: [] };
   }
 
   /**
@@ -710,6 +720,169 @@ ANALYZE AND RESPOND WITH JSON ONLY:
       issues: [],
       suggestedTags: [],
     };
+  }
+
+  /**
+   * Validate content readability using Flesch Reading Ease score
+   *
+   * Scoring (Flesch Reading Ease):
+   * - 90-100: Very Easy (5th grade)
+   * - 80-90: Easy (6th grade)
+   * - 70-80: Fairly Easy (7th grade) - TARGET for web content
+   * - 60-70: Standard (8th-9th grade) - Acceptable
+   * - 50-60: Fairly Difficult (10th-12th grade)
+   * - 30-50: Difficult (College)
+   * - 0-30: Very Difficult (Graduate)
+   *
+   * For SEO, we target 60-80 (Standard to Fairly Easy)
+   */
+  private async validateReadability(
+    content: string
+  ): Promise<{ passed: boolean; score: number; grade: string; issues: string[] }> {
+    // Strip HTML tags to get plain text
+    const plainText = content
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!plainText || plainText.length < 100) {
+      return { passed: true, score: 70, grade: 'Unknown', issues: ['Content too short to analyze'] };
+    }
+
+    // Calculate Flesch Reading Ease
+    const sentences = plainText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const words = plainText.split(/\s+/).filter(w => w.length > 0);
+    const syllables = this.countSyllables(plainText);
+
+    const sentenceCount = sentences.length;
+    const wordCount = words.length;
+
+    if (sentenceCount === 0 || wordCount === 0) {
+      return { passed: true, score: 70, grade: 'Unknown', issues: ['Could not analyze sentence structure'] };
+    }
+
+    // Flesch Reading Ease formula: 206.835 - 1.015(words/sentences) - 84.6(syllables/words)
+    const avgSentenceLength = wordCount / sentenceCount;
+    const avgSyllablesPerWord = syllables / wordCount;
+
+    let fleschScore = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgSyllablesPerWord);
+    fleschScore = Math.max(0, Math.min(100, fleschScore)); // Clamp to 0-100
+
+    // Determine grade and pass/fail
+    let grade: string;
+    const issues: string[] = [];
+
+    if (fleschScore >= 80) {
+      grade = 'Easy';
+    } else if (fleschScore >= 70) {
+      grade = 'Fairly Easy';
+    } else if (fleschScore >= 60) {
+      grade = 'Standard';
+    } else if (fleschScore >= 50) {
+      grade = 'Fairly Difficult';
+      issues.push('Content may be too complex for general audience');
+    } else if (fleschScore >= 30) {
+      grade = 'Difficult';
+      issues.push('Content is too complex - simplify sentences and vocabulary');
+    } else {
+      grade = 'Very Difficult';
+      issues.push('Content is extremely complex - significant simplification needed');
+    }
+
+    // Additional readability checks
+    if (avgSentenceLength > 25) {
+      issues.push(`Average sentence length (${avgSentenceLength.toFixed(1)} words) is too long - aim for under 20 words`);
+      this.addIssue({
+        severity: 'warning',
+        category: 'readability',
+        message: `Sentences too long (avg ${avgSentenceLength.toFixed(1)} words)`,
+        suggestion: 'Break long sentences into shorter ones for better readability',
+        autoFixable: false,
+      });
+    }
+
+    // Check for very long paragraphs (estimate by looking at text between </p> and <p>)
+    const paragraphs = content.split(/<\/p>\s*<p/i);
+    const longParagraphs = paragraphs.filter(p => {
+      const text = p.replace(/<[^>]+>/g, '').trim();
+      const pSentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      return pSentences.length > 5;
+    });
+
+    if (longParagraphs.length > 0) {
+      issues.push(`${longParagraphs.length} paragraph(s) have more than 5 sentences - consider breaking them up`);
+      this.addIssue({
+        severity: 'info',
+        category: 'readability',
+        message: `${longParagraphs.length} long paragraph(s) detected`,
+        suggestion: 'Keep paragraphs to 3-4 sentences for better web readability',
+        autoFixable: false,
+      });
+    }
+
+    // SEO target: 60-80 is ideal for web content
+    const passed = fleschScore >= 50; // Allow down to "Fairly Difficult" but warn below 60
+
+    if (fleschScore < 60 && passed) {
+      this.addIssue({
+        severity: 'warning',
+        category: 'readability',
+        message: `Readability score (${Math.round(fleschScore)}) is below target`,
+        suggestion: 'Use simpler words and shorter sentences to improve readability',
+        autoFixable: false,
+      });
+    }
+
+    return {
+      passed,
+      score: Math.round(fleschScore),
+      grade,
+      issues,
+    };
+  }
+
+  /**
+   * Count syllables in text (English approximation)
+   */
+  private countSyllables(text: string): number {
+    const words = text.toLowerCase().split(/\s+/);
+    let totalSyllables = 0;
+
+    for (const word of words) {
+      // Remove non-alpha characters
+      const cleanWord = word.replace(/[^a-z]/g, '');
+      if (cleanWord.length === 0) continue;
+
+      // Count syllables using a simple algorithm
+      let syllables = 0;
+      let previousIsVowel = false;
+      const vowels = 'aeiouy';
+
+      for (let i = 0; i < cleanWord.length; i++) {
+        const isVowel = vowels.includes(cleanWord[i]);
+
+        // Count a syllable when we transition from non-vowel to vowel
+        if (isVowel && !previousIsVowel) {
+          syllables++;
+        }
+        previousIsVowel = isVowel;
+      }
+
+      // Handle silent 'e' at end
+      if (cleanWord.endsWith('e') && syllables > 1) {
+        syllables--;
+      }
+
+      // Handle words ending in 'le' preceded by consonant
+      if (cleanWord.length > 2 && cleanWord.endsWith('le') && !vowels.includes(cleanWord[cleanWord.length - 3])) {
+        syllables++;
+      }
+
+      // Every word has at least one syllable
+      totalSyllables += Math.max(1, syllables);
+    }
+
+    return totalSyllables;
   }
 
   private addIssue(issue: Omit<SeoIssue, 'id'>): void {

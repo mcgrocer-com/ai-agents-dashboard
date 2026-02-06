@@ -72,6 +72,7 @@ export interface ScrapedProduct {
   failed_sync_error_message?: string | null
   erpnext_updated_at?: string | null
   failed_sync_at?: string | null
+  validation_error?: string | null
 }
 
 export interface PendingProduct {
@@ -155,6 +156,7 @@ export interface PendingProduct {
   erpnext_updated_at: string | null
   failed_sync_at: string | null
   failed_sync_error_message: string | null
+  validation_error: string | null
   created_at: string | null
   updated_at: string | null
 }

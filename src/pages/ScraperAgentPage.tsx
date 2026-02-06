@@ -24,7 +24,7 @@ import type { DynamicFilter } from '@/types/database'
 
 type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
 type SortDirection = 'asc' | 'desc'
-type TabType = 'all' | 'pinned' | 'price_updated'
+type TabType = 'all' | 'pinned' | 'price_updated' | 'validation_issues'
 
 // All available columns including vendor (for default filter column selector)
 const ALL_COLUMNS: FilterColumn[] = [
@@ -205,9 +205,16 @@ export function ScraperAgentPage() {
       dynamicFilters: dynamicFilters.length > 0 ? dynamicFilters : undefined,
     }
 
-    const result = activeTab === 'pinned'
-      ? await productsService.getPinnedProducts(productFilters)
-      : await productsService.getProducts(productFilters)
+    // Use appropriate service method based on active tab
+    let result
+    if (activeTab === 'pinned') {
+      result = await productsService.getPinnedProducts(productFilters)
+    } else if (activeTab === 'validation_issues') {
+      // Use RPC function for validation issues (filters products with validation_error IS NOT NULL)
+      result = await productsService.getProductsWithValidationErrors(productFilters)
+    } else {
+      result = await productsService.getProducts(productFilters)
+    }
 
     // Ignore stale responses - only process if this is still the latest request
     if (currentRequestId !== fetchRequestIdRef.current) {
@@ -423,6 +430,18 @@ export function ScraperAgentPage() {
               Price Updated
             </div>
           </button>
+          <button
+            onClick={() => handleTabChange('validation_issues')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'validation_issues'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Validation Issues
+            </div>
+          </button>
         </nav>
       </div>
 
@@ -597,7 +616,7 @@ export function ScraperAgentPage() {
         <div className="flex items-center gap-4">
           <p className="text-secondary-600">
             Showing {products.length} of {count.toLocaleString()}{' '}
-            {activeTab === 'pinned' ? 'pinned ' : activeTab === 'price_updated' ? 'price-updated ' : ''}products
+            {activeTab === 'pinned' ? 'pinned ' : activeTab === 'price_updated' ? 'price-updated ' : activeTab === 'validation_issues' ? 'products with validation issues' : 'products'}
           </p>
           {selectionMode && selectedProductIds.size > 0 && (
             <p className="text-primary-600 font-medium">
@@ -785,6 +804,16 @@ const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = fals
                   </span>
                 </span>
               )}
+              {/* Validation Error Badge */}
+              {product.validation_error && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded flex items-center gap-1 bg-red-100 text-red-700"
+                  title={product.validation_error}
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  <span>Validation Error</span>
+                </span>
+              )}
               {/* Product Actions Menu */}
               <ProductActionsMenu
                 productId={product.id}
@@ -838,6 +867,7 @@ const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = fals
     prevProps.product.description === nextProps.product.description &&
     prevProps.product.updated_at === nextProps.product.updated_at &&
     prevProps.product.sync_status === nextProps.product.sync_status &&
+    prevProps.product.validation_error === nextProps.product.validation_error &&
     prevProps.showPinned === nextProps.showPinned &&
     prevProps.selectionMode === nextProps.selectionMode &&
     prevProps.isSelected === nextProps.isSelected
@@ -910,6 +940,13 @@ const ProductsList = memo(({ products, isLoading, showPinned = false, tabType = 
             gradient: 'from-blue-100 via-blue-50 to-indigo-100 border-blue-200',
             title: 'No price-updated products found',
             message: 'Products updated through price comparison sync will appear here'
+          }
+        case 'validation_issues':
+          return {
+            icon: <AlertTriangle className="w-10 h-10 text-red-500" />,
+            gradient: 'from-red-100 via-red-50 to-orange-100 border-red-200',
+            title: 'No validation issues found',
+            message: 'All products have passed validation checks'
           }
         default:
           return {

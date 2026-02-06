@@ -3,7 +3,7 @@
  * Displays agent workflow summary: keywords, articles, products
  */
 
-import { Brain, Search, FileText, Package, Zap } from 'lucide-react';
+import { Brain, Search, FileText, Package, Zap, Clock } from 'lucide-react';
 import type { ProcessingLog } from '@/services/blogger/gemini-content.service';
 
 interface AgentInsightsProps {
@@ -12,6 +12,7 @@ interface AgentInsightsProps {
   articlesAnalyzed?: number;
   productLinks?: string[];
   wordCount?: number;
+  generationTime?: number | null; // Generation time in seconds
 }
 
 export function AgentInsights({
@@ -20,7 +21,15 @@ export function AgentInsights({
   articlesAnalyzed = 0,
   productLinks = [],
   wordCount = 0,
+  generationTime = null,
 }: AgentInsightsProps) {
+  // Format time for display
+  const formatTime = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
   // Extract insights from processing logs
   const keywordResearchCalls = processingLogs.filter(
     log => log.type === 'function_call' && log.message.includes('researchKeywords')
@@ -45,9 +54,17 @@ export function AgentInsights({
 
   return (
     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Brain className="w-5 h-5 text-blue-600" />
-        <h3 className="text-lg font-semibold text-gray-900">Agent Workflow Summary</h3>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Brain className="w-5 h-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Agent Workflow Summary</h3>
+        </div>
+        {generationTime !== null && (
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-blue-200 shadow-sm">
+            <Clock className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-700">{formatTime(generationTime)}</span>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

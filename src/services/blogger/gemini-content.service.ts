@@ -40,6 +40,7 @@ export function formatTokens(charCount: number): string {
  */
 export type GeminiModel =
   | 'gemini-3-pro-preview'      // Most powerful, 1M token context (Nov 2025)
+  | 'gemini-3-flash-preview'    // Fast Gemini 3 model
   | 'gemini-2.5-flash'          // Stable, fast, recommended (default)
   | 'gemini-2.5-pro'            // More powerful, slower
   | 'gemini-2.0-flash'          // Alternative stable version
@@ -51,12 +52,13 @@ export type GeminiModel =
  * If primary model fails due to quota, automatically try these in order
  */
 const MODEL_FALLBACK_CHAIN: GeminiModel[] = [
-  'gemini-3-pro-preview',  // Most powerful (Nov 2025) - default
-  'gemini-2.5-flash',      // Best balance of speed and quality
-  'gemini-2.0-flash',      // Proven stable alternative
-  'gemini-2.5-pro',        // More powerful if needed
-  'gemini-flash-latest',   // Latest features
-  'gemini-2.0-flash-exp',  // Experimental (last resort)
+  'gemini-3-pro-preview',      // Most powerful (Nov 2025) - default
+  'gemini-3-flash-preview',    // Fast Gemini 3 alternative
+  'gemini-2.5-flash',          // Best balance of speed and quality
+  'gemini-2.0-flash',          // Proven stable alternative
+  'gemini-2.5-pro',            // More powerful if needed
+  'gemini-flash-latest',       // Latest features
+  'gemini-2.0-flash-exp',      // Experimental (last resort)
 ];
 
 /**
@@ -109,7 +111,7 @@ export interface GeminiBlogResponse {
 const functionDeclarations: FunctionDeclaration[] = [
   {
     name: 'researchKeywords',
-    description: 'Research SEO keywords for a blog topic. Call this FIRST to discover high-value keywords with search volume, competition, and intent data. Returns keyword suggestions that you should analyze to select the best primary keyword for the blog post.',
+    description: 'Research SEO keywords for a blog topic. Call this FIRST to discover high-value keywords with search volume, competition, and intent data. Returns keyword suggestions that you MUST analyze and rank before selecting the best primary keyword. When selecting, consider: (1) Search intent match - does it match what users want?, (2) Traffic potential - higher volume is better, (3) Competition - lower competition means easier to rank, (4) Topic relevance - how well it fits the topic, (5) User problem - does it address a clear user need?',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -1185,6 +1187,8 @@ export async function generateBlogWithGemini(
         `✓ AI Content: ${checks.aiContent.passed ? 'Clean (no self-intro or reasoning detected)' : `ISSUES: ${checks.aiContent.patterns.join(', ')}`}`);
       addLog(checks.tags.passed ? 'success' : 'warning',
         `✓ Tags: ${checks.tags.tags.length} tags ${checks.tags.passed ? '(valid and relevant)' : `(${checks.tags.issues.join(', ')})`}`);
+      addLog(checks.readability.passed ? 'success' : 'warning',
+        `✓ Readability: ${checks.readability.score}/100 (${checks.readability.grade}) ${checks.readability.passed ? '' : `- ${checks.readability.issues.join(', ')}`}`);
 
       // Log issue counts if any
       if (seoReport.criticalCount > 0) {
@@ -1222,7 +1226,7 @@ export async function generateBlogWithGemini(
       let bestIteration = 0;
 
       // Track categories that passed - skip re-validating them (saves API calls, avoids AI variance)
-      type IssueCategory = 'title' | 'description' | 'excerpt' | 'headings' | 'links' | 'images' | 'ai-content' | 'tags';
+      type IssueCategory = 'title' | 'description' | 'excerpt' | 'headings' | 'links' | 'images' | 'ai-content' | 'tags' | 'readability';
       const passedCategories: IssueCategory[] = [];
 
       // Collect initially passed categories from first validation
@@ -1234,6 +1238,27 @@ export async function generateBlogWithGemini(
       if (seoReport.checks.images.passed) passedCategories.push('images');
       if (seoReport.checks.aiContent.passed) passedCategories.push('ai-content');
       if (seoReport.checks.tags.passed) passedCategories.push('tags');
+      if (seoReport.checks.readability.passed) passedCategories.push('readability');
+
+      // Apply suggested alt texts for images if available
+      if (!seoReport.checks.images.passed && seoReport.checks.images.suggestedAlts && seoReport.checks.images.suggestedAlts.length > 0) {
+        addLog('info', `Applying ${seoReport.checks.images.suggestedAlts.length} suggested alt texts for images...`);
+        for (const altSuggestion of seoReport.checks.images.suggestedAlts) {
+          // Find and update images with missing or poor alt text
+          const escapedSrc = altSuggestion.src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          // Match img tag with this src that has no alt or empty alt
+          const imgNoAltPattern = new RegExp(`(<img[^>]*src=["']${escapedSrc}["'][^>]*)(>)`, 'gi');
+          const imgEmptyAltPattern = new RegExp(`(<img[^>]*src=["']${escapedSrc}["'][^>]*)alt=["']["']([^>]*>)`, 'gi');
+
+          if (imgNoAltPattern.test(finalContent)) {
+            finalContent = finalContent.replace(imgNoAltPattern, `$1 alt="${altSuggestion.suggestedAlt}"$2`);
+            addLog('success', `✓ Added alt text: "${altSuggestion.suggestedAlt.substring(0, 50)}..."`);
+          } else if (imgEmptyAltPattern.test(finalContent)) {
+            finalContent = finalContent.replace(imgEmptyAltPattern, `$1alt="${altSuggestion.suggestedAlt}"$2`);
+            addLog('success', `✓ Fixed empty alt: "${altSuggestion.suggestedAlt.substring(0, 50)}..."`);
+          }
+        }
+      }
 
       if (passedCategories.length > 0) {
         addLog('info', `Categories already passing: ${passedCategories.join(', ')}`);
@@ -1271,7 +1296,8 @@ REQUIREMENTS:
 - Excerpt: 100-200 characters, UNIQUE from description, engaging teaser for blog listing
 - Links (<a href> ONLY): Remove tracking parameters (?_pos, ?_psq, etc), add rel="noopener noreferrer" to target="_blank" links
 - External links: Must have rel="nofollow"
-- IMPORTANT: Do NOT modify <img src> URLs - only modify <a href> URLs
+- Image alt text: If images are missing alt or have poor alt text, add descriptive alt (10-125 chars)
+- IMPORTANT: Do NOT modify <img src> URLs - only fix alt attributes
 
 Return ONLY a JSON object with the fixed fields (only include fields that need fixing):
 {
@@ -1312,26 +1338,36 @@ Return ONLY a JSON object with the fixed fields (only include fields that need f
             }
             if (fixes.contentFixes && Array.isArray(fixes.contentFixes)) {
               let contentFixesApplied = 0;
-              let imageFixesSkipped = 0;
+              let imageAltFixesApplied = 0;
               for (const cf of fixes.contentFixes) {
                 if (cf.find && cf.replace && finalContent.includes(cf.find)) {
-                  // Skip any fix that modifies image tags to protect image URLs
-                  const isImageFix = cf.find.includes('<img') || cf.replace.includes('<img') ||
-                                     cf.find.includes('src=') || cf.replace.includes('src=');
-                  if (isImageFix) {
-                    imageFixesSkipped++;
-                    continue; // Skip this fix to protect image URLs
+                  // Check if this is an image fix
+                  const isImageTag = cf.find.includes('<img') || cf.replace.includes('<img');
+                  const findSrc = cf.find.match(/src=["']([^"']+)["']/)?.[1];
+                  const replaceSrc = cf.replace.match(/src=["']([^"']+)["']/)?.[1];
+                  const isSrcChange = findSrc && replaceSrc && findSrc !== replaceSrc;
+
+                  if (isImageTag && isSrcChange) {
+                    // Skip fixes that change image URLs (protect rehosted images)
+                    continue;
+                  } else if (isImageTag) {
+                    // Allow alt text fixes - they don't change src URLs
+                    finalContent = finalContent.replace(cf.find, cf.replace);
+                    fixesApplied++;
+                    imageAltFixesApplied++;
+                  } else {
+                    // Non-image fix
+                    finalContent = finalContent.replace(cf.find, cf.replace);
+                    fixesApplied++;
+                    contentFixesApplied++;
                   }
-                  finalContent = finalContent.replace(cf.find, cf.replace);
-                  fixesApplied++;
-                  contentFixesApplied++;
                 }
               }
               if (contentFixesApplied > 0) {
                 addLog('success', `✓ Applied ${contentFixesApplied} content fixes`);
               }
-              if (imageFixesSkipped > 0) {
-                addLog('info', `Skipped ${imageFixesSkipped} fixes that would modify image tags`);
+              if (imageAltFixesApplied > 0) {
+                addLog('success', `✓ Applied ${imageAltFixesApplied} image alt text fixes`);
               }
             }
 
@@ -1367,6 +1403,7 @@ Return ONLY a JSON object with the fixed fields (only include fields that need f
             if (currentReport.checks.images.passed && !passedCategories.includes('images')) passedCategories.push('images');
             if (currentReport.checks.aiContent.passed && !passedCategories.includes('ai-content')) passedCategories.push('ai-content');
             if (currentReport.checks.tags.passed && !passedCategories.includes('tags')) passedCategories.push('tags');
+            if (currentReport.checks.readability.passed && !passedCategories.includes('readability')) passedCategories.push('readability');
 
             // Track best version (score can decrease after over-fixing)
             if (currentScore > bestScore) {

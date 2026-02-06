@@ -18,6 +18,7 @@ import {
   BlogGenerationSettingsDialog,
   ContentGenerationChat,
   type BlogGenerationSettings,
+  getCachedModel,
 } from '@/components/blogger';
 import {
   getAllPersonas,
@@ -128,12 +129,15 @@ export function BloggerCreatePage() {
 
   // Generation Settings Dialog
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
-  const [generationSettings, setGenerationSettings] = useState<BlogGenerationSettings>({
-    model: 'gemini-3-pro-preview', // Default to most powerful model
+  const [generationSettings, setGenerationSettings] = useState<BlogGenerationSettings>(() => ({
+    model: getCachedModel() || 'gemini-3-pro-preview', // Use cached model or default
     includeImages: true,
     articlesResearchCount: 3,
     seoIterationCount: 5, // SEO fix iterations (5-10)
-  });
+  }));
+
+  // Generation time tracking (in seconds)
+  const [generationTime, setGenerationTime] = useState<number | null>(null);
 
   // Step 5: Meta Data & SEO
   const [metaTitle, setMetaTitle] = useState('');
@@ -471,8 +475,12 @@ export function BloggerCreatePage() {
     if (!selectedPersona || !selectedTemplate) return;
 
     setIsLoading(true);
-    // Clear previous logs at the start
+    // Clear previous logs and time at the start
     setProcessingLogs([]);
+    setGenerationTime(null);
+
+    // Track generation start time
+    const startTime = Date.now();
 
     try {
       // Use Gemini AI with autonomous agent workflow
@@ -507,6 +515,11 @@ export function BloggerCreatePage() {
         setMetaTitle(result.data.metaTitle || '');
         setMetaDescription(result.data.metaDescription || '');
 
+        // Calculate generation time
+        const endTime = Date.now();
+        const durationSeconds = Math.round((endTime - startTime) / 1000);
+        setGenerationTime(durationSeconds);
+
         // Log generation stats
         console.log('[Blog Generation] Success!');
         console.log('[Processing Logs]', result.data.processingLogs?.length || 0, 'logs received');
@@ -518,18 +531,28 @@ export function BloggerCreatePage() {
         console.log('- Meta description:', result.data.metaDescription);
         console.log('- Excerpt:', result.data.excerpt);
         console.log('- Tags:', result.data.tags);
+        console.log('- Generation time:', durationSeconds, 'seconds');
+
+        // Format time for display
+        const formatTime = (seconds: number) => {
+          if (seconds < 60) return `${seconds}s`;
+          const mins = Math.floor(seconds / 60);
+          const secs = seconds % 60;
+          return `${mins}m ${secs}s`;
+        };
 
         // Show success notification
         Swal.fire({
           icon: 'success',
           title: 'Content Generated!',
           html: `
+            <p><strong>Generation Time:</strong> ${formatTime(durationSeconds)}</p>
             <p><strong>Word Count:</strong> ${result.data.wordCount}</p>
             <p><strong>Products Mentioned:</strong> ${result.data.productLinks.length}</p>
             <p><strong>Articles Analyzed:</strong> ${result.data.articlesAnalyzed}</p>
             <p><strong>SEO Meta Tags:</strong> Auto-generated</p>
           `,
-          timer: 3000,
+          timer: 4000,
           showConfirmButton: false,
         });
       }
@@ -1259,6 +1282,7 @@ export function BloggerCreatePage() {
                 articlesAnalyzed={articlesAnalyzed}
                 productLinks={productLinks}
                 wordCount={wordCount}
+                generationTime={generationTime}
               />
             )}
           </div>

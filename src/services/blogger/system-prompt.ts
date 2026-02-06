@@ -46,11 +46,25 @@ ${request.userPrompt ? `\nUSER INSTRUCTIONS: "${request.userPrompt}"\n` : ''}${r
 
 WORKFLOW:
 ${request.contextFileContent ? `0. Call getContextFile() to retrieve user-provided context file.
-` : ''}1. Call researchKeywords("${request.topic}") → Select best keyword (volume + low competition + relevance).
+` : ''}1. Call researchKeywords("${request.topic}") → ANALYZE and RANK keywords by:
+   - Search Intent Match: Does the keyword match what users actually want to find?
+   - Traffic Potential: Higher search volume = more potential visitors
+   - Competition Level: Lower competition = easier to rank
+   - Topic Relevance: How well does it align with "${request.topic}"?
+   - User Problem: Does it address a clear user need or question?
+   → Select the BEST keyword with clear reasoning in your summary.
 
 2. Call getTopRankingArticles("[selected keyword]") → Analyzes top ${request.articlesResearchCount || 3} articles automatically.
    Prioritize the most recent and highest-quality articles for insights (unless user instructs otherwise).
    NOTE: This returns an "images" array for each scraped article with {src, alt, caption}.
+
+   COMPETITIVE DIFFERENTIATION (CRITICAL FOR QUALITY):
+   After analyzing competitors, identify in your summary:
+   a) Common claims: What do all top articles say? (don't repeat without adding value)
+   b) Missing angles: What important points are competitors NOT covering?
+   c) Your unique angle: What fresh perspective or insight can you add?
+   d) User pain points: What questions do readers have that competitors don't fully answer?
+   → Your content should be BETTER than competitors, not just SIMILAR.
 ${request.includeImages !== false ? `
 3. COLLECT IMAGES (CRITICAL - DO NOT SKIP):
    a) Extract image URLs from step 2's scrapedContent - look for the "images" array in each article

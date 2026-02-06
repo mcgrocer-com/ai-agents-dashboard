@@ -3,9 +3,12 @@
  * Configure AI model, image inclusion, and articles research count
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Settings, Sparkles } from 'lucide-react';
+
+// LocalStorage key for caching model preference
+const MODEL_STORAGE_KEY = 'blogger_selected_model';
 
 interface BlogGenerationSettingsProps {
   isOpen: boolean;
@@ -16,10 +19,32 @@ interface BlogGenerationSettingsProps {
 }
 
 export interface BlogGenerationSettings {
-  model: 'gemini-3-pro-preview' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash' | 'gemini-2.0-flash-exp' | 'gemini-flash-latest';
+  model: 'gemini-3-pro-preview' | 'gemini-3-flash-preview' | 'gemini-2.5-flash' | 'gemini-2.5-pro' | 'gemini-2.0-flash' | 'gemini-2.0-flash-exp' | 'gemini-flash-latest';
   includeImages: boolean;
   articlesResearchCount: number;
   seoIterationCount: number; // SEO fix iterations (5-10)
+}
+
+// Helper to get cached model from localStorage
+export function getCachedModel(): BlogGenerationSettings['model'] | null {
+  try {
+    const cached = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (cached) {
+      return cached as BlogGenerationSettings['model'];
+    }
+  } catch (e) {
+    console.warn('Failed to read cached model:', e);
+  }
+  return null;
+}
+
+// Helper to save model to localStorage
+function cacheModel(model: BlogGenerationSettings['model']) {
+  try {
+    localStorage.setItem(MODEL_STORAGE_KEY, model);
+  } catch (e) {
+    console.warn('Failed to cache model:', e);
+  }
 }
 
 export function BlogGenerationSettingsDialog({
@@ -31,6 +56,23 @@ export function BlogGenerationSettingsDialog({
 }: BlogGenerationSettingsProps) {
   const [settings, setSettings] = useState<BlogGenerationSettings>(initialSettings);
 
+  // Load cached model on mount
+  useEffect(() => {
+    const cachedModel = getCachedModel();
+    if (cachedModel) {
+      setSettings(prev => ({ ...prev, model: cachedModel }));
+    }
+  }, []);
+
+  // Sync settings when initialSettings changes (but preserve cached model)
+  useEffect(() => {
+    const cachedModel = getCachedModel();
+    setSettings({
+      ...initialSettings,
+      model: cachedModel || initialSettings.model,
+    });
+  }, [initialSettings]);
+
   if (!isOpen) return null;
 
   const modelOptions = [
@@ -38,6 +80,11 @@ export function BlogGenerationSettingsDialog({
       value: 'gemini-3-pro-preview',
       label: 'Gemini 3 Pro Preview (Recommended)',
       description: 'Most powerful, 1M token context, highest quality output'
+    },
+    {
+      value: 'gemini-3-flash-preview',
+      label: 'Gemini 3 Flash Preview',
+      description: 'Fast Gemini 3 model with high quality output'
     },
     {
       value: 'gemini-2.5-flash',
@@ -67,6 +114,8 @@ export function BlogGenerationSettingsDialog({
   ];
 
   const handleConfirm = () => {
+    // Cache the selected model for future sessions
+    cacheModel(settings.model);
     onConfirm(settings);
     onClose();
   };
