@@ -6,8 +6,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield, Package2, AlertTriangle, HelpCircle } from 'lucide-react'
-import { productsService, erpnextService } from '@/services'
+import { FileText, Tags, Package, Search, Code, ChevronRight, Home, Shield, Package2, AlertTriangle, HelpCircle, Ban } from 'lucide-react'
+import { productsService, erpnextService, blacklistService } from '@/services'
 import { ShimmerLoader } from '@/components/ui/ShimmerLoader'
 import { ProductHeader } from '@/components/products/ProductHeader'
 import { ProductTabs, type Tab } from '@/components/products/ProductTabs'
@@ -37,6 +37,8 @@ export function ProductDetailPage() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [pushing, setPushing] = useState(false)
   const [priceCompareOpen, setPriceCompareOpen] = useState(false)
+  const [blacklisting, setBlacklisting] = useState(false)
+  const [unblacklisting, setUnblacklisting] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -121,6 +123,58 @@ export function ProductDetailPage() {
       showToast(`Failed to update product: ${err.message}`, 'error')
     } finally {
       setSavingEdit(false)
+    }
+  }
+
+  const handleBlacklist = async () => {
+    if (!product?.id) return
+
+    const reason = window.prompt('Please provide a reason for blacklisting this product:')
+    if (!reason || reason.trim() === '') {
+      showToast('Blacklist cancelled: No reason provided', 'info')
+      return
+    }
+
+    setBlacklisting(true)
+
+    try {
+      const { success, error } = await blacklistService.blacklistProduct(product.id, reason.trim())
+
+      if (error || !success) {
+        throw error || new Error('Failed to blacklist product')
+      }
+
+      // Update local state
+      setProduct({ ...product, blacklisted: true, blacklist_reason: reason.trim() })
+      showToast('Product blacklisted successfully', 'success')
+    } catch (err: any) {
+      console.error('Error blacklisting product:', err)
+      showToast(`Failed to blacklist product: ${err.message}`, 'error')
+    } finally {
+      setBlacklisting(false)
+    }
+  }
+
+  const handleUnblacklist = async () => {
+    if (!product?.id) return
+
+    setUnblacklisting(true)
+
+    try {
+      const { success, error } = await blacklistService.unblacklistProduct(product.id)
+
+      if (error || !success) {
+        throw error || new Error('Failed to remove product from blacklist')
+      }
+
+      // Update local state
+      setProduct({ ...product, blacklisted: false, blacklist_reason: null })
+      showToast('Product removed from blacklist', 'success')
+    } catch (err: any) {
+      console.error('Error removing product from blacklist:', err)
+      showToast(`Failed to remove from blacklist: ${err.message}`, 'error')
+    } finally {
+      setUnblacklisting(false)
     }
   }
 
@@ -479,6 +533,39 @@ export function ProductDetailPage() {
         </span>
       </nav>
 
+      {/* Blacklist Warning Banner */}
+      {product.blacklisted && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Ban className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-amber-900 mb-1">
+                This product is blacklisted from ERPNext sync
+              </h3>
+              {product.blacklist_reason && (
+                <p className="text-sm text-amber-800 mb-3">
+                  Reason: {product.blacklist_reason}
+                </p>
+              )}
+              <button
+                onClick={handleUnblacklist}
+                disabled={unblacklisting}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {unblacklisting ? (
+                  <>
+                    <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Removing...
+                  </>
+                ) : (
+                  'Remove from Blacklist'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Product Header */}
       <ProductHeader
         name={product.name || 'Unknown Product'}
@@ -502,6 +589,9 @@ export function ProductDetailPage() {
         pushing={pushing}
         mcgrocerSlug={mcgrocerSlug}
         onComparePrices={() => setPriceCompareOpen(true)}
+        blacklisted={product.blacklisted || false}
+        onBlacklist={handleBlacklist}
+        blacklisting={blacklisting}
       />
 
       {/* Failed Sync Error Banner - Show when there's a failed sync that's more recent than last successful sync */}

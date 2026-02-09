@@ -66,6 +66,11 @@ export interface ScrapedProduct {
   classification_reason: string | null
   classification_confidence: number | null
 
+  // Blacklist fields (manual product exclusion from ERPNext sync)
+  blacklisted: boolean
+  blacklist_reason: string | null
+  blacklisted_at: string | null
+
   // ERPNext sync status (joined from pending_products)
   sync_status?: 'synced' | 'failed' | 'pending'
   item_code?: string | null

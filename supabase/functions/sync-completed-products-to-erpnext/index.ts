@@ -209,7 +209,7 @@ async function getProductsNeedingSync(
       pp.*,
       sp.name, sp.price, sp.original_price, sp.description, sp.images,
       sp.main_image, sp.stock_status, sp.variants, sp.url AS scraped_url, sp.product_id AS scraped_product_vendor_id,
-      sp.classification, sp.rejected, sp.id AS scraped_product_db_id
+      sp.classification, sp.rejected, sp.blacklisted, sp.id AS scraped_product_db_id
     FROM pending_products pp
     INNER JOIN scraped_products sp ON pp.scraped_product_id = sp.id
     WHERE pp.category_status = 'complete'
@@ -224,6 +224,7 @@ async function getProductsNeedingSync(
       AND sp.price::text != '0'
       AND sp.price::text != ''
       AND sp.price > 0
+      AND sp.blacklisted IS NOT TRUE
       ${vendorClause}
       ${copyrightClause}
     ORDER BY pp.updated_at ASC
@@ -458,6 +459,13 @@ async function processClassificationValidation(
     // Check if product is explicitly rejected in database
     if (product.rejected === true) {
       rejectedProducts.push(product);
+      continue;
+    }
+
+    // Check if product is blacklisted from ERPNext sync
+    if (product.blacklisted === true) {
+      rejectedProducts.push(product);
+      console.log(`[CLASSIFICATION] Product ${product.name} is blacklisted - skipping ERPNext sync`);
       continue;
     }
 

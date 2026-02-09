@@ -4,7 +4,7 @@
  * Displays product header with image, name, and basic information.
  */
 
-import { Package, ExternalLink, Pin, Edit, CheckCircle, XCircle, Upload, Scale } from 'lucide-react'
+import { Package, ExternalLink, Pin, Edit, CheckCircle, XCircle, Upload, Scale, Ban } from 'lucide-react'
 import { formatCurrency, formatDateTime } from '@/lib/utils/format'
 
 interface ProductHeaderProps {
@@ -29,6 +29,9 @@ interface ProductHeaderProps {
   pushing?: boolean
   mcgrocerSlug?: string
   onComparePrices?: () => void
+  blacklisted?: boolean
+  onBlacklist?: () => void
+  blacklisting?: boolean
 }
 
 export function ProductHeader({
@@ -53,6 +56,9 @@ export function ProductHeader({
   pushing = false,
   mcgrocerSlug,
   onComparePrices,
+  blacklisted = false,
+  onBlacklist,
+  blacklisting = false,
 }: ProductHeaderProps) {
   // Check if product is synced to ERPNext
   const isSynced = erpnextUpdatedAt && (!failedSyncAt || new Date(erpnextUpdatedAt) > new Date(failedSyncAt))
@@ -129,8 +135,8 @@ export function ProductHeader({
               </button>
             )}
 
-            {/* Push to ERPNext Button */}
-            {onPushToErpnext && productId && (
+            {/* Push to ERPNext Button - Hidden when blacklisted */}
+            {onPushToErpnext && productId && !blacklisted && (
               <button
                 onClick={onPushToErpnext}
                 disabled={pushing}
@@ -146,6 +152,28 @@ export function ProductHeader({
                   <>
                     <Upload className="h-4 w-4" />
                     Push to ERPNext
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Blacklist Button - Only show when NOT blacklisted */}
+            {onBlacklist && productId && !blacklisted && (
+              <button
+                onClick={onBlacklist}
+                disabled={blacklisting}
+                className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Blacklist this product from ERPNext sync"
+              >
+                {blacklisting ? (
+                  <>
+                    <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    Blacklisting...
+                  </>
+                ) : (
+                  <>
+                    <Ban className="h-4 w-4" />
+                    Blacklist Product
                   </>
                 )}
               </button>

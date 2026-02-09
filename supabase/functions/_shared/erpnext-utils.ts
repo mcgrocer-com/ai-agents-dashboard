@@ -62,6 +62,7 @@ export interface PendingProduct {
   // Classification fields from scraped_products join
   classification: string | null;
   rejected: boolean | null;
+  blacklisted: boolean | null;
   scraped_product_db_id: string | null;
 }
 

@@ -87,6 +87,7 @@ async function getProductsByUrls(productUrls: string[]): Promise<PendingProduct[
     INNER JOIN scraped_products sp ON pp.scraped_product_id = sp.id
     WHERE pp.url = ANY(${productUrls})
       AND pp.scraped_product_id IS NOT NULL
+      AND sp.blacklisted IS NOT TRUE
   `;
 
   console.log(`[PUSH] Found ${products.length}/${productUrls.length} valid products to push`);

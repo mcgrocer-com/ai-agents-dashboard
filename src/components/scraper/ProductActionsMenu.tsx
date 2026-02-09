@@ -6,24 +6,29 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { MoreVertical, RefreshCw, RotateCcw } from 'lucide-react'
+import { MoreVertical, RefreshCw, RotateCcw, Ban } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/useToast'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
+import { blacklistService } from '@/services'
 
 interface ProductActionsMenuProps {
   productId: string
   productName: string
+  isBlacklisted?: boolean
+  onBlacklistChange?: () => void
   onActionComplete?: () => void
 }
 
-export function ProductActionsMenu({ productId, productName, onActionComplete }: ProductActionsMenuProps) {
+export function ProductActionsMenu({ productId, productName, isBlacklisted, onBlacklistChange, onActionComplete }: ProductActionsMenuProps) {
   const { showToast } = useToast()
   const [isOpen, setIsOpen] = useState(false)
   const [showResyncConfirm, setShowResyncConfirm] = useState(false)
   const [showCopyrightConfirm, setShowCopyrightConfirm] = useState(false)
+  const [showBlacklistConfirm, setShowBlacklistConfirm] = useState(false)
   const [isResyncing, setIsResyncing] = useState(false)
   const [isSendingToCopyright, setIsSendingToCopyright] = useState(false)
+  const [isBlacklisting, setIsBlacklisting] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Close menu when clicking outside
@@ -90,6 +95,60 @@ export function ProductActionsMenu({ productId, productName, onActionComplete }:
     }
   }
 
+  const handleBlacklistAction = async () => {
+    if (isBlacklisted) {
+      // Remove from blacklist
+      setIsBlacklisting(true)
+      try {
+        const result = await blacklistService.unblacklistProduct(productId)
+
+        if (result.success) {
+          showToast(`Product "${productName}" removed from blacklist`, 'success')
+          onBlacklistChange?.()
+          onActionComplete?.()
+        } else {
+          showToast(result.error?.message || 'Failed to remove product from blacklist', 'error')
+        }
+      } catch (err) {
+        console.error('Error removing product from blacklist:', err)
+        showToast('An error occurred while removing product from blacklist', 'error')
+      } finally {
+        setIsBlacklisting(false)
+        setShowBlacklistConfirm(false)
+        setIsOpen(false)
+      }
+    } else {
+      // Add to blacklist - prompt for reason
+      const reason = window.prompt('Please enter a reason for blacklisting this product:')
+      if (reason === null || reason.trim() === '') {
+        // User cancelled or entered empty reason
+        setShowBlacklistConfirm(false)
+        setIsOpen(false)
+        return
+      }
+
+      setIsBlacklisting(true)
+      try {
+        const result = await blacklistService.blacklistProduct(productId, reason)
+
+        if (result.success) {
+          showToast(`Product "${productName}" successfully blacklisted`, 'success')
+          onBlacklistChange?.()
+          onActionComplete?.()
+        } else {
+          showToast(result.error?.message || 'Failed to blacklist product', 'error')
+        }
+      } catch (err) {
+        console.error('Error blacklisting product:', err)
+        showToast('An error occurred while blacklisting product', 'error')
+      } finally {
+        setIsBlacklisting(false)
+        setShowBlacklistConfirm(false)
+        setIsOpen(false)
+      }
+    }
+  }
+
   return (
     <div className="relative" ref={menuRef}>
       {/* Hamburger Menu Button */}
@@ -132,6 +191,17 @@ export function ProductActionsMenu({ productId, productName, onActionComplete }:
               <RotateCcw className="w-4 h-4 text-orange-600" />
               <span>Send to Copyright Agent</span>
             </button>
+
+            <button
+              onClick={() => {
+                setIsOpen(false)
+                setShowBlacklistConfirm(true)
+              }}
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors"
+            >
+              <Ban className="w-4 h-4 text-red-600" />
+              <span>{isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Product'}</span>
+            </button>
           </div>
         </div>
       )}
@@ -160,6 +230,23 @@ export function ProductActionsMenu({ productId, productName, onActionComplete }:
         cancelText="Cancel"
         variant="warning"
         loading={isSendingToCopyright}
+      />
+
+      {/* Blacklist Confirmation Dialog */}
+      <ConfirmationDialog
+        open={showBlacklistConfirm}
+        onClose={() => setShowBlacklistConfirm(false)}
+        onConfirm={handleBlacklistAction}
+        title={isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Product'}
+        message={
+          isBlacklisted
+            ? `Are you sure you want to remove "${productName}" from the blacklist?\n\nThis will allow the product to be synced to ERPNext again.`
+            : `Are you sure you want to blacklist "${productName}"?\n\nYou will be prompted to enter a reason. This will prevent the product from being synced to ERPNext.`
+        }
+        confirmText={isBlacklisted ? 'Remove from Blacklist' : 'Blacklist'}
+        cancelText="Cancel"
+        variant={isBlacklisted ? 'warning' : 'danger'}
+        loading={isBlacklisting}
       />
     </div>
   )

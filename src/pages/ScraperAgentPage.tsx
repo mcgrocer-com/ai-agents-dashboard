@@ -6,8 +6,8 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send } from 'lucide-react'
-import { productsService } from '@/services'
+import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban } from 'lucide-react'
+import { productsService, blacklistService } from '@/services'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
 import { Pagination } from '@/components/ui/Pagination'
@@ -24,7 +24,7 @@ import type { DynamicFilter } from '@/types/database'
 
 type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
 type SortDirection = 'asc' | 'desc'
-type TabType = 'all' | 'pinned' | 'price_updated' | 'validation_issues'
+type TabType = 'all' | 'pinned' | 'price_updated' | 'validation_issues' | 'blacklisted'
 
 // All available columns including vendor (for default filter column selector)
 const ALL_COLUMNS: FilterColumn[] = [
@@ -196,6 +196,18 @@ export function ScraperAgentPage() {
       ]
     }
 
+    // For blacklisted tab, add filter for blacklisted = true
+    if (activeTab === 'blacklisted') {
+      dynamicFilters = [
+        ...dynamicFilters,
+        {
+          field: 'blacklisted',
+          operator: '=',
+          value: 'true',
+        },
+      ]
+    }
+
     const productFilters: ProductFilters = {
       search: searchTerm || undefined,
       sortBy: activeTab === 'price_updated' ? 'scraper_updated_at' : sortField,
@@ -362,6 +374,66 @@ export function ScraperAgentPage() {
     }
   }, [selectedProductIds, showToast, clearSelection, fetchProducts])
 
+  // Bulk action to blacklist products
+  const handleBulkBlacklist = useCallback(async () => {
+    if (selectedProductIds.size === 0) {
+      showToast('No products selected', 'error')
+      return
+    }
+
+    const reason = window.prompt('Please provide a reason for blacklisting these products:')
+    if (!reason || reason.trim() === '') {
+      showToast('Blacklist operation cancelled - reason is required', 'info')
+      return
+    }
+
+    try {
+      const productIdsArray = Array.from(selectedProductIds)
+      const result = await blacklistService.bulkBlacklistProducts(productIdsArray, reason.trim())
+
+      if (result.success) {
+        showToast(
+          `Successfully blacklisted ${result.data?.count || productIdsArray.length} ${productIdsArray.length === 1 ? 'product' : 'products'}`,
+          'success'
+        )
+        clearSelection()
+        await fetchProducts()
+      } else {
+        showToast(result.error?.message || 'Failed to blacklist products', 'error')
+      }
+    } catch (err) {
+      console.error('Error in bulk blacklist:', err)
+      showToast('An error occurred while blacklisting products', 'error')
+    }
+  }, [selectedProductIds, showToast, clearSelection, fetchProducts])
+
+  // Bulk action to unblacklist products
+  const handleBulkUnblacklist = useCallback(async () => {
+    if (selectedProductIds.size === 0) {
+      showToast('No products selected', 'error')
+      return
+    }
+
+    try {
+      const productIdsArray = Array.from(selectedProductIds)
+      const result = await blacklistService.bulkUnblacklistProducts(productIdsArray)
+
+      if (result.success) {
+        showToast(
+          `Successfully unblacklisted ${result.data?.count || productIdsArray.length} ${productIdsArray.length === 1 ? 'product' : 'products'}`,
+          'success'
+        )
+        clearSelection()
+        await fetchProducts()
+      } else {
+        showToast(result.error?.message || 'Failed to unblacklist products', 'error')
+      }
+    } catch (err) {
+      console.error('Error in bulk unblacklist:', err)
+      showToast('An error occurred while unblacklisting products', 'error')
+    }
+  }, [selectedProductIds, showToast, clearSelection, fetchProducts])
+
   // Handler for saving vendor sync preferences
   const handleSaveVendorPreferences = async (
     vendors: string[],
@@ -440,6 +512,18 @@ export function ScraperAgentPage() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" />
               Validation Issues
+            </div>
+          </button>
+          <button
+            onClick={() => handleTabChange('blacklisted')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'blacklisted'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              <Ban className="w-4 h-4" />
+              Blacklisted
             </div>
           </button>
         </nav>
@@ -600,6 +684,23 @@ export function ScraperAgentPage() {
               <Send className="w-4 h-4" />
               <span>{isSendingBulk ? 'Sending...' : 'Send to Copyright Agent'}</span>
             </button>
+            {activeTab === 'blacklisted' ? (
+              <button
+                onClick={handleBulkUnblacklist}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+              >
+                <Ban className="w-4 h-4" />
+                <span>Unblacklist Selected</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleBulkBlacklist}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
+              >
+                <Ban className="w-4 h-4" />
+                <span>Blacklist Selected</span>
+              </button>
+            )}
             <button
               onClick={clearSelection}
               className="flex items-center gap-2 px-4 py-2 border border-secondary-300 bg-white text-secondary-700 rounded-lg text-sm font-medium hover:bg-secondary-50"
@@ -616,7 +717,7 @@ export function ScraperAgentPage() {
         <div className="flex items-center gap-4">
           <p className="text-secondary-600">
             Showing {products.length} of {count.toLocaleString()}{' '}
-            {activeTab === 'pinned' ? 'pinned ' : activeTab === 'price_updated' ? 'price-updated ' : activeTab === 'validation_issues' ? 'products with validation issues' : 'products'}
+            {activeTab === 'pinned' ? 'pinned ' : activeTab === 'price_updated' ? 'price-updated ' : activeTab === 'validation_issues' ? 'products with validation issues' : activeTab === 'blacklisted' ? 'blacklisted products' : 'products'}
           </p>
           {selectionMode && selectedProductIds.size > 0 && (
             <p className="text-primary-600 font-medium">
@@ -814,6 +915,16 @@ const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = fals
                   <span>Validation Error</span>
                 </span>
               )}
+              {/* Blacklisted Badge */}
+              {product.blacklisted && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded flex items-center gap-1 bg-red-600 text-white"
+                  title="This product has been blacklisted"
+                >
+                  <Ban className="w-3 h-3" />
+                  <span>Blacklisted</span>
+                </span>
+              )}
               {/* Product Actions Menu */}
               <ProductActionsMenu
                 productId={product.id}
@@ -868,6 +979,7 @@ const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = fals
     prevProps.product.updated_at === nextProps.product.updated_at &&
     prevProps.product.sync_status === nextProps.product.sync_status &&
     prevProps.product.validation_error === nextProps.product.validation_error &&
+    prevProps.product.blacklisted === nextProps.product.blacklisted &&
     prevProps.showPinned === nextProps.showPinned &&
     prevProps.selectionMode === nextProps.selectionMode &&
     prevProps.isSelected === nextProps.isSelected
@@ -947,6 +1059,13 @@ const ProductsList = memo(({ products, isLoading, showPinned = false, tabType = 
             gradient: 'from-red-100 via-red-50 to-orange-100 border-red-200',
             title: 'No validation issues found',
             message: 'All products have passed validation checks'
+          }
+        case 'blacklisted':
+          return {
+            icon: <Ban className="w-10 h-10 text-red-600" />,
+            gradient: 'from-red-100 via-red-50 to-red-100 border-red-300',
+            title: 'No blacklisted products found',
+            message: 'Products that have been blacklisted will appear here'
           }
         default:
           return {

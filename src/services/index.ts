@@ -14,6 +14,7 @@ export { activityStatsService } from './activityStats.service'
 export { erpnextService } from './erpnext.service'
 export { apiHealthService } from './apiHealth.service'
 export { userService } from './user.service'
+export { blacklistService } from './blacklist.service'
 
 export type { SignInCredentials, SignUpCredentials, AuthResponse } from './auth.service'
 export type { TriggerAgentParams, RetryAgentParams, AgentType } from './agents.service'
