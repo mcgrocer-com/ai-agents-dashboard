@@ -28,9 +28,308 @@ export class QuotaExceededError extends RetryableError {
  */
 export interface ClassificationResult {
   rejected: boolean;
-  classification: 'not_medicine' | 'gsl' | 'pharmacy' | 'pom' | 'unclear';
+  classification: 'not_medicine' | 'gsl' | 'pharmacy' | 'pom' | 'unclear' | 'cbd' | 'tobacco' | 'fresh_perishable';
   reason: string;
   confidence: number;
+}
+
+// ============================================================================
+// Keyword Pre-Filter: Deterministic classification for obvious products
+// Skips Gemini API call entirely for high-confidence matches
+// ============================================================================
+
+/** Known tobacco/cigarette brand names (case-insensitive matching) */
+const TOBACCO_BRANDS = [
+  // Cigarette brands (UK market)
+  'benson & hedges', 'benson and hedges', 'mayfair', 'sterling', 'silk cut',
+  'marlboro', 'pall mall', 'richmond', 'sovereign', 'players', 'embassy',
+  'jps', 'rothmans', 'lambert & butler', 'lambert and butler', 'regal',
+  'royals', 'camel', 'lucky strike', 'chesterfield', 'dunhill', 'winston',
+  'kent', 'l&m', 'vogue', 'sobranie', 'davidoff', 'parliament',
+  'gauloises', 'gitanes', 'the king',
+  // Cigarillo brands
+  'royal dutch',
+  // Heated tobacco brands
+  'terea', 'heets', 'iqos',
+  // Vape/e-cigarette brands
+  'elf bar', 'elfbar', 'lost mary', 'ske crystal', 'vampire vape',
+  'edge vape', 'nordic spirit',
+  // Note: 'blu' matched via separate check (too short for substring), 'niquitin' is NRT medicine not tobacco
+];
+
+/** Unambiguous tobacco product terms - these alone confirm tobacco */
+const TOBACCO_PRODUCT_TERMS = [
+  'cigarette', 'cigarettes', 'cigarillo', 'cigarillos', 'cigar',
+  'rolling tobacco', 'tobacco sticks', 'heated tobacco',
+  'superkings', 'superking',
+];
+
+/** Packaging patterns that confirm tobacco when combined with a brand */
+const TOBACCO_PACKAGING_TERMS = [
+  '100 per pack', '20 per pack', '10 per pack',
+  '100 pack', '20 pack', '10 pack',
+  'ks multipack', 'multipack 100', 'multipack',
+  '100s', '20s', '10s',
+  'kingsize', 'king size',
+  '20 cigarettes', '10 cigarettes',
+];
+
+/** Brands that are exclusively vape/e-cigarette companies - no packaging term needed */
+const VAPE_ONLY_BRANDS = [
+  'elf bar', 'elfbar', 'lost mary', 'ske crystal', 'vampire vape',
+  'edge vape', 'nordic spirit',
+];
+
+/** Vape/e-cigarette terms - unambiguous */
+const VAPE_TERMS = [
+  'vape liquid', 'vape pod', 'vape pods', 'vape kit', 'vape refill', 'vape juice',
+  'e-liquid', 'e liquid', 'e-cigarette', 'e cigarette',
+  'disposable vape', 'nicotine pouch', 'nicotine pouches',
+  'nicotine salt', 'nic salt',
+];
+
+/** CBD product terms */
+const CBD_TERMS = [
+  'cbd oil', 'cbd spray', 'cbd capsule', 'cbd capsules',
+  'cbd gummies', 'cbd drops', 'cbd vape', 'cbd edible', 'cbd edibles',
+  'cbd balm', 'cbd cream', 'cbd serum', 'cbd tea',
+  'cbd kombucha', 'cbd drink', 'cbd tincture', 'cbd patch',
+  'cannabidiol',
+];
+
+/** Context words that indicate non-tobacco use of "tobacco" (fragrance, candles, etc.) */
+const TOBACCO_FRAGRANCE_EXCLUSIONS = [
+  'candle', 'perfume', 'parfum', 'fragrance', 'cologne', 'scent',
+  'aftershave', 'diffuser', 'incense', 'air freshener', 'room spray',
+  'body spray', 'eau de', 'edp', 'edt',
+];
+
+/** Context words that indicate hemp seed (food) not CBD */
+const HEMP_FOOD_EXCLUSIONS = [
+  'hemp seed', 'hemp protein', 'hemp heart', 'hemp flour', 'hemp milk',
+];
+
+/** Fresh/perishable product terms - these products require cold chain logistics */
+const FRESH_PERISHABLE_TERMS = [
+  // Fresh meat & poultry
+  'fresh chicken', 'fresh beef', 'fresh pork', 'fresh lamb', 'fresh turkey',
+  'fresh mince', 'fresh steak', 'chicken breast', 'chicken thigh', 'chicken drumstick',
+  'chicken wing', 'pork chop', 'pork loin', 'lamb chop', 'lamb leg',
+  'beef mince', 'pork mince', 'turkey mince', 'diced beef', 'diced chicken',
+  'sirloin steak', 'rump steak', 'ribeye', 'fillet steak',
+  'sausage', 'sausages', 'bacon rashers', 'streaky bacon', 'back bacon',
+  'raw chicken', 'raw beef', 'raw pork', 'raw lamb', 'raw turkey',
+  // Fresh fish & seafood
+  'fresh salmon', 'fresh cod', 'fresh haddock', 'fresh tuna', 'fresh prawns',
+  'fresh fish', 'fresh seafood', 'raw prawns', 'raw salmon',
+  'salmon fillet', 'cod fillet', 'haddock fillet', 'sea bass fillet',
+  'smoked salmon', 'king prawns',
+  // Dairy & chilled
+  'fresh milk', 'whole milk', 'semi-skimmed milk', 'skimmed milk',
+  'double cream', 'single cream', 'clotted cream', 'soured cream',
+  'fresh cream', 'whipping cream', 'creme fraiche',
+  'natural yoghurt', 'greek yoghurt', 'yogurt',
+  'butter', 'margarine', 'spreadable butter',
+  'cheddar cheese', 'mozzarella', 'brie', 'camembert', 'stilton',
+  'grated cheese', 'sliced cheese', 'cream cheese',
+  'fresh eggs', 'free range eggs',
+  // Fresh fruit & vegetables
+  'fresh fruit', 'fresh vegetables', 'fresh veg',
+  'banana', 'bananas', 'apple', 'apples', 'orange', 'oranges',
+  'strawberry', 'strawberries', 'raspberry', 'raspberries', 'blueberry', 'blueberries',
+  'grape', 'grapes', 'melon', 'watermelon', 'pineapple', 'mango', 'kiwi',
+  'avocado', 'avocados', 'tomato', 'tomatoes', 'cucumber', 'lettuce',
+  'broccoli', 'cauliflower', 'carrot', 'carrots', 'potato', 'potatoes',
+  'onion', 'onions', 'pepper', 'peppers', 'mushroom', 'mushrooms',
+  'spinach', 'kale', 'courgette', 'aubergine', 'celery', 'sweetcorn',
+  'spring onion', 'spring onions', 'leek', 'leeks',
+  'salad bag', 'salad leaves', 'mixed salad', 'rocket salad',
+  'baby spinach', 'watercress',
+  // Chilled prepared foods
+  'fresh pasta', 'fresh soup', 'fresh pizza', 'fresh juice',
+  'coleslaw', 'hummus', 'dip', 'guacamole', 'tzatziki',
+  'sandwich', 'sandwiches', 'wrap', 'wraps',
+  'ready meal', 'ready meals',
+  // Frozen
+  'frozen chicken', 'frozen fish', 'frozen prawns', 'frozen vegetables',
+  'frozen pizza', 'frozen chips', 'frozen peas', 'frozen berries',
+  'ice cream', 'ice lolly', 'ice lollies',
+  // Bakery (short shelf life)
+  'fresh bread', 'fresh rolls', 'fresh croissant', 'fresh pastry',
+];
+
+/** Fresh/perishable category terms - categories that indicate perishable products */
+const FRESH_PERISHABLE_CATEGORIES = [
+  'fresh food', 'fresh meat', 'fresh fish', 'fresh fruit', 'fresh vegetables',
+  'chilled', 'chilled food', 'dairy', 'bakery', 'frozen food', 'frozen',
+  'meat & poultry', 'fish & seafood', 'fruit & veg', 'fruit & vegetables',
+  'deli', 'deli counter', 'salads', 'ready meals',
+];
+
+/** Exclusions: products that contain fresh/perishable terms but are NOT perishable */
+const FRESH_PERISHABLE_EXCLUSIONS = [
+  // Shelf-stable products that might match
+  'air freshener', 'fresh scent', 'fresh fragrance', 'fresh linen',
+  'fresh cotton', 'fresh burst', 'fresh clean', 'freshener',
+  // Preserved/canned versions
+  'canned', 'tinned', 'dried', 'powder', 'concentrate', 'long life',
+  'uht', 'ambient', 'dehydrated', 'freeze-dried', 'freeze dried',
+  // Non-food "fresh" products
+  'fresh foam', 'fresh feel', 'fresh look', 'fresh start',
+];
+
+/**
+ * Deterministic pre-filter for obvious tobacco/CBD products.
+ * Returns a ClassificationResult if high-confidence match found, null otherwise.
+ * When null is returned, the caller should fall through to Gemini AI.
+ */
+export function preClassifyProduct(
+  productName: string,
+  productCategory?: string
+): ClassificationResult | null {
+  const nameLower = productName.toLowerCase();
+  const categoryLower = (productCategory || '').toLowerCase();
+
+  // --- TOBACCO PRE-FILTER ---
+
+  // Exclusion: skip if product is clearly a fragrance/candle with "tobacco" as a scent note
+  const isFragranceContext = TOBACCO_FRAGRANCE_EXCLUSIONS.some(term => nameLower.includes(term));
+
+  if (!isFragranceContext) {
+    // Rule 1: Unambiguous tobacco product terms (e.g. "Cigarettes", "Rolling Tobacco")
+    for (const term of TOBACCO_PRODUCT_TERMS) {
+      if (nameLower.includes(term)) {
+        console.log(`[Classification] Pre-filter TOBACCO match: product term "${term}" in "${productName}"`);
+        return {
+          rejected: true,
+          classification: 'tobacco',
+          reason: `Pre-filter: product name contains tobacco/cigarette term "${term}"`,
+          confidence: 0.99,
+        };
+      }
+    }
+
+    // Rule 2: Tobacco brand + packaging pattern
+    for (const brand of TOBACCO_BRANDS) {
+      if (nameLower.includes(brand)) {
+        for (const pkg of TOBACCO_PACKAGING_TERMS) {
+          if (nameLower.includes(pkg)) {
+            console.log(`[Classification] Pre-filter TOBACCO match: brand "${brand}" + packaging "${pkg}" in "${productName}"`);
+            return {
+              rejected: true,
+              classification: 'tobacco',
+              reason: `Pre-filter: tobacco brand "${brand}" with packaging pattern "${pkg}"`,
+              confidence: 0.98,
+            };
+          }
+        }
+      }
+    }
+
+    // Rule 3: Vape-only brands (e.g. Elf Bar, Lost Mary) - unambiguous without packaging terms
+    for (const brand of VAPE_ONLY_BRANDS) {
+      if (nameLower.includes(brand)) {
+        console.log(`[Classification] Pre-filter TOBACCO match: vape brand "${brand}" in "${productName}"`);
+        return {
+          rejected: true,
+          classification: 'tobacco',
+          reason: `Pre-filter: known vape/e-cigarette brand "${brand}"`,
+          confidence: 0.98,
+        };
+      }
+    }
+
+    // Rule 4: Vape/e-cigarette terms
+    for (const term of VAPE_TERMS) {
+      if (nameLower.includes(term)) {
+        console.log(`[Classification] Pre-filter TOBACCO match: vape term "${term}" in "${productName}"`);
+        return {
+          rejected: true,
+          classification: 'tobacco',
+          reason: `Pre-filter: product name contains vape/e-cigarette term "${term}"`,
+          confidence: 0.98,
+        };
+      }
+    }
+
+    // Rule 5: Short brand names requiring word-boundary matching (avoid false positives)
+    // "blu" would false-match "blue", so we use regex word boundary
+    const shortBrandPatterns = [
+      { pattern: /\bblu\b/i, brand: 'blu' },
+    ];
+    for (const { pattern, brand } of shortBrandPatterns) {
+      if (pattern.test(productName)) {
+        // Still require a packaging term or vape-related context
+        const hasVapeContext = VAPE_TERMS.some(t => nameLower.includes(t))
+          || TOBACCO_PACKAGING_TERMS.some(t => nameLower.includes(t))
+          || nameLower.includes('mg') || nameLower.includes('ml');
+        if (hasVapeContext) {
+          console.log(`[Classification] Pre-filter TOBACCO match: short brand "${brand}" with vape context in "${productName}"`);
+          return {
+            rejected: true,
+            classification: 'tobacco',
+            reason: `Pre-filter: vape brand "${brand}" with product context`,
+            confidence: 0.98,
+          };
+        }
+      }
+    }
+  }
+
+  // --- CBD PRE-FILTER ---
+
+  // Exclusion: hemp seed/protein products are food, not CBD
+  const isHempFood = HEMP_FOOD_EXCLUSIONS.some(term => nameLower.includes(term));
+
+  if (!isHempFood) {
+    for (const term of CBD_TERMS) {
+      if (nameLower.includes(term)) {
+        console.log(`[Classification] Pre-filter CBD match: term "${term}" in "${productName}"`);
+        return {
+          rejected: true,
+          classification: 'cbd',
+          reason: `Pre-filter: product name contains CBD term "${term}"`,
+          confidence: 0.98,
+        };
+      }
+    }
+  }
+
+  // --- FRESH/PERISHABLE PRE-FILTER ---
+
+  // Exclusion: skip if product is clearly a non-food "fresh" product (air freshener, fragrance, etc.)
+  const isFreshExcluded = FRESH_PERISHABLE_EXCLUSIONS.some(term => nameLower.includes(term));
+
+  if (!isFreshExcluded) {
+    // Rule 1: Product name contains a known fresh/perishable product term
+    for (const term of FRESH_PERISHABLE_TERMS) {
+      if (nameLower.includes(term)) {
+        console.log(`[Classification] Pre-filter FRESH_PERISHABLE match: term "${term}" in "${productName}"`);
+        return {
+          rejected: true,
+          classification: 'fresh_perishable',
+          reason: `Pre-filter: product name contains fresh/perishable term "${term}"`,
+          confidence: 0.97,
+        };
+      }
+    }
+
+    // Rule 2: Product category indicates fresh/perishable
+    for (const term of FRESH_PERISHABLE_CATEGORIES) {
+      if (categoryLower.includes(term)) {
+        console.log(`[Classification] Pre-filter FRESH_PERISHABLE match: category term "${term}" in category "${productCategory}"`);
+        return {
+          rejected: true,
+          classification: 'fresh_perishable',
+          reason: `Pre-filter: product category contains fresh/perishable term "${term}"`,
+          confidence: 0.95,
+        };
+      }
+    }
+  }
+
+  // No pre-filter match - fall through to Gemini AI
+  return null;
 }
 
 /**
@@ -40,14 +339,15 @@ export interface ClassificationResult {
 const CLASSIFICATION_SYSTEM_PROMPT = `You are a UK medicine classification expert. Your ONLY job is to determine if a product is a UK-regulated medicine.
 
 WHAT IS A MEDICINE?
-A product is a medicine if it meets ANY of these criteria:
+A product is a medicine if it meets ALL of these criteria:
+- It is a SUBSTANCE or CHEMICAL FORMULATION (tablets, capsules, syrups, creams, liquids, patches containing drug ingredients)
 - Contains active pharmaceutical ingredients (APIs) intended to treat, prevent, or diagnose disease
-- Makes medicinal claims (e.g., "treats headaches", "reduces fever", "cures infection")
-- Is a drug formulation requiring medical regulation (tablets, capsules, syrups with drug ingredients)
 - Falls under UK Medicines Act 1968 or Human Medicines Regulations 2012
 
-EVERYTHING ELSE IS NOT A MEDICINE.
-This includes: food, drinks, cosmetics, personal care items, household products, electronics, toys, sex toys, wellness devices, dietary supplements without medicinal claims, vitamins, herbal products without medicinal claims.
+WHAT IS NOT A MEDICINE?
+Medical DEVICES and electronic health devices are NOT medicines, even if they make health or treatment claims. Devices work through physical/mechanical/electrical means, NOT through pharmacological, immunological, or metabolic action. Examples: tDCS headsets, TENS machines, blood pressure monitors, insulin pumps, hearing aids, nebulisers, thermometers, fitness trackers, pulse oximeters.
+
+Also NOT medicines: food, drinks, cosmetics, personal care items, household products, electronics, toys, sex toys, dietary supplements without medicinal claims, vitamins, herbal products without medicinal claims.
 
 IMPORTANT: Ignore category names like "Health & Medicines", "Sexual Health", "Medical Supplies" - these are just organizational labels. Focus ONLY on the product itself.
 
@@ -71,9 +371,27 @@ CLASSIFICATION CATEGORIES:
 5. unclear - Cannot confidently determine if product is medicine or what type
    → REJECTED (err on side of caution)
 
+6. cbd - Product containing CBD (Cannabidiol), hemp extract with CBD, or cannabis oil
+   These products require FSA Novel Food authorization and have age restrictions (18+).
+   Examples: CBD Oil 500mg, Hemp Extract CBD Capsules, CBD Gummies, CBD Vape Liquid, Cannabidiol Drops
+   IMPORTANT: Hemp seed oil (without CBD) is a food product → classify as not_medicine
+   → REJECTED
+
+7. tobacco - Tobacco, vaping, e-cigarette, or nicotine products
+   These products are age-restricted (18+) and regulated under the Tobacco and Related Products Regulations 2016.
+   Examples: Cigarettes, rolling tobacco, e-cigarettes, vape kits, vape liquid/e-liquid, nicotine pouches, nicotine patches (NRT), heated tobacco devices, cigars, pipe tobacco
+   IMPORTANT: Nicotine Replacement Therapy (NRT) products like nicotine gum/patches that are licensed medicines should be classified as gsl or pharmacy instead
+   → REJECTED
+
+8. fresh_perishable - Fresh, chilled, frozen, or perishable products
+   These products require cold chain logistics and cannot be sold through our ambient/room-temperature supply chain.
+   Examples: Fresh meat (chicken, beef, pork, lamb), fresh fish, dairy (milk, cream, cheese, yoghurt, eggs, butter), fresh fruit and vegetables, chilled ready meals, fresh sandwiches, frozen food, ice cream, fresh bread/bakery items, fresh pasta, fresh juice, salad bags
+   IMPORTANT: Shelf-stable versions (canned, dried, UHT, long-life, ambient) should NOT be classified as fresh_perishable - classify as not_medicine instead
+   → REJECTED
+
 DECISION RULE:
 - ACCEPTED = not_medicine OR gsl
-- REJECTED = pharmacy OR pom OR unclear
+- REJECTED = pharmacy OR pom OR unclear OR cbd OR tobacco OR fresh_perishable
 
 DEFAULT STANCE: If unsure whether something is a medicine at all, classify as "not_medicine" with lower confidence. Only use "unclear" if you're certain it's a medicine but unsure which type.
 
@@ -95,6 +413,10 @@ Product: "Fitbit Charge 5 Fitness Tracker"
 Category: "Health & Wellness > Medical Devices"
 {"result": "ACCEPTED", "classification": "not_medicine", "reason": "Consumer electronics wellness device, not a regulated medicine", "confidence": 0.95}
 
+Product: "Flow tDCS Headset for Depression"
+Category: "Health & Wellness > Medical Devices"
+{"result": "ACCEPTED", "classification": "not_medicine", "reason": "Medical device using electrical stimulation - devices are not medicines regardless of health claims. Medicines must be chemical/pharmaceutical substances.", "confidence": 0.95}
+
 Product: "Paracetamol 500mg Tablets 16 Pack"
 Category: "Health & Medicines > Pain Relief"
 {"result": "ACCEPTED", "classification": "gsl", "reason": "GSL medicine - paracetamol up to 16 pack is general sale", "confidence": 0.98}
@@ -109,7 +431,35 @@ Category: "Health & Medicines > Pain Relief"
 
 Product: "Amoxicillin 500mg Capsules"
 Category: "Health & Medicines > Antibiotics"
-{"result": "REJECTED", "classification": "pom", "reason": "Antibiotic - prescription only medicine", "confidence": 1.0}`;
+{"result": "REJECTED", "classification": "pom", "reason": "Antibiotic - prescription only medicine", "confidence": 1.0}
+
+Product: "CBD Oil 1000mg Full Spectrum Drops"
+Category: "Health & Wellness > CBD"
+{"result": "REJECTED", "classification": "cbd", "reason": "CBD/Cannabidiol product - requires FSA Novel Food authorization, cannot be sold without proper licensing", "confidence": 0.99}
+
+Product: "Organic Hemp Seed Oil 250ml"
+Category: "Food & Drink > Oils"
+{"result": "ACCEPTED", "classification": "not_medicine", "reason": "Hemp seed oil is a food product, does not contain CBD/Cannabidiol", "confidence": 0.95}
+
+Product: "Elf Bar 600 Disposable Vape Strawberry Ice"
+Category: "Vaping > Disposable Vapes"
+{"result": "REJECTED", "classification": "tobacco", "reason": "E-cigarette/vape product - age-restricted and regulated under Tobacco and Related Products Regulations 2016", "confidence": 0.99}
+
+Product: "Marlboro Gold 20 Cigarettes"
+Category: "Tobacco > Cigarettes"
+{"result": "REJECTED", "classification": "tobacco", "reason": "Tobacco cigarettes - age-restricted product regulated under TRPR 2016", "confidence": 1.0}
+
+Product: "Fresh British Chicken Breast Fillets 500g"
+Category: "Fresh Food > Meat & Poultry"
+{"result": "REJECTED", "classification": "fresh_perishable", "reason": "Fresh meat product requiring cold chain logistics - cannot be sold through ambient supply chain", "confidence": 0.99}
+
+Product: "Organic Whole Milk 2 Pints"
+Category: "Dairy > Milk"
+{"result": "REJECTED", "classification": "fresh_perishable", "reason": "Fresh dairy product requiring refrigeration - perishable item unsuitable for ambient supply chain", "confidence": 0.99}
+
+Product: "John West Tuna Chunks in Brine 4x145g"
+Category: "Food & Drink > Canned Fish"
+{"result": "ACCEPTED", "classification": "not_medicine", "reason": "Canned/shelf-stable food product, not perishable", "confidence": 0.98}`;
 
 /**
  * Fetch custom guidelines from database and append to base system prompt
@@ -174,8 +524,14 @@ export async function classifyProduct(
   modelName: string = GEMINI_MODELS[0],
   productCategory?: string
 ): Promise<ClassificationResult> {
+  // Tier 1: Keyword pre-filter for obvious tobacco/CBD products (no API cost)
+  const preFilterResult = preClassifyProduct(productName, productCategory);
+  if (preFilterResult) {
+    return preFilterResult;
+  }
+
   try {
-    // Initialize Gemini
+    // Tier 2: Gemini AI classification for everything else
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: modelName
@@ -225,7 +581,7 @@ Classify this product according to UK medicine regulations and return the JSON r
 
     // Validate classification value
     const validClassifications: ClassificationResult['classification'][] = [
-      'not_medicine', 'gsl', 'pharmacy', 'pom', 'unclear'
+      'not_medicine', 'gsl', 'pharmacy', 'pom', 'unclear', 'cbd', 'tobacco', 'fresh_perishable'
     ];
     if (!validClassifications.includes(classification)) {
       throw new Error(`Invalid classification value: ${classification}`);

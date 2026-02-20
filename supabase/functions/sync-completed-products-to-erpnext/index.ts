@@ -9,17 +9,10 @@
  * 2. Mark products as "syncing" to prevent duplicate processing
  * 3. Batch process products using ERPNext API (batch_size=5)
  * 4. Push to Production ERPNext (REQUIRED - failures block process)
- * 5. Push to Staging ERPNext (OPTIONAL - failures logged only, non-blocking)
- * 6. Verify successful updates via ERPNext API
- * 7. Update erpnext_updated_at timestamps for verified products
- * 8. Sync agent data back to scraped_products (category, breadcrumbs, ai_title, ai_description, weight, height, width, length, volumetric_weight)
- * 9. Clear sync marks for failed products (enable retry)
- *
- * Dual-Write Pattern:
- * - Production ERPNext: Uses ERPNEXT_AUTH_TOKEN (required)
- * - Staging ERPNext: Uses ERPNEXT_AUTH_TOKEN_STAGING (optional)
- * - Staging push only happens after successful production push
- * - Staging errors are logged but do NOT affect production flow
+ * 5. Verify successful updates via ERPNext API
+ * 6. Update erpnext_updated_at timestamps for verified products
+ * 7. Sync agent data back to scraped_products (category, breadcrumbs, ai_title, ai_description, weight, height, width, length, volumetric_weight)
+ * 8. Clear sync marks for failed products (enable retry)
  */
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -35,9 +28,8 @@ import {
   type ExistingERPNextItem,
   productToERPNextFormat,
   sendToERPNextAPI,
-  sendToStagingERPNext,
+  fetchWithTimeout,
   getExistingERPNextItems,
-  verifyItemsUpdated,
   updateVerifiedProducts,
   syncAgentDataToScrapedProducts,
   clearSuccessfulSyncErrors,
@@ -215,9 +207,14 @@ async function getProductsNeedingSync(
     WHERE pp.category_status = 'complete'
       AND pp.weight_and_dimension_status = 'complete'
       AND pp.seo_status = 'complete'
+      AND pp.faq_status = 'complete'
       AND (
         pp.erpnext_updated_at IS NULL
         OR pp.updated_at > pp.erpnext_updated_at
+      )
+      AND (
+        pp.sync_started_at IS NULL
+        OR pp.sync_started_at < NOW() - INTERVAL '10 minutes'
       )
       AND pp.scraped_product_id IS NOT NULL
       AND sp.price IS NOT NULL
@@ -225,9 +222,12 @@ async function getProductsNeedingSync(
       AND sp.price::text != ''
       AND sp.price > 0
       AND sp.blacklisted IS NOT TRUE
+      AND (sp.rejected IS NOT TRUE OR sp.rejected IS NULL)
+      AND sp.classification IS NOT NULL
       ${vendorClause}
       ${copyrightClause}
-    ORDER BY pp.updated_at ASC
+    ORDER BY
+      pp.updated_at ASC
     LIMIT ${limit}
   `;
 
@@ -237,7 +237,7 @@ async function getProductsNeedingSync(
       ? `vendor: ${vendor}`
       : 'all vendors';
   const copyrightDesc = prioritizeCopyright ? ', copyright complete only' : '';
-  console.log(`[SYNC] Found ${products.length} products needing ERPNext sync (${vendorDesc}${copyrightDesc}, all required agents complete: category AND weight-dimension AND SEO, valid scraped_product_id, valid price)`);
+  console.log(`[SYNC] Found ${products.length} products needing ERPNext sync (${vendorDesc}${copyrightDesc}, all required agents complete: category AND weight-dimension AND SEO AND FAQ, valid scraped_product_id, valid price)`);
   return products as PendingProduct[];
 }
 
@@ -251,12 +251,12 @@ async function markProductsSyncing(productIds: string[]): Promise<number> {
 
   const result = await sql`
     UPDATE pending_products
-    SET erpnext_updated_at = ${currentTime}
+    SET sync_started_at = ${currentTime}
     WHERE id = ANY(${productIds})
   `;
 
   const count = result.count || 0;
-  console.log(`[SYNC] Marked ${count} products as syncing`);
+  console.log(`[SYNC] Marked ${count} products as syncing (sync_started_at)`);
   return count;
 }
 
@@ -268,7 +268,7 @@ async function clearSyncMarks(productIds: string[]): Promise<number> {
 
   const result = await sql`
     UPDATE pending_products
-    SET erpnext_updated_at = NULL
+    SET sync_started_at = NULL
     WHERE id = ANY(${productIds})
   `;
 
@@ -475,7 +475,7 @@ async function processClassificationValidation(
     if (classification === 'not_medicine' || classification === 'gsl') {
       // Accepted: safe to sell
       acceptedProducts.push(product);
-    } else if (classification === 'pharmacy' || classification === 'pom' || classification === 'unclear') {
+    } else if (classification === 'pharmacy' || classification === 'pom' || classification === 'unclear' || classification === 'cbd' || classification === 'tobacco' || classification === 'fresh_perishable') {
       // Rejected: cannot sell
       rejectedProducts.push(product);
     } else {
@@ -628,7 +628,7 @@ async function getERPNextItemByUrl(url: string): Promise<{ name: string } | null
     throw new Error("ERPNEXT_AUTH_TOKEN environment variable not set");
   }
 
-  const response = await fetch(`${erpnextBaseUrl}/api/method/frappe.desk.reportview.get`, {
+  const response = await fetchWithTimeout(`${erpnextBaseUrl}/api/method/frappe.desk.reportview.get`, {
     method: "POST",
     headers: {
       "Authorization": `token ${erpnextAuthToken}`,
@@ -797,17 +797,46 @@ async function processBatch(
 
     const created_or_updated: string[] = [];  // Item codes
     const failed: Array<{ url: string; error: string }> = [];  // Failed with errors
+    const verified: VerifiedProduct[] = [];
 
     // ERPNext API returns: { message: { status, created_items, updated_items, errors } }
+    // Items are objects: { item_code: string, url: string }
     if (apiResponse.message && typeof apiResponse.message === "object") {
       const message = apiResponse.message;
       const createdItems = message.created_items || [];
       const updatedItems = message.updated_items || [];
+      const skippedItems = message.skipped_items || [];
       const errors = message.errors || [];
 
-      console.log(`[PROD] ERPNext API: Created=${createdItems.length}, Updated=${updatedItems.length}, Errors=${errors.length}`);
+      console.log(`[PROD] ERPNext API: Created=${createdItems.length}, Updated=${updatedItems.length}, Skipped=${skippedItems.length}, Errors=${errors.length}`);
 
-      created_or_updated.push(...createdItems, ...updatedItems);
+      const now = new Date().toISOString();
+
+      // Process created + updated + skipped items — match by URL directly from API response
+      // Skipped items (reason: no_change) are also successful — the product exists in ERPNext
+      for (const item of [...createdItems, ...updatedItems, ...skippedItems]) {
+        // Support both new format (object with item_code + url) and legacy format (plain string)
+        const itemCode = typeof item === 'string' ? item : item.item_code;
+        const itemUrl = typeof item === 'string' ? null : item.url;
+
+        if (itemCode) created_or_updated.push(itemCode);
+
+        // Match to our product by URL (preferred) or item_code (fallback)
+        const product = itemUrl
+          ? productUrlMap.get(itemUrl)
+          : products.find(p => p.item_code === itemCode);
+
+        if (product) {
+          verified.push({
+            product_id: product.id,
+            item_code: itemCode,
+            erpnext_modified: now,
+            verified: true
+          });
+        } else {
+          console.warn(`[PROD] Could not match item ${itemCode} (url: ${itemUrl}) to a product`);
+        }
+      }
 
       // Extract error details from API response
       for (const err of errors) {
@@ -825,16 +854,7 @@ async function processBatch(
       console.log(`[PROD] API Response unexpected format. Type: ${typeof apiResponse.message}`);
     }
 
-    // DUAL-WRITE: After successful production push, attempt staging push (non-blocking)
-    // Staging errors will be logged but won't affect production flow
-    await sendToStagingERPNext(batchItems);
-
-    // Verify items in ERPNext database (production only)
-    const verified = created_or_updated.length > 0
-      ? await verifyItemsUpdated(created_or_updated, products)
-      : [];
-
-    console.log(`[PROD] Batch result: ${created_or_updated.length} created/updated, ${failed.length} failed, ${verified.length} verified in ERPNext`);
+    console.log(`[PROD] Batch result: ${created_or_updated.length} created/updated, ${failed.length} failed, ${verified.length} verified`);
 
     return {
       created_or_updated,
@@ -867,7 +887,7 @@ async function processBatch(
  * Main sync handler
  */
 async function syncCompletedProducts(
-  batchSize: number = 50,
+  batchSize: number = 25,
   apiBatchSize: number = 5,
   vendor?: string | string[],
   prioritizeCopyright: boolean = false,
@@ -890,6 +910,10 @@ async function syncCompletedProducts(
     },
     errors: []
   };
+
+  // Global time budget: exit batch loop before hitting 150s Edge Function wall clock limit
+  const WALL_CLOCK_BUDGET_MS = 120_000; // 120s budget, leaving 30s safety margin
+  const syncStartTime = Date.now();
 
   try {
     // 0. Validate and reset invalid agent statuses BEFORE syncing
@@ -923,10 +947,22 @@ async function syncCompletedProducts(
     const productIds = products.map(p => p.id);
     result.marked_syncing = await markProductsSyncing(productIds);
 
-    // 4. Process in batches
+    // 4. Process in batches (with time budget enforcement)
     for (let i = 0; i < products.length; i += apiBatchSize) {
+      // Check time budget before starting a new batch
+      const elapsed = Date.now() - syncStartTime;
+      if (elapsed > WALL_CLOCK_BUDGET_MS) {
+        const remainingProducts = products.length - i;
+        console.warn(`[SYNC] Time budget exceeded (${Math.round(elapsed / 1000)}s / ${WALL_CLOCK_BUDGET_MS / 1000}s). Stopping with ${remainingProducts} products remaining for next run.`);
+        result.errors.push(`Time budget exceeded after ${Math.round(elapsed / 1000)}s - ${remainingProducts} products deferred to next run`);
+        // Clear sync marks for unprocessed products so they retry next run
+        const unprocessedIds = products.slice(i).map(p => p.id);
+        await clearSyncMarks(unprocessedIds);
+        break;
+      }
+
       const batch = products.slice(i, i + apiBatchSize);
-      console.log(`[SYNC] Processing batch ${Math.floor(i / apiBatchSize) + 1}: ${batch.length} products`);
+      console.log(`[SYNC] Processing batch ${Math.floor(i / apiBatchSize) + 1}: ${batch.length} products (elapsed: ${Math.round(elapsed / 1000)}s)`);
 
       try {
         const batchResult = await processBatch(batch, dataSourceFilter);
@@ -977,6 +1013,23 @@ async function syncCompletedProducts(
           await clearSyncMarks(failedProductIds);
         }
 
+        // 5b. Clear sync marks for unverified products (sent to API but not confirmed in ERPNext)
+        // and for skipped products (no URL, no description, failed validation, etc.)
+        {
+          const verifiedIds = new Set(batchResult.verified.map(v => v.product_id));
+          const failedUrls = new Set(batchResult.failed.map(f => f.url));
+          const invalidImageUrls = new Set(batchResult.invalid_image_products.map(p => p.url));
+
+          const unverifiedIds = batch
+            .filter(p => !verifiedIds.has(p.id) && !failedUrls.has(p.url) && !invalidImageUrls.has(p.url))
+            .map(p => p.id);
+
+          if (unverifiedIds.length > 0) {
+            console.log(`[SYNC] Clearing sync marks for ${unverifiedIds.length} unverified/skipped products`);
+            await clearSyncMarks(unverifiedIds);
+          }
+        }
+
       } catch (error) {
         const errorMsg = `Batch ${Math.floor(i / apiBatchSize) + 1} error: ${error}`;
         console.error(errorMsg);
@@ -1013,8 +1066,8 @@ async function syncCompletedProducts(
 Deno.serve(async (req) => {
   try {
     // Parse request body for configuration (optional)
-    let batchSize = 50;
-    let apiBatchSize = 5;
+    let batchSize = 5000;  // Query up to 5000 products per run; time budget (120s) will stop early if needed
+    let apiBatchSize = 25; // Send 25 products per ERPNext API call to reduce round trips
     let vendor: string | undefined;
 
     if (req.method === "POST") {

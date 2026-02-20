@@ -43,7 +43,7 @@ interface ClassificationResult {
   productId: string;
   success: boolean;
   rejected?: boolean;
-  classification?: 'not_medicine' | 'gsl' | 'pharmacy' | 'pom' | 'unclear';
+  classification?: 'not_medicine' | 'gsl' | 'pharmacy' | 'pom' | 'unclear' | 'cbd' | 'tobacco' | 'fresh_perishable';
   reason?: string;
   confidence?: number;
   error?: {

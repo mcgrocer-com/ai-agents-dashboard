@@ -26,7 +26,6 @@ export const BLOCKED_DOMAINS = [
   'price4.co.uk',
 
   // === SHOPPING AGGREGATORS & SEARCH ENGINES ===
-  'google.com/shopping',
   'shopping.google.com',
   'shopzilla.co.uk',
   'shopzilla.com',
@@ -35,7 +34,6 @@ export const BLOCKED_DOMAINS = [
   'become.com',
   'pricegrabber.com',
   'shopping.yahoo.com',
-  'bing.com/shop',
   'pricesearcher.com',
   'shopbot.com',
   'nextag.com',

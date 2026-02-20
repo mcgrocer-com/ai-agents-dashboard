@@ -7,9 +7,9 @@
  * - DELETE: Removes corresponding entries from pending_products
  *
  * Classification Logic (UK Medicine Compliance):
- * - Products are classified as: not_medicine, gsl, pharmacy, pom, or unclear
+ * - Products are classified as: not_medicine, gsl, pharmacy, pom, unclear, cbd, or tobacco
  * - ACCEPTED products (not_medicine, gsl) proceed to pending_products
- * - REJECTED products (pharmacy, pom, unclear) are flagged in scraped_products and excluded
+ * - REJECTED products (pharmacy, pom, unclear, cbd, tobacco) are flagged in scraped_products and excluded
  *
  * When a product is updated and already has both category and dimension processing complete,
  * it sets sync_full_product=true to ensure ALL product fields (not just agent results)

@@ -2,7 +2,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Configuration
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 500;
+const CONCURRENCY = 3;
 const TABLE_NAME = "scraped_products";
 
 // Types
@@ -21,6 +22,7 @@ interface ScrapedProduct {
   timestamp: string;
 
   // Optional fields
+  source?: string;
   ean_code?: string;
   weight?: number;
   height?: number;
@@ -51,6 +53,7 @@ interface MappedProduct {
   url: string;
   breadcrumbs: string | null;
   ean_code: string | null;
+  source: string;
   status: string;
   ai_title: string;
   ai_description: string;
@@ -83,14 +86,33 @@ interface SeedResponse {
 
 /**
  * Validate required fields for a product
+ * Shopify source products have relaxed validation (only name + url required)
  */
 function validateProduct(
   product: any,
   index: number,
 ): ValidationError | null {
-  // String fields (required, non-empty) - removed ean_code
+  const isShopify = product.source === "shopify";
+
+  // All products must have name and url
+  for (const field of ["name", "url"]) {
+    if (!product[field] || typeof product[field] !== "string" || product[field].trim() === "") {
+      return {
+        index,
+        field,
+        message: `Missing or invalid required field: '${field}' at product index ${index}`,
+      };
+    }
+  }
+
+  // Shopify products: only name + url required, rest will get defaults
+  if (isShopify) {
+    return null;
+  }
+
+  // Scrapper products: strict validation (original behaviour)
   const requiredStringFields = [
-    "vendor", "name", "url", "description", "stock_status",
+    "vendor", "description", "stock_status",
     "main_image", "product_id", "timestamp"
   ];
 
@@ -205,36 +227,40 @@ function calculateVariantCount(variants: any): number {
 async function mapProductToSchema(
   product: ScrapedProduct,
 ): Promise<MappedProduct> {
-  const vendor = product.vendor.toLowerCase().trim();
+  const vendor = (product.vendor || "unknown").toLowerCase().trim();
   const productId = await generateProductId(vendor, product.url);
 
   // Calculate variant_count from variants object
   const variantCount = calculateVariantCount(product.variants);
 
-  // Normalize stock_status to lowercase
-  const stockStatus = product.stock_status.toLowerCase().trim();
+  // Normalize stock_status to lowercase with default
+  const rawStatus = (product.stock_status || "in stock").toLowerCase().trim();
+  const stockStatus = (rawStatus === "in stock" || rawStatus === "out of stock")
+    ? rawStatus
+    : "in stock";
 
   return {
     id: productId,
     vendor: vendor,
     name: product.name.trim(),
-    price: product.price,
+    price: product.price || 0,
     weight: product.weight || 0,
-    description: product.description.trim(),
+    description: product.description ? product.description.trim() : "",
     category: product.category || null,
-    stock_status: stockStatus,  // Normalized to "in stock" or "out of stock"
-    images: JSON.stringify(product.images),
-    main_image: product.main_image.trim(),
+    stock_status: stockStatus,
+    images: JSON.stringify(product.images || []),
+    main_image: product.main_image ? product.main_image.trim() : "",
     variants: product.variants ? JSON.stringify(product.variants) : null,
     variant_count: variantCount,
-    product_id: product.product_id.trim(),
-    original_price: product.original_price,
-    timestamp: product.timestamp.trim(),
+    product_id: product.product_id ? product.product_id.trim() : "",
+    original_price: product.original_price || 0,
+    timestamp: product.timestamp ? product.timestamp.trim() : new Date().toISOString(),
     url: product.url.trim(),
     breadcrumbs: product.breadcrumbs
       ? JSON.stringify(product.breadcrumbs)
       : (product.breadcrumb ? JSON.stringify(product.breadcrumb) : null),
-    ean_code: product.ean_code ? product.ean_code.trim() : null,  // Optional field
+    ean_code: product.ean_code ? product.ean_code.trim() : null,
+    source: product.source || "scrapper",
     status: "pending",
     ai_title: "",
     ai_description: "",
@@ -298,41 +324,42 @@ function deduplicateByUrl(
 }
 
 /**
- * Fetch existing product URLs from database with pagination
+ * Check which URLs from the incoming batch already exist in the database.
+ * Only queries the URLs we care about (via .in()) instead of scanning the entire table.
  */
-async function getExistingUrls(
+async function getExistingUrlsFromBatch(
   supabase: any,
+  urls: string[],
 ): Promise<Set<string>> {
   const existingUrls = new Set<string>();
-  let page = 0;
+  if (urls.length === 0) return existingUrls;
 
-  while (true) {
-    const startIndex = page * 1000;
-    const endIndex = startIndex + 999;
+  // Query in chunks of 500 to stay within PostgREST query-string limits
+  const CHUNK_SIZE = 500;
+  const chunks: string[][] = [];
+  for (let i = 0; i < urls.length; i += CHUNK_SIZE) {
+    chunks.push(urls.slice(i, i + CHUNK_SIZE));
+  }
 
-    const { data, error } = await supabase
-      .from(TABLE_NAME)
-      .select("url")
-      .range(startIndex, endIndex);
+  // Run all chunks in parallel
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from(TABLE_NAME)
+        .select("url")
+        .in("url", chunk)
+    ),
+  );
 
+  for (const { data, error } of results) {
     if (error) {
-      console.warn("Warning: Could not fetch existing URLs:", error);
-      break;
+      console.warn("Warning: Could not check existing URLs:", error);
+      continue;
     }
-
-    if (data && data.length > 0) {
+    if (data) {
       for (const item of data) {
-        if (item.url) {
-          existingUrls.add(item.url);
-        }
+        if (item.url) existingUrls.add(item.url);
       }
-
-      if (data.length < 1000) {
-        break;
-      }
-      page++;
-    } else {
-      break;
     }
   }
 
@@ -340,121 +367,85 @@ async function getExistingUrls(
 }
 
 /**
- * Filter products based on update_existing flag
- * Returns products to insert and products to update
+ * Upsert products in parallel batches.
+ * - update_existing=false → ignoreDuplicates (insert new, skip existing)
+ * - update_existing=true  → upsert on url conflict (insert new, update existing)
  */
-function categorizeProducts(
+async function upsertProductsInBatches(
+  supabase: any,
   products: MappedProduct[],
-  existingUrls: Set<string>,
   updateExisting: boolean,
-): { toInsert: MappedProduct[]; toUpdate: MappedProduct[]; skipped: number } {
-  if (existingUrls.size === 0) {
-    return { toInsert: products, toUpdate: [], skipped: 0 };
-  }
-
-  const toInsert: MappedProduct[] = [];
-  const toUpdate: MappedProduct[] = [];
-  let skipped = 0;
-
-  for (const product of products) {
-    if (existingUrls.has(product.url)) {
-      if (updateExisting) {
-        toUpdate.push(product);
-      } else {
-        skipped++;
-      }
-    } else {
-      toInsert.push(product);
-    }
-  }
-
-  return { toInsert, toUpdate, skipped };
-}
-
-/**
- * Insert products in batches
- */
-async function insertProductsInBatches(
-  supabase: any,
-  products: MappedProduct[],
-): Promise<{ inserted: number; errors: string[] }> {
-  let inserted = 0;
+): Promise<{ processed: number; errors: string[] }> {
+  let processed = 0;
   const errors: string[] = [];
 
+  // Split into batches
+  const batches: MappedProduct[][] = [];
   for (let i = 0; i < products.length; i += BATCH_SIZE) {
-    const batch = products.slice(i, i + BATCH_SIZE);
+    batches.push(products.slice(i, i + BATCH_SIZE));
+  }
 
-    try {
-      const { data, error } = await supabase
-        .from(TABLE_NAME)
-        .insert(batch);
+  // Process batches with concurrency limit
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const concurrentBatches = batches.slice(i, i + CONCURRENCY);
 
-      if (error) {
-        errors.push(
-          `Batch ${Math.floor(i / BATCH_SIZE) + 1} failed: ${error.message}`,
-        );
-      } else {
-        inserted += batch.length;
+    const results = await Promise.all(
+      concurrentBatches.map(async (batch, batchIdx) => {
+        const batchNum = i + batchIdx + 1;
+        try {
+          if (updateExisting) {
+            // Keep 'id' in payload — needed for new row inserts (NOT NULL column).
+            // id = hash(vendor+url), so same URL always produces the same id.
+            const batchWithTimestamp = batch.map((row) => ({
+              ...row,
+              updated_at: new Date().toISOString(),
+            }));
+
+            const { error } = await supabase
+              .from(TABLE_NAME)
+              .upsert(batchWithTimestamp, {
+                onConflict: "url",
+                ignoreDuplicates: false,
+              });
+
+            if (error) {
+              return { ok: false, count: 0, err: `Batch ${batchNum}: ${error.message}` };
+            }
+          } else {
+            // Insert only — skip rows whose url already exists
+            const { error } = await supabase
+              .from(TABLE_NAME)
+              .upsert(batch, {
+                onConflict: "url",
+                ignoreDuplicates: true,
+              });
+
+            if (error) {
+              return { ok: false, count: 0, err: `Batch ${batchNum}: ${error.message}` };
+            }
+          }
+
+          return { ok: true, count: batch.length, err: null };
+        } catch (e) {
+          return {
+            ok: false,
+            count: 0,
+            err: `Batch ${batchNum} exception: ${e instanceof Error ? e.message : String(e)}`,
+          };
+        }
+      }),
+    );
+
+    for (const r of results) {
+      if (r.ok) {
+        processed += r.count;
+      } else if (r.err) {
+        errors.push(r.err);
       }
-    } catch (e) {
-      errors.push(
-        `Batch ${Math.floor(i / BATCH_SIZE) + 1} exception: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      );
     }
   }
 
-  return { inserted, errors };
-}
-
-/**
- * Update products individually using explicit UPDATE queries
- * Uses URL as the match criteria (since it's unique)
- * This prevents issues with foreign key constraints and NOT NULL constraints on 'id'
- */
-async function updateProductsInBatches(
-  supabase: any,
-  products: MappedProduct[],
-): Promise<{ updated: number; errors: string[] }> {
-  let updated = 0;
-  const errors: string[] = [];
-
-  // Process products one at a time to use explicit UPDATE queries
-  // This is necessary because Supabase doesn't support batch updates with .eq()
-  for (let i = 0; i < products.length; i++) {
-    const product = products[i];
-
-    try {
-      // Remove 'id' and 'url' from the update data
-      // - 'id' is the primary key and should never be updated
-      // - 'url' is the match criteria, not part of the update payload
-      const { id, url, ...updateData } = product;
-
-      // Use explicit UPDATE query matched by URL
-      // This ensures the 'id' field is never touched
-      const { error } = await supabase
-        .from(TABLE_NAME)
-        .update({ ...updateData, updated_at: new Date().toISOString() })
-        .eq("url", url);
-
-      if (error) {
-        errors.push(
-          `Failed to update product at URL ${url}: ${error.message}`,
-        );
-      } else {
-        updated++;
-      }
-    } catch (e) {
-      errors.push(
-        `Exception updating product ${i + 1}: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      );
-    }
-  }
-
-  return { updated, errors };
+  return { processed, errors };
 }
 
 /**
@@ -658,38 +649,41 @@ Deno.serve(async (req: Request) => {
       deduplicateByUrl(mappedProducts);
     stats.duplicates_removed += urlDupes;
 
-    // Step 4: Categorize products (insert vs update vs skip)
-    const existingUrls = await getExistingUrls(supabase);
-    const { toInsert, toUpdate, skipped } = categorizeProducts(
-      uniqueMapped,
-      existingUrls,
-      updateExisting,
-    );
-    stats.skipped = skipped;
+    // Step 4: Check which incoming URLs already exist (targeted query, not full table scan)
+    const incomingUrls = uniqueMapped.map((p) => p.url);
+    const existingUrls = await getExistingUrlsFromBatch(supabase, incomingUrls);
 
-    // Step 5: Insert new products
-    if (toInsert.length > 0) {
-      const { inserted, errors: insertErrors } = await insertProductsInBatches(
-        supabase,
-        toInsert,
-      );
-      stats.inserted = inserted;
-      errors.push(...insertErrors);
+    const newProducts = uniqueMapped.filter((p) => !existingUrls.has(p.url));
+    const existingProducts = uniqueMapped.filter((p) => existingUrls.has(p.url));
+
+    // Step 5: Upsert products in parallel batches
+    if (updateExisting) {
+      // Insert new + update existing
+      if (uniqueMapped.length > 0) {
+        const { processed, errors: upsertErrors } = await upsertProductsInBatches(
+          supabase,
+          uniqueMapped,
+          true,
+        );
+        stats.inserted = newProducts.length;
+        stats.updated = existingProducts.length;
+        errors.push(...upsertErrors);
+      }
+    } else {
+      // Insert new only, skip existing
+      stats.skipped = existingProducts.length;
+      if (newProducts.length > 0) {
+        const { processed, errors: upsertErrors } = await upsertProductsInBatches(
+          supabase,
+          newProducts,
+          false,
+        );
+        stats.inserted = processed;
+        errors.push(...upsertErrors);
+      }
     }
 
-    // Step 6: Update existing products (if update_existing flag is true)
-    if (toUpdate.length > 0) {
-      const { updated, errors: updateErrors } = await updateProductsInBatches(
-        supabase,
-        toUpdate,
-      );
-      stats.updated = updated;
-      errors.push(...updateErrors);
-    }
-
-    // Step 7: Sync marking is now handled by push-to-pending webhook
-    // The webhook automatically marks completed products for full ERPNext sync
-    // when scraped_products are updated
+    // Step 6: Sync marking is now handled by push-to-pending webhook
     console.log(`[INFO] Sync marking handled by push-to-pending webhook`);
 
     // Build response

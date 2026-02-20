@@ -49,7 +49,7 @@ export async function searchPrices(
   limit: number = 5
 ): Promise<ServiceResponse<PriceComparisonResponse>> {
   try {
-    const { data, error } = await supabase.functions.invoke('price-comparison', {
+    const { data, error } = await supabase.functions.invoke('on-demand-scraper-v2', {
       body: { query, limit },
     });
 

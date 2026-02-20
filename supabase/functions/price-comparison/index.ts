@@ -76,7 +76,7 @@
  * v25 CHANGES:
  * - Self-learning URL pattern system for unknown vendors
  * - Loads learned patterns from vendor_url_patterns table in Supabase
- * - learn-vendor-patterns endpoint researches and saves URL patterns
+ * - on-demand-learn-patterns endpoint researches and saves URL patterns
  * - System gets smarter over time without manual pattern updates
  *
  * v24 CHANGES:
@@ -107,9 +107,9 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { isBlockedDomain } from "./blocked-domains.ts";
-import { isProductPageUrl, VENDOR_URL_PATTERNS } from "./vendor-url-patterns.ts";
-import { getOrLearnPatterns } from "./vendor-patterns.ts";
+import { isBlockedDomain } from "../on-demand-scraper-v2/blocked-domains.ts";
+import { isProductPageUrl, VENDOR_URL_PATTERNS } from "../on-demand-scraper-v2/vendor-url-patterns.ts";
+
 
 // Custom error for Serper credit exhaustion - triggers fallback to secondary key
 class SerperCreditsExhaustedError extends Error {
@@ -687,8 +687,7 @@ async function searchBroader(
   product: string,
   limit: number,
   learnedPatterns: Map<string, { product: string[], category: string[] }>,
-  supabaseUrl: string,
-  authHeader: string
+  supabase?: ReturnType<typeof createClient> | null
 ): Promise<SearchResult[]> {
   const query = `${product} product page`;
   console.log(`[Search] Broader fallback: "${query}"`);
@@ -726,12 +725,8 @@ async function searchBroader(
       console.log(`  - ${item.link} -> £${item.price}`);
     });
 
-    // Filter: REMOVED price requirement - scraper will extract prices from JSON-LD
-    // Only filter by: valid link AND product page URL AND not blocked domain AND GBP currency
-    // Track unknown domains for pattern learning
-    const unknownDomains = new Set<string>();
-
-    // Allowed currencies (GBP only - reject PLN, USD, EUR, etc.)
+    // Filter: valid link AND product page URL AND not blocked domain AND GBP currency
+    // Patterns are pre-learned by on-demand-learn-patterns edge function
     const ALLOWED_CURRENCIES = ['GBP', '£', 'gbp'];
 
     let results: SearchResult[] = organic
@@ -739,8 +734,6 @@ async function searchBroader(
         if (!item.link) return false;
 
         // Filter by currency - only allow GBP (reject PLN, USD, EUR, etc.)
-        // If no currency specified AND has a price, assume it might not be GBP - reject to be safe
-        // If no currency AND no price, allow (we'll extract price later)
         if (item.currency && !ALLOWED_CURRENCIES.includes(item.currency)) {
           console.log(`[Filter] Rejected non-GBP currency: ${item.link} (currency: ${item.currency})`);
           return false;
@@ -752,32 +745,6 @@ async function searchBroader(
 
         // Check if blocked domain
         if (isBlockedDomain(item.link)) return false;
-
-        // Track unknown domains for learning
-        try {
-          const hostname = new URL(item.link).hostname.replace('www.', '').replace('groceries.', '');
-
-          // Extract proper domain (handle .co.uk, .com, etc.)
-          const parts = hostname.split('.');
-          let domain: string;
-          if (parts.length >= 3 && (parts[parts.length - 2] === 'co' || parts[parts.length - 2] === 'gov')) {
-            // Handle .co.uk, .gov.uk, etc.
-            domain = parts.slice(-3).join('.');
-          } else {
-            // Standard .com, .net, etc.
-            domain = parts.slice(-2).join('.');
-          }
-
-          // Check if we have patterns for this domain (static or learned)
-          const hasStaticPattern = Object.keys(VENDOR_URL_PATTERNS).some(d => hostname.includes(d));
-          const hasLearnedPattern = learnedPatterns.has(domain);
-
-          if (!hasStaticPattern && !hasLearnedPattern) {
-            unknownDomains.add(domain);
-          }
-        } catch (e) {
-          // Ignore parsing errors
-        }
 
         return true;
       })
@@ -816,88 +783,35 @@ async function searchBroader(
 
     console.log(`[Search] Broader: Found ${results.length} product page results (prices will be extracted via scraping)`);
 
-    // Learn patterns for unknown domains BEFORE filtering (synchronous)
-    if (unknownDomains.size > 0 && supabaseUrl && authHeader) {
-      console.log(`[Search] Found ${unknownDomains.size} unknown domains, learning patterns...`);
-
-      const serperApiKey = Deno.env.get('SERPER_API_KEY');
-      const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-      if (serperApiKey && geminiApiKey && supabaseServiceKey) {
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-        // Learn all domains in parallel (3-7s total due to Promise.all)
-        // Pass user's search query for context-aware pattern learning
-        const learningPromises = Array.from(unknownDomains).map(domain =>
-          getOrLearnPatterns(supabase, serperApiKey, geminiApiKey, domain, undefined, product)
-            .catch(e => {
-              console.error(`[Search] Failed to learn ${domain}:`, e.message);
-              return null; // Don't fail entire search if one vendor fails
-            })
-        );
-
-        const learnedResults = await Promise.all(learningPromises);
-
-        // Update learnedPatterns map with newly learned patterns
-        learnedResults.forEach((result, i) => {
-          if (result) {
-            const domain = Array.from(unknownDomains)[i];
-            learnedPatterns.set(domain, {
-              product: result.product_patterns || [],
-              category: [] // Category patterns removed in v7
-            });
-            console.log(`[Search] Learned patterns for ${domain} (confidence: ${result.confidence_score})`);
-          }
-        });
-
-        // Re-filter results with updated patterns
-        const refiltered: SearchResult[] = [];
-        for (const item of organic) {
-          if (!item.link) continue;
-
-          // Filter by currency - only allow GBP
-          if (item.currency && !ALLOWED_CURRENCIES.includes(item.currency)) continue;
-
-          // Re-check with potentially updated patterns
-          const isProduct = isProductPageUrl(item.link, isCategoryPage, learnedPatterns);
-          if (!isProduct) continue;
-
-          if (isBlockedDomain(item.link)) continue;
-
-          // Extract vendor name from URL
-          let vendor = 'Unknown';
-          try {
-            const hostname = new URL(item.link).hostname.replace('www.', '');
-            const parts = hostname.split('.');
-
-            // Common subdomains to skip (use second part instead)
-            const genericSubdomains = ['groceries', 'shop', 'store', 'online', 'www', 'uk', 'en'];
-
-            // Check if first part is a priority vendor domain
-            const matchedVendor = PRIORITY_VENDORS.find(v => hostname.includes(v.domain.toLowerCase()));
-            if (matchedVendor) {
-              vendor = matchedVendor.name;
-            } else if (parts.length >= 2 && genericSubdomains.includes(parts[0].toLowerCase())) {
-              // Skip generic subdomain, use second part (e.g., groceries.morrisons.com -> Morrisons)
-              vendor = parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
-            } else {
-              vendor = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-            }
-          } catch {}
-
-          refiltered.push({
-            title: item.title,
-            url: item.link,
-            price: item.price || null,
-            currency: item.currency || 'GBP',
-            vendor,
-            snippet: item.snippet
+    // Queue unknown domains for background pattern learning (fire-and-forget)
+    if (supabase) {
+      const unknownDomains = new Set<string>();
+      for (const r of results) {
+        try {
+          const hostname = new URL(r.url).hostname.replace('www.', '').replace('groceries.', '');
+          const parts = hostname.split('.');
+          const domain = parts.length >= 3 && (parts[parts.length - 2] === 'co' || parts[parts.length - 2] === 'gov')
+            ? parts.slice(-3).join('.')
+            : parts.slice(-2).join('.');
+          const hasStatic = Object.keys(VENDOR_URL_PATTERNS).some(d => hostname.includes(d));
+          const hasLearned = learnedPatterns.has(domain);
+          if (!hasStatic && !hasLearned) unknownDomains.add(domain);
+        } catch {}
+      }
+      if (unknownDomains.size > 0) {
+        console.log(`[Search] Queuing ${unknownDomains.size} unknown domains for background learning: ${Array.from(unknownDomains).join(', ')}`);
+        const rows = Array.from(unknownDomains).map(d => ({
+          domain: d,
+          vendor_name: d.split('.')[0],
+          learning_status: 'pending',
+        }));
+        // Fire-and-forget: don't await, don't block the response
+        supabase
+          .from('vendor_url_patterns')
+          .upsert(rows, { onConflict: 'domain', ignoreDuplicates: true })
+          .then(({ error: upsertErr }: { error: any }) => {
+            if (upsertErr) console.error('[Search] Failed to queue domains:', upsertErr.message);
           });
-        }
-
-        results = refiltered.slice(0, limit);
-        console.log(`[Search] After re-filtering with learned patterns: ${results.length} results`);
       }
     }
 
@@ -1439,8 +1353,6 @@ async function findProducts(
   limit: number,
   description: string = '',
   learnedPatterns: Map<string, { product: string[], category: string[] }> = new Map(),
-  supabaseUrl: string = '',
-  authHeader: string = '',
   supabase?: ReturnType<typeof createClient> | null
 ): Promise<FindProductsResult> {
   const debug: FindProductsResult['debug'] = {
@@ -1537,7 +1449,7 @@ async function findProducts(
   // STEP 3: Fallback broader search if not enough results
   if (verified.length < limit) {
     console.log(`[Main] Only ${verified.length} results, need ${limit}. Running fallback...`);
-    let fallbackResults = await searchBroader(serperKey, userQuery, limit * 2, learnedPatterns, supabaseUrl, authHeader);
+    let fallbackResults = await searchBroader(serperKey, userQuery, limit * 2, learnedPatterns, supabase);
     debug.fallback_results = fallbackResults.length;
 
     // Filter out vendors we already have
@@ -1617,9 +1529,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    // Get authorization header from incoming request to forward to internal calls
-    const authHeader = req.headers.get('Authorization') || req.headers.get('apikey') || '';
-
     if (!geminiKey || (!serperKeyPrimary && !serperKeyFallback)) {
       return new Response(
         JSON.stringify({ success: false, error: 'API keys not configured (GEMINI_API_KEY and at least one SERPER_API_KEY required)' }),
@@ -1675,13 +1584,13 @@ Deno.serve(async (req) => {
 
     try {
       console.log(`[PriceComparison] Trying primary Serper key...`);
-      result = await findProducts(geminiKey, activeSerperKey, query, limit, description, learnedPatterns, supabaseUrl!, authHeader, supabase);
+      result = await findProducts(geminiKey, activeSerperKey, query, limit, description, learnedPatterns, supabase);
     } catch (e) {
       // If primary key fails due to credit exhaustion, try fallback
       if (e instanceof SerperCreditsExhaustedError && serperKeyFallback && serperKeyPrimary) {
         console.log(`[PriceComparison] Primary key exhausted, switching to fallback key...`);
         usedFallbackKey = true;
-        result = await findProducts(geminiKey, serperKeyFallback, query, limit, description, learnedPatterns, supabaseUrl!, authHeader, supabase);
+        result = await findProducts(geminiKey, serperKeyFallback, query, limit, description, learnedPatterns, supabase);
       } else {
         throw e; // Re-throw other errors
       }

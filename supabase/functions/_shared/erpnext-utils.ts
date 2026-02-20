@@ -8,6 +8,36 @@
 import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
 
 // ============================================================================
+// Fetch with Timeout
+// ============================================================================
+
+const ERPNEXT_FETCH_TIMEOUT_MS = 15_000; // 15 seconds (5 batches × 15s = 75s, well under 150s Edge Function limit)
+
+/**
+ * Wrapper around fetch with an AbortController timeout.
+ * Prevents Edge Function from hanging when ERPNext is unresponsive.
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number = ERPNEXT_FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`ERPNext request timed out after ${timeoutMs / 1000}s: ${options.method || "GET"} ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ============================================================================
 // Type Definitions
 // ============================================================================
 
@@ -47,7 +77,7 @@ export interface PendingProduct {
   non_copyright_desc: string | null;
 
   // FAQ fields
-  faqs: Array<{ question: string; answer: string }> | null;
+  faq: Array<{ question: string; answer: string }> | null;
 
   // Product data from scraped_product`s join
   name: string | null;
@@ -203,7 +233,16 @@ export function productToERPNextFormat(
       payload.selling_price = Number(product.price);
     }
 
-    if (product.stock_status) payload.stock_status = product.stock_status;
+    if (product.stock_status) {
+      // Normalize stock_status casing to match ERPNext expected values
+      const stockMap: Record<string, string> = {
+        "in stock": "In Stock",
+        "low stock": "Low Stock",
+        "on order": "On Order",
+        "out of stock": "Out of Stock",
+      };
+      payload.stock_status = stockMap[product.stock_status.toLowerCase()] || product.stock_status;
+    }
 
 
   }
@@ -277,8 +316,8 @@ export function productToERPNextFormat(
   if (product.meta_description) payload.meta_description = product.meta_description;
 
   // Add FAQs if present (stringify the array for ERPNext, limit to 3)
-  if (product.faqs && Array.isArray(product.faqs) && product.faqs.length > 0) {
-    payload.faqs = JSON.stringify(product.faqs.slice(0, 3));
+  if (product.faq && Array.isArray(product.faq) && product.faq.length > 0) {
+    payload.faqs = JSON.stringify(product.faq.slice(0, 3));
   }
 
   return payload;
@@ -290,7 +329,7 @@ export function productToERPNextFormat(
 export async function sendToERPNextAPI(items: ERPNextItemPayload[]): Promise<ERPNextAPIResponse> {
   const erpnextBaseUrl = Deno.env.get("ERPNEXT_BASE_URL") || "https://erpnext.mcgrocer.com";
   const erpnextApiEndpoint = Deno.env.get("ERPNEXT_API_ENDPOINT") ||
-    "/api/method/mcgrocer_customization.mcgrocer_customization.apis.item.create_items_from_json";
+    "/api/method/mcgrocer_customization.apis.item.create_items_from_json";
   const erpnextAuthToken = Deno.env.get("ERPNEXT_AUTH_TOKEN");
 
   if (!erpnextAuthToken) {
@@ -301,7 +340,7 @@ export async function sendToERPNextAPI(items: ERPNextItemPayload[]): Promise<ERP
 
   console.log(`[PROD] Sending ${items.length} items to Production ERPNext API`);
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: "POST",
     headers: {
       "Authorization": `token ${erpnextAuthToken}`,
@@ -318,53 +357,6 @@ export async function sendToERPNextAPI(items: ERPNextItemPayload[]): Promise<ERP
   }
 
   return await response.json();
-}
-
-/**
- * Send batch to Staging ERPNext API (Non-blocking)
- */
-export async function sendToStagingERPNext(items: ERPNextItemPayload[]): Promise<void> {
-  const stagingAuthToken = Deno.env.get("ERPNEXT_AUTH_TOKEN_STAGING");
-
-  if (!stagingAuthToken) {
-    return;
-  }
-
-  try {
-    const stagingBaseUrl = Deno.env.get("ERPNEXT_BASE_URL_STAGING") || "https://staging-erpnext.mcgrocer.com";
-    const apiEndpoint = Deno.env.get("ERPNEXT_API_ENDPOINT") ||
-      "/api/method/mcgrocer_customization.mcgrocer_customization.apis.item.create_items_from_json";
-
-    const url = `${stagingBaseUrl}${apiEndpoint}`;
-
-    console.log(`[STAGING] Sending ${items.length} items to Staging ERPNext`);
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Authorization": `token ${stagingAuthToken}`,
-        "Content-Type": "application/json",
-        "Cookie": "full_name=Guest; sid=Guest; system_user=no; user_id=Guest; user_image="
-      },
-      body: JSON.stringify(items)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[STAGING] ERPNext API HTTP ${response.status}: ${errorText}`);
-      return;
-    }
-
-    const result = await response.json();
-    const created = result.message?.created_items?.length || 0;
-    const updated = result.message?.updated_items?.length || 0;
-    const errors = result.message?.errors?.length || 0;
-
-    console.log(`[STAGING] Success: Created=${created}, Updated=${updated}, Errors=${errors}`);
-
-  } catch (error) {
-    console.error(`[STAGING] Error (non-blocking):`, error);
-  }
 }
 
 /**
@@ -389,7 +381,7 @@ export async function getExistingERPNextItems(urls: string[]): Promise<Map<strin
 
   try {
     const promises = urls.map(url =>
-      fetch(`${erpnextBaseUrl}/api/method/frappe.desk.reportview.get`, {
+      fetchWithTimeout(`${erpnextBaseUrl}/api/method/frappe.desk.reportview.get`, {
         method: "POST",
         headers: {
           "Authorization": `token ${erpnextAuthToken}`,
@@ -457,8 +449,14 @@ export async function verifyItemsUpdated(
   }
 
   try {
+    // Build URL-to-product map for matching newly created items (which don't have item_code yet)
+    const urlToProduct = new Map<string, PendingProduct>();
+    for (const p of products) {
+      if (p.url) urlToProduct.set(p.url, p);
+    }
+
     const promises = itemCodes.map(itemCode =>
-      fetch(`${erpnextBaseUrl}/api/resource/Item/${itemCode}`, {
+      fetchWithTimeout(`${erpnextBaseUrl}/api/resource/Item/${itemCode}`, {
         method: "GET",
         headers: {
           "Authorization": `token ${erpnextAuthToken}`,
@@ -468,7 +466,23 @@ export async function verifyItemsUpdated(
         .then(async (response) => {
           if (!response.ok) return null;
           const result = await response.json();
-          const product = products.find(p => p.item_code === itemCode);
+
+          // Match product: first try by item_code (works for updates),
+          // then by URL from ERPNext supplier table (works for newly created items)
+          let product = products.find(p => p.item_code === itemCode);
+
+          if (!product && result.data?.item_suppliers) {
+            // Extract URL from ERPNext item's supplier child table
+            const suppliers = result.data.item_suppliers;
+            for (const supplier of suppliers) {
+              const erpnextUrl = supplier.custom_product_url;
+              if (erpnextUrl && urlToProduct.has(erpnextUrl)) {
+                product = urlToProduct.get(erpnextUrl);
+                break;
+              }
+            }
+          }
+
           if (product && result.data?.modified) {
             return {
               product_id: product.id,
@@ -515,7 +529,8 @@ export async function updateVerifiedProducts(
         UPDATE pending_products
         SET erpnext_updated_at = ${verified.erpnext_modified},
             item_code = ${verified.item_code},
-            sync_full_product = false
+            sync_full_product = false,
+            sync_started_at = NULL
         WHERE id = ${verified.product_id}
       `;
 
@@ -580,8 +595,8 @@ export async function syncAgentDataToScrapedProducts(
       }
 
       // Sync FAQs if present (limit to 3 items)
-      if (product.faqs && Array.isArray(product.faqs) && product.faqs.length > 0) {
-        updates.faqs = product.faqs.slice(0, 3);
+      if (product.faq && Array.isArray(product.faq) && product.faq.length > 0) {
+        updates.faq = product.faq.slice(0, 3);
       }
 
       if (Object.keys(updates).length === 0) continue;

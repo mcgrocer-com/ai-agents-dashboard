@@ -39,6 +39,18 @@ const ClassificationBadge = ({ classification, rejected }: ClassificationBadgePr
     unclear: {
       className: 'bg-orange-100 text-orange-800',
       label: 'Unclear'
+    },
+    cbd: {
+      className: 'bg-purple-100 text-purple-800',
+      label: 'CBD Product'
+    },
+    tobacco: {
+      className: 'bg-amber-100 text-amber-800',
+      label: 'Tobacco/Vape'
+    },
+    fresh_perishable: {
+      className: 'bg-cyan-100 text-cyan-800',
+      label: 'Fresh/Perishable'
     }
   }
 

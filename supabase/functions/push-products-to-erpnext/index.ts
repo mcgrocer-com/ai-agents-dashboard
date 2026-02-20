@@ -50,7 +50,7 @@ import {
   type VerifiedProduct,
   productToERPNextFormat,
   sendToERPNextAPI,
-  sendToStagingERPNext,
+
   getExistingERPNextItems,
   verifyItemsUpdated,
   updateVerifiedProducts,
@@ -72,8 +72,8 @@ const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!);
 
 /**
  * Query products by URLs
- * Note: No agent status checking - allows manual push of any product with valid data
- * Includes copyright fields to use vendor-neutral content when available
+ * Requires category, weight & dimension, SEO, and FAQ agents to be complete.
+ * Copyright is optional (included when available).
  */
 async function getProductsByUrls(productUrls: string[]): Promise<PendingProduct[]> {
   if (productUrls.length === 0) return [];
@@ -88,6 +88,10 @@ async function getProductsByUrls(productUrls: string[]): Promise<PendingProduct[
     WHERE pp.url = ANY(${productUrls})
       AND pp.scraped_product_id IS NOT NULL
       AND sp.blacklisted IS NOT TRUE
+      AND pp.category_status = 'complete'
+      AND pp.weight_and_dimension_status = 'complete'
+      AND pp.seo_status = 'complete'
+      AND pp.faq_status = 'complete'
   `;
 
   console.log(`[PUSH] Found ${products.length}/${productUrls.length} valid products to push`);
@@ -187,9 +191,6 @@ async function processPush(products: PendingProduct[]): Promise<PushResult[]> {
         }
       }
     }
-
-    // Push to staging (non-blocking)
-    await sendToStagingERPNext(batchItems);
 
     // Verify items in ERPNext
     const verified = createdOrUpdated.length > 0

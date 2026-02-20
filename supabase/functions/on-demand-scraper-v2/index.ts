@@ -25,8 +25,8 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { isBlockedDomain } from "../price-comparison/blocked-domains.ts";
-import { isProductPageUrl, VENDOR_URL_PATTERNS } from "../price-comparison/vendor-url-patterns.ts";
+import { isBlockedDomain } from "./blocked-domains.ts";
+import { isProductPageUrl, VENDOR_URL_PATTERNS } from "./vendor-url-patterns.ts";
 
 // Cache TTL in hours
 const DEFAULT_CACHE_TTL_HOURS = 2;
@@ -251,7 +251,8 @@ async function writeCache(
         results,
         metadata,
         expires_at: expiresAt,
-        hit_count: 0
+        hit_count: 0,
+        last_updated: null  // Reset so on-demand-sync-cache picks up new results
       }, {
         onConflict: 'query_normalized,limit_requested'
       });
@@ -270,31 +271,63 @@ async function writeCache(
 // LEARNED PATTERNS
 // ---------------------
 
-async function loadLearnedPatterns(supabase: any): Promise<Map<string, { product: string[], category: string[] }>> {
+async function loadLearnedPatterns(supabase: any, domains?: string[]): Promise<Map<string, { product: string[], category: string[] }>> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('vendor_url_patterns')
       .select('domain, product_patterns, category_patterns')
       .eq('learning_status', 'learned');
+
+    if (domains && domains.length > 0) {
+      query = query.in('domain', domains);
+    }
+
+    const { data, error } = await query;
 
     if (error || !data) {
       console.log('[Patterns] No learned patterns found');
       return new Map();
     }
 
-    const patternsMap = new Map<string, { product: string[], category: string[] }>();
+    const patternsMap = new Map<string, { product: string[], category: string[], productRegex: RegExp[], categoryRegex: RegExp[] }>();
     for (const row of data) {
+      const productStrs = row.product_patterns || [];
+      const categoryStrs = row.category_patterns || [];
+      // Pre-compile RegExp objects once to avoid repeated compilation per URL check
+      const productRegex: RegExp[] = [];
+      for (const p of productStrs) {
+        try { productRegex.push(new RegExp(p, 'i')); } catch {}
+      }
+      const categoryRegex: RegExp[] = [];
+      for (const c of categoryStrs) {
+        try { categoryRegex.push(new RegExp(c, 'i')); } catch {}
+      }
       patternsMap.set(row.domain, {
-        product: row.product_patterns || [],
-        category: row.category_patterns || []
+        product: productStrs,
+        category: categoryStrs,
+        productRegex,
+        categoryRegex
       });
     }
 
-    console.log(`[Patterns] Loaded ${patternsMap.size} learned patterns`);
+    console.log(`[Patterns] Loaded ${patternsMap.size} learned patterns${domains ? ` (for ${domains.length} domains)` : ''}`);
     return patternsMap;
   } catch (e) {
     console.error('[Patterns] Load error:', e);
     return new Map();
+  }
+}
+
+/** Extract normalized domain from a URL */
+function extractDomain(url: string): string | null {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace('www.', '').replace('groceries.', '');
+    const parts = hostname.split('.');
+    return parts.length >= 3 && (parts[parts.length - 2] === 'co' || parts[parts.length - 2] === 'gov')
+      ? parts.slice(-3).join('.')
+      : parts.slice(-2).join('.');
+  } catch {
+    return null;
   }
 }
 
@@ -349,13 +382,25 @@ async function scraperApiSearch(
 async function searchGoogleOnce(
   apiKey: string,
   product: string,
-  learnedPatterns: Map<string, { product: string[], category: string[] }>
-): Promise<{ priorityResults: SearchResult[]; otherResults: SearchResult[] }> {
+  supabase: ReturnType<typeof createClient> | null
+): Promise<{ priorityResults: SearchResult[]; otherResults: SearchResult[]; learnedPatterns: Map<string, { product: string[], category: string[] }> }> {
   const query = `${product} buy UK`;
   console.log(`[Search] Single search: "${query}" (num: 100)`);
 
   try {
     const organic = await scraperApiSearch(apiKey, query, 100);
+
+    // Extract unique domains from raw results, then load only those learned patterns
+    const domainsInResults = new Set<string>();
+    for (const item of organic) {
+      if (!item.link) continue;
+      const d = extractDomain(item.link);
+      if (d) domainsInResults.add(d);
+    }
+
+    const learnedPatterns = supabase && domainsInResults.size > 0
+      ? await loadLearnedPatterns(supabase, Array.from(domainsInResults))
+      : new Map<string, { product: string[], category: string[] }>();
 
     const priorityResults: SearchResult[] = [];
     const otherResults: SearchResult[] = [];
@@ -404,10 +449,10 @@ async function searchGoogleOnce(
     }
 
     console.log(`[Search] Single search: ${priorityResults.length} priority + ${otherResults.length} other results`);
-    return { priorityResults, otherResults };
+    return { priorityResults, otherResults, learnedPatterns };
   } catch (e) {
     console.error(`[Search] Single search error:`, e);
-    return { priorityResults: [], otherResults: [] };
+    return { priorityResults: [], otherResults: [], learnedPatterns: new Map() };
   }
 }
 
@@ -465,16 +510,41 @@ function extractJsonLdFromHtml(html: string): any | null {
         return data;
       }
 
+      // ProductGroup with hasVariant (e.g. Clarins, sites with size/color variants)
+      // Extract the first variant's Product data and merge with group-level info
+      if (data['@type'] === 'ProductGroup' && data.hasVariant) {
+        const variants = Array.isArray(data.hasVariant) ? data.hasVariant : [data.hasVariant];
+        const firstVariant = variants.find((v: any) => v['@type'] === 'Product' && v.offers);
+        if (firstVariant) {
+          console.log(`[JSON-LD] Found ProductGroup with ${variants.length} variant(s), using first variant`);
+          return firstVariant;
+        }
+      }
+
       // Array of objects
       if (Array.isArray(data)) {
         const product = data.find((d: any) => d['@type'] === 'Product' || d.offers);
         if (product) return product;
+        // Also check for ProductGroup in arrays
+        const group = data.find((d: any) => d['@type'] === 'ProductGroup' && d.hasVariant);
+        if (group) {
+          const variants = Array.isArray(group.hasVariant) ? group.hasVariant : [group.hasVariant];
+          const firstVariant = variants.find((v: any) => v['@type'] === 'Product' && v.offers);
+          if (firstVariant) return firstVariant;
+        }
       }
 
       // Nested @graph
       if (data['@graph'] && Array.isArray(data['@graph'])) {
         const product = data['@graph'].find((d: any) => d['@type'] === 'Product' || d.offers);
         if (product) return product;
+        // Also check for ProductGroup in @graph
+        const group = data['@graph'].find((d: any) => d['@type'] === 'ProductGroup' && d.hasVariant);
+        if (group) {
+          const variants = Array.isArray(group.hasVariant) ? group.hasVariant : [group.hasVariant];
+          const firstVariant = variants.find((v: any) => v['@type'] === 'Product' && v.offers);
+          if (firstVariant) return firstVariant;
+        }
       }
     } catch {
       // Invalid JSON, skip
@@ -487,22 +557,33 @@ function extractJsonLdFromHtml(html: string): any | null {
 /**
  * Extract price from JSON-LD data
  */
-function extractPriceFromJsonLd(jsonLd: any): number | null {
-  if (!jsonLd) return null;
+// Accepted currencies for UK price comparison
+const ACCEPTED_CURRENCIES = new Set(['GBP']);
+
+function extractPriceFromJsonLd(jsonLd: any): { price: number | null; currency: string | null } {
+  if (!jsonLd) return { price: null, currency: null };
 
   try {
+    // Helper to extract price + currency from an offer object
+    const fromOffer = (offer: any): { price: number | null; currency: string | null } => {
+      const p = parseFloat(String(offer.price));
+      const currency = offer.priceCurrency || null;
+      if (!isNaN(p) && p > 0) return { price: p, currency };
+      return { price: null, currency };
+    };
+
     // Direct offers.price
     if (jsonLd.offers?.price) {
-      const p = parseFloat(String(jsonLd.offers.price));
-      if (!isNaN(p) && p > 0) return p;
+      const result = fromOffer(jsonLd.offers);
+      if (result.price !== null) return result;
     }
 
     // offers array (multiple offers)
     if (Array.isArray(jsonLd.offers)) {
       for (const offer of jsonLd.offers) {
         if (offer.price) {
-          const p = parseFloat(String(offer.price));
-          if (!isNaN(p) && p > 0) return p;
+          const result = fromOffer(offer);
+          if (result.price !== null) return result;
         }
       }
     }
@@ -512,8 +593,8 @@ function extractPriceFromJsonLd(jsonLd: any): number | null {
       const nestedOffers = Array.isArray(jsonLd.offers.offers) ? jsonLd.offers.offers : [jsonLd.offers.offers];
       for (const offer of nestedOffers) {
         if (offer.price) {
-          const p = parseFloat(String(offer.price));
-          if (!isNaN(p) && p > 0) return p;
+          const result = fromOffer(offer);
+          if (result.price !== null) return result;
         }
       }
     }
@@ -521,11 +602,12 @@ function extractPriceFromJsonLd(jsonLd: any): number | null {
     // lowPrice / highPrice
     if (jsonLd.offers?.lowPrice) {
       const p = parseFloat(String(jsonLd.offers.lowPrice));
-      if (!isNaN(p) && p > 0) return p;
+      const currency = jsonLd.offers.priceCurrency || null;
+      if (!isNaN(p) && p > 0) return { price: p, currency };
     }
   } catch {}
 
-  return null;
+  return { price: null, currency: null };
 }
 
 /**
@@ -890,7 +972,10 @@ async function scrapeProductPage(
 }> {
   const defaultResult = { price: null, availability: 'Unsure' as const, extractionMethod: null, success: false };
 
-  const fetchResult = await fetchWithSpaRetry(apiKey, url);
+  // Strip query params before scraping - many retailers (e.g. Clarins/Demandware)
+  // return empty JSON-LD when query params like ?sectionid=bv-reviews are present
+  const cleanUrl = normalizeUrl(url);
+  const fetchResult = await fetchWithSpaRetry(apiKey, cleanUrl);
   if (!fetchResult) return defaultResult;
 
   const { html } = fetchResult;
@@ -899,19 +984,26 @@ async function scrapeProductPage(
   // Tier 1: JSON-LD for price (most reliable for pricing)
   const jsonLd = extractJsonLdFromHtml(html);
   if (jsonLd) {
-    const price = extractPriceFromJsonLd(jsonLd);
-    // Use Gemini as Tier 1 for availability — JSON-LD availability is unreliable on some retailers
-    let availability: 'In Stock' | 'Out of Stock' | 'Unsure' = 'Unsure';
-    if (geminiKey) {
-      availability = await checkAvailabilityWithAI(geminiKey, html, url);
-      console.log(`[Scrape] JSON-LD price=£${price}, AI availability=${availability} for ${url}`);
+    const { price, currency } = extractPriceFromJsonLd(jsonLd);
+
+    // Reject non-GBP prices (e.g. iHerb geo-redirecting to NGN, USD, EUR)
+    if (price !== null && currency && !ACCEPTED_CURRENCIES.has(currency.toUpperCase())) {
+      console.warn(`[Scrape] REJECT non-GBP price: ${currency} ${price} for ${url}`);
+      // Fall through to AI extraction which may handle it better
+    } else {
+      // Use Gemini as Tier 1 for availability — JSON-LD availability is unreliable on some retailers
+      let availability: 'In Stock' | 'Out of Stock' | 'Unsure' = 'Unsure';
+      if (geminiKey) {
+        availability = await checkAvailabilityWithAI(geminiKey, html, url);
+        console.log(`[Scrape] JSON-LD price=£${price}, AI availability=${availability} for ${url}`);
+      }
+      // Fall back to JSON-LD availability if Gemini unavailable or returns Unsure
+      if (availability === 'Unsure') {
+        availability = extractAvailabilityFromJsonLd(jsonLd);
+        console.log(`[Scrape] JSON-LD price=£${price}, JSON-LD availability=${availability} (fallback) for ${url}`);
+      }
+      return { price, availability, extractionMethod: 'json-ld', success: price !== null };
     }
-    // Fall back to JSON-LD availability if Gemini unavailable or returns Unsure
-    if (availability === 'Unsure') {
-      availability = extractAvailabilityFromJsonLd(jsonLd);
-      console.log(`[Scrape] JSON-LD price=£${price}, JSON-LD availability=${availability} (fallback) for ${url}`);
-    }
-    return { price, availability, extractionMethod: 'json-ld', success: price !== null };
   }
 
   // Tier 2: AI extraction (Gemini smart model — extracts price + availability from HTML)
@@ -936,7 +1028,8 @@ async function batchScrapeProducts(
   products: ProductResult[],
   supabase?: ReturnType<typeof createClient> | null,
   geminiKey?: string,
-  targetCount: number = Infinity
+  targetCount: number = Infinity,
+  isOverDeadline?: () => boolean
 ): Promise<ProductResult[]> {
   if (products.length === 0) return [];
 
@@ -1030,6 +1123,13 @@ async function batchScrapeProducts(
   let priceCount = [...productsWithFreshData, ...productsFromDbCache].filter(p => p.price > 0).length;
 
   for (let i = 0; i < productsToActuallyScrape.length; i += SCRAPE_CONCURRENCY) {
+    // Early termination: stop if approaching function deadline
+    if (isOverDeadline?.()) {
+      const remaining = productsToActuallyScrape.length - i;
+      console.log(`[Scrape] Deadline approaching, skipping ${remaining} remaining products`);
+      enrichedProducts.push(...productsToActuallyScrape.slice(i));
+      break;
+    }
     // Early termination: stop scraping if we already have enough products with prices
     if (priceCount >= targetCount) {
       const remaining = productsToActuallyScrape.length - i;
@@ -1567,7 +1667,6 @@ async function findProducts(
   userQuery: string,
   limit: number,
   description: string = '',
-  learnedPatterns: Map<string, { product: string[], category: string[] }> = new Map(),
   supabase?: ReturnType<typeof createClient> | null,
   startTime: number = Date.now()
 ): Promise<FindProductsResult> {
@@ -1609,9 +1708,9 @@ async function findProducts(
     ? searchScrapedProducts(supabase, userQuery, limit)
     : Promise.resolve([] as SearchResult[]);
 
-  const googleSearchPromise = searchGoogleOnce(scraperApiKey, userQuery, learnedPatterns);
+  const googleSearchPromise = searchGoogleOnce(scraperApiKey, userQuery, supabase);
 
-  const [scrapedResults, { priorityResults, otherResults }] = await Promise.all([dbSearchPromise, googleSearchPromise]);
+  const [scrapedResults, { priorityResults, otherResults, learnedPatterns }] = await Promise.all([dbSearchPromise, googleSearchPromise]);
 
   // Combine Google results: priority vendors first, then others as fill
   const rawSearchResults = [...priorityResults, ...otherResults];
@@ -1633,6 +1732,33 @@ async function findProducts(
   ];
 
   console.log(`[Main] After block filter: ${filteredDb.length} DB + ${filteredSearch.length} search (${priorityResults.length} priority, ${otherResults.length} other)`);
+
+  // Queue unknown domains for background pattern learning (fire-and-forget)
+  if (supabase && filteredSearch.length > 0) {
+    const unknownDomains = new Set<string>();
+    for (const r of filteredSearch) {
+      const domain = extractDomain(r.url);
+      if (!domain) continue;
+      const hostname = new URL(r.url).hostname.toLowerCase().replace('www.', '').replace('groceries.', '');
+      const hasStatic = Object.keys(VENDOR_URL_PATTERNS).some(d => hostname.includes(d));
+      const hasLearned = learnedPatterns.has(domain);
+      if (!hasStatic && !hasLearned) unknownDomains.add(domain);
+    }
+    if (unknownDomains.size > 0) {
+      console.log(`[Search] Queuing ${unknownDomains.size} unknown domains for background learning: ${Array.from(unknownDomains).join(', ')}`);
+      const rows = Array.from(unknownDomains).map(d => ({
+        domain: d,
+        vendor_name: d.split('.')[0],
+        learning_status: 'pending',
+      }));
+      supabase
+        .from('vendor_url_patterns')
+        .upsert(rows, { onConflict: 'domain', ignoreDuplicates: true })
+        .then(({ error: upsertErr }: { error: any }) => {
+          if (upsertErr) console.error('[Search] Failed to queue domains:', upsertErr.message);
+        });
+    }
+  }
 
   if (isOverDeadline()) {
     console.log(`[Main] DEADLINE reached after search (${((Date.now() - startTime) / 1000).toFixed(1)}s), returning partial results`);
@@ -1674,7 +1800,7 @@ async function findProducts(
     return buildPartialResult(verified, debug);
   }
   console.log(`[Main] STEP 3: Scraping ${verified.length} verified products for prices + availability...`);
-  const enrichedProducts = await batchScrapeProducts(scraperApiKey, verified, supabase, geminiKey, limit);
+  const enrichedProducts = await batchScrapeProducts(scraperApiKey, verified, supabase, geminiKey, limit, isOverDeadline);
   debug.scrape_results = enrichedProducts.filter(p => p.price > 0).length;
 
   // Separate products with and without prices
@@ -1731,7 +1857,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { query, description = '', limit = 5, bypass_cache = false } = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid JSON body' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const { query, description = '', bypass_cache = false } = body;
+    const limit = Math.min(Math.max(1, Number(body.limit) || 5), 20);
 
     if (!query || typeof query !== 'string') {
       return new Response(
@@ -1740,13 +1877,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[PriceComparisonV2] Query: "${query}", Description: "${description || 'none'}", Limit: ${limit}, BypassCache: ${bypass_cache}`);
+    if (query.length > 200) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Query too long (max 200 characters)' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    console.log(`[PriceComparisonV2] Query: "${query}", Description: "${(description || 'none').substring(0, 50)}", Limit: ${limit}, BypassCache: ${bypass_cache}`);
 
     const supabase = supabaseUrl && supabaseKey
       ? createClient(supabaseUrl, supabaseKey)
       : null;
-
-    const learnedPatterns = supabase ? await loadLearnedPatterns(supabase) : new Map();
 
     // Check cache first
     if (supabase && !bypass_cache) {
@@ -1771,7 +1913,7 @@ Deno.serve(async (req) => {
     }
 
     // Execute search
-    const result = await findProducts(geminiKey, scraperApiKey, query, limit, description, learnedPatterns, supabase, startTime);
+    const result = await findProducts(geminiKey, scraperApiKey, query, limit, description, supabase, startTime);
 
     const executionTime = (Date.now() - startTime) / 1000;
 
@@ -1786,9 +1928,9 @@ Deno.serve(async (req) => {
       cache_hit: false,
     };
 
-    // Write to cache
+    // Write to cache (awaited to prevent GC from killing the write)
     if (supabase && result.products.length > 0) {
-      writeCache(supabase, query, limit, result.products, metadata);
+      await writeCache(supabase, query, limit, result.products, metadata);
     }
 
     return new Response(

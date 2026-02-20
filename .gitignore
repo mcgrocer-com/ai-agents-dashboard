@@ -60,3 +60,17 @@ classification-agent-context/
 *.tmp
 *.temp
 .temp/
+
+# Local scripts with hardcoded secrets
+filter_missing_products.py
+push_shopify_products.py
+mark_up_price.js
+
+# Data exports
+izzy_items_export*
+
+# Test/staging functions with hardcoded credentials
+supabase/functions/test-staging-erpnext/
+
+# Migration reports
+SCRAPER_MIGRATION_REPORT.md

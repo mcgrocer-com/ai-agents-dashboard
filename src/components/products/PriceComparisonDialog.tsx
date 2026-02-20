@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Scale, X, ExternalLink, Loader2, AlertTriangle, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Scale, X, ExternalLink, Loader2, AlertTriangle, ToggleLeft, ToggleRight, Database, Globe, RefreshCw } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 
 interface PriceComparisonProduct {
@@ -16,6 +16,8 @@ interface PriceComparisonProduct {
   price: number
   source_url: string
   availability: 'In Stock' | 'Out of Stock' | 'Unsure'
+  extraction_method?: 'json-ld' | 'html-parse' | 'ai-html' | 'cached'
+  last_checked?: string
 }
 
 interface PriceComparisonResults {
@@ -24,6 +26,8 @@ interface PriceComparisonResults {
   metadata?: {
     execution_time: number
     description?: string | null
+    cache_hit?: boolean
+    cache_age_seconds?: number
   }
   debug?: Record<string, unknown>
   error?: string
@@ -46,8 +50,9 @@ export function PriceComparisonDialog({
   const [results, setResults] = useState<PriceComparisonResults | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [includeDescription, setIncludeDescription] = useState(true)
+  const [bypassCache, setBypassCache] = useState(false)
 
-  const fetchPriceComparison = async () => {
+  const fetchPriceComparison = async (forceBypass?: boolean) => {
     if (!productName) return
 
     setLoading(true)
@@ -60,12 +65,16 @@ export function PriceComparisonDialog({
         limit: 6,
       }
 
+      if (forceBypass ?? bypassCache) {
+        requestBody.bypass_cache = true
+      }
+
       // Include description if toggle is on and description exists
       if (includeDescription && productDescription) {
         requestBody.description = productDescription
       }
 
-      const { data, error: fetchError } = await supabase.functions.invoke('price-comparison', {
+      const { data, error: fetchError } = await supabase.functions.invoke('on-demand-scraper-v2', {
         body: requestBody,
       })
 
@@ -155,7 +164,7 @@ export function PriceComparisonDialog({
                 <p className="text-sm text-gray-600 truncate max-w-md">{productName}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {/* Description Toggle */}
               {productDescription && (
                 <button
@@ -173,6 +182,30 @@ export function PriceComparisonDialog({
                   </span>
                 </button>
               )}
+              {/* Bypass Cache Toggle */}
+              <button
+                onClick={() => setBypassCache(!bypassCache)}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg hover:bg-orange-100 transition-colors"
+                title={bypassCache ? 'Cache bypassed — fetches fresh results' : 'Using cached results if available'}
+              >
+                {bypassCache ? (
+                  <ToggleRight className="h-5 w-5 text-orange-600" />
+                ) : (
+                  <ToggleLeft className="h-5 w-5 text-gray-400" />
+                )}
+                <span className={bypassCache ? 'text-orange-600' : 'text-gray-500'}>
+                  Fresh
+                </span>
+              </button>
+              {/* Retry Button */}
+              <button
+                onClick={() => fetchPriceComparison()}
+                disabled={loading}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg hover:bg-orange-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Re-run price comparison"
+              >
+                <RefreshCw className={`h-4 w-4 text-gray-500 ${loading ? 'animate-spin' : ''}`} />
+              </button>
               <button
                 onClick={onClose}
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
@@ -197,7 +230,7 @@ export function PriceComparisonDialog({
                 <p className="text-red-600 font-medium">Error</p>
                 <p className="text-gray-600 mt-1">{error}</p>
                 <button
-                  onClick={fetchPriceComparison}
+                  onClick={() => fetchPriceComparison()}
                   className="mt-4 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
                 >
                   Try Again
@@ -207,7 +240,7 @@ export function PriceComparisonDialog({
               <div className="space-y-4">
                 {/* Results Summary */}
                 <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="grid grid-cols-4 gap-4 text-center">
                     <div>
                       <p className="text-2xl font-bold text-gray-900">
                         {results.products?.length || 0}
@@ -229,6 +262,25 @@ export function PriceComparisonDialog({
                           : 'N/A'}
                       </p>
                       <p className="text-xs text-gray-500">Search Time</p>
+                    </div>
+                    <div>
+                      {results.metadata?.cache_hit ? (
+                        <>
+                          <p className="text-2xl font-bold text-blue-600">
+                            {results.metadata.cache_age_seconds != null
+                              ? results.metadata.cache_age_seconds < 60
+                                ? `${results.metadata.cache_age_seconds}s`
+                                : `${Math.round(results.metadata.cache_age_seconds / 60)}m`
+                              : '—'}
+                          </p>
+                          <p className="text-xs text-blue-500">Cache Hit</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-2xl font-bold text-purple-600">Live</p>
+                          <p className="text-xs text-purple-500">Fresh Data</p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -267,6 +319,27 @@ export function PriceComparisonDialog({
                             >
                               {item.availability}
                             </span>
+                            {/* Source Badge */}
+                            {item.extraction_method && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                  item.extraction_method === 'cached'
+                                    ? 'bg-blue-50 text-blue-600'
+                                    : 'bg-purple-50 text-purple-600'
+                                }`}
+                                title={
+                                  item.extraction_method === 'cached'
+                                    ? `From DB${item.last_checked ? ` (${new Date(item.last_checked).toLocaleDateString()})` : ''}`
+                                    : `Live scraped (${item.extraction_method})`
+                                }
+                              >
+                                {item.extraction_method === 'cached' ? (
+                                  <><Database className="h-2.5 w-2.5" /> DB</>
+                                ) : (
+                                  <><Globe className="h-2.5 w-2.5" /> Live</>
+                                )}
+                              </span>
+                            )}
                           </div>
                           <p
                             className="text-sm text-gray-700 mt-1 truncate"
@@ -319,7 +392,7 @@ export function PriceComparisonDialog({
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
-            <p className="text-xs text-gray-500">Powered by Serper API (Price Comparison)</p>
+            <p className="text-xs text-gray-500">Powered by ScraperAPI (Price Comparison v2)</p>
             <button
               onClick={onClose}
               className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"

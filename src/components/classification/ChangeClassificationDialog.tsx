@@ -23,6 +23,9 @@ const CLASSIFICATION_OPTIONS: { value: ClassificationType; label: string; descri
   { value: 'pharmacy', label: 'Pharmacy Only', description: 'Requires pharmacy supervision' },
   { value: 'pom', label: 'Prescription Only', description: 'Prescription Only Medicine (POM)' },
   { value: 'unclear', label: 'Unclear', description: 'Borderline or uncertain classification' },
+  { value: 'cbd', label: 'CBD Product', description: 'CBD/Cannabidiol product - requires FSA Novel Food authorization' },
+  { value: 'tobacco', label: 'Tobacco/Vape', description: 'Tobacco, vape, e-cigarette, or nicotine product - age restricted' },
+  { value: 'fresh_perishable', label: 'Fresh/Perishable', description: 'Fresh, chilled, or frozen product requiring cold chain logistics' },
 ];
 
 export function ChangeClassificationDialog({
@@ -147,7 +150,7 @@ export function ChangeClassificationDialog({
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-900">{option.label}</span>
-                        {(option.value === 'pharmacy' || option.value === 'pom' || option.value === 'unclear') && (
+                        {(option.value === 'pharmacy' || option.value === 'pom' || option.value === 'unclear' || option.value === 'cbd' || option.value === 'tobacco' || option.value === 'fresh_perishable') && (
                           <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-700 rounded">
                             Rejected
                           </span>
@@ -178,7 +181,7 @@ export function ChangeClassificationDialog({
             </div>
 
             {/* Warning for rejection */}
-            {(classification === 'pharmacy' || classification === 'pom' || classification === 'unclear') && (
+            {(classification === 'pharmacy' || classification === 'pom' || classification === 'unclear' || classification === 'cbd' || classification === 'tobacco' || classification === 'fresh_perishable') && (
               <div className="flex items-start gap-2 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-800">

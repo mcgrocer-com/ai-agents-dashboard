@@ -288,6 +288,8 @@ const ClassificationAgentPage = () => {
             <option value="pharmacy">Pharmacy Medicine</option>
             <option value="pom">POM</option>
             <option value="unclear">Unclear</option>
+            <option value="cbd">CBD Product</option>
+            <option value="tobacco">Tobacco/Vape</option>
           </select>
         </div>
 
@@ -424,6 +426,8 @@ const ClassificationAgentPage = () => {
               <li><strong>Pharmacy</strong> - Pharmacy-only medicines</li>
               <li><strong>POM</strong> - Prescription Only Medicines</li>
               <li><strong>Unclear</strong> - Needs manual review</li>
+              <li><strong>CBD</strong> - CBD/Cannabidiol products (requires FSA authorization)</li>
+              <li><strong>Tobacco</strong> - Tobacco, vape, and e-cigarette products (age restricted)</li>
             </ul>
           </div>
           <div className="space-y-2">

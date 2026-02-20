@@ -80,7 +80,7 @@ const ClassificationStatsDisplay = ({ stats, loading }: ClassificationStatsProps
       {/* Classification Breakdown */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-secondary-200">
         <h3 className="text-sm font-medium text-secondary-900 mb-4">Classification Breakdown</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-8 gap-4">
           <div className="flex flex-col items-center p-3 bg-blue-50 rounded-lg">
             <span className="text-xs text-secondary-600 mb-1">Not Medicine</span>
             <span className="text-lg font-semibold text-blue-600">
@@ -109,6 +109,24 @@ const ClassificationStatsDisplay = ({ stats, loading }: ClassificationStatsProps
             <span className="text-xs text-secondary-600 mb-1">Unclear</span>
             <span className="text-lg font-semibold text-orange-600">
               {stats.byType.unclear.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex flex-col items-center p-3 bg-purple-50 rounded-lg">
+            <span className="text-xs text-secondary-600 mb-1">CBD</span>
+            <span className="text-lg font-semibold text-purple-600">
+              {stats.byType.cbd.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex flex-col items-center p-3 bg-amber-50 rounded-lg">
+            <span className="text-xs text-secondary-600 mb-1">Tobacco</span>
+            <span className="text-lg font-semibold text-amber-600">
+              {stats.byType.tobacco.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex flex-col items-center p-3 bg-cyan-50 rounded-lg">
+            <span className="text-xs text-secondary-600 mb-1">Fresh</span>
+            <span className="text-lg font-semibold text-cyan-600">
+              {stats.byType.fresh_perishable.toLocaleString()}
             </span>
           </div>
         </div>

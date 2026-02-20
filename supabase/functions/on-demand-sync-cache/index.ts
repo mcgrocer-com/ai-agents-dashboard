@@ -32,7 +32,7 @@ interface CacheResult {
   vendor: string;
   availability: 'In Stock' | 'Out of Stock' | 'Unsure';
   confidence?: number;
-  extraction_method?: 'css' | 'ai';
+  extraction_method?: 'json-ld' | 'html-parse' | 'ai-html' | 'cached';
 }
 
 interface CacheEntry {
@@ -130,6 +130,13 @@ async function processCacheEntry(
       continue;
     }
 
+    // Skip DB-cached results - these prices already came from scraped_products
+    // and already have markup applied. Re-processing them causes double-markup.
+    if (result.extraction_method === 'cached') {
+      console.log(`[Sync] Skipping cached result for ${result.vendor} (price already from DB)`);
+      continue;
+    }
+
     // Normalize URL for matching (strip query params)
     const normalizedUrl = normalizeUrl(result.source_url);
 
@@ -184,10 +191,16 @@ async function processCacheEntry(
         `[Sync] Updated ${matchedProduct.vendor}: price=${updateData.price ?? 'unchanged'}, stock=${stockStatus ?? 'unchanged'}`
       );
 
-      // Also update pending_products.updated_at to trigger ERPNext sync
+      // Reset erpnext_updated_at and set sync_full_product to trigger ERPNext re-sync
+      // The cron picks up products where erpnext_updated_at IS NULL or updated_at > erpnext_updated_at
+      // sync_full_product=true ensures price + stock_status are included in the sync payload
       const { data: pendingData, error: pendingError } = await supabase
         .from('pending_products')
-        .update({ updated_at: new Date().toISOString() })
+        .update({
+          updated_at: new Date().toISOString(),
+          erpnext_updated_at: null,
+          sync_full_product: true,
+        })
         .eq('scraped_product_id', matchedProduct.id)
         .select('id');
 

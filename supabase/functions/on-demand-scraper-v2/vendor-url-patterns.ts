@@ -69,6 +69,7 @@ export const VENDOR_URL_PATTERNS: Record<string, VendorUrlPattern> = {
       /\/dept\//i,
       /\/search\//i,
       /\/browse\//i,
+      /\/groceries\/(?!.*\/product\/).*$/i,  // /groceries/ paths without /product/ are category pages
     ],
   },
 
@@ -354,6 +355,22 @@ export const VENDOR_URL_PATTERNS: Record<string, VendorUrlPattern> = {
     ],
   },
 
+  // === SKINCARE/COSMETICS ===
+
+  // ✓ VERIFIED: https://www.clarins.co.uk/soothing-gentle-foaming-cleanser/CS00928112.html
+  // Also: https://www.clarins.co.uk/soothing-gentle-foaming-cleanser/80104490.html
+  // Uses Salesforce Commerce Cloud (Demandware) - ProductGroup JSON-LD with hasVariant
+  'clarins.co.uk': {
+    productPatterns: [
+      /\/[a-z0-9-]+\/(CS)?\d{5,}\.html/i,  // /product-name/CS12345678.html or /product-name/80104490.html
+    ],
+    categoryPatterns: [
+      /\/[a-z0-9-]+\/\d{1,4}\/?$/i,  // /category-name/210/ (short numeric IDs)
+      /\/on\/demandware\.store\/.*\/Search-Show/i,  // Search results
+      /\/UK_specialoffers/i,
+    ],
+  },
+
   // === FASHION RETAILERS ===
 
   // VERIFIED via user example: https://www.the-dressingroom.com/item/Paige-Denim/Genevieve-32-High-Rise-Flare-Jean-Bookshelf/HMEK
@@ -395,7 +412,7 @@ export const VENDOR_URL_PATTERNS: Record<string, VendorUrlPattern> = {
  */
 export function checkVendorUrlPattern(
   url: string,
-  learnedPatterns?: Map<string, { product: string[], category: string[] }>
+  learnedPatterns?: Map<string, { product: string[], category: string[], productRegex?: RegExp[], categoryRegex?: RegExp[] }>
 ): {
   isProduct: boolean;
   isCategory: boolean;
@@ -405,37 +422,35 @@ export function checkVendorUrlPattern(
   try {
     const hostname = new URL(url).hostname.toLowerCase().replace('www.', '').replace('groceries.', '');
 
-    // Check learned patterns first (highest priority)
-    if (learnedPatterns) {
-      for (const [domain, patterns] of learnedPatterns.entries()) {
-        if (hostname.includes(domain.toLowerCase())) {
-          // Check category patterns
-          for (const pattern of patterns.category) {
-            try {
-              const regex = new RegExp(pattern, 'i');
-              if (regex.test(url)) {
-                return { isProduct: false, isCategory: true, matched: true, vendor: domain };
-              }
-            } catch (e) {
-              console.warn(`Invalid learned category pattern for ${domain}: ${pattern}`);
-            }
-          }
+    // Check learned patterns first (highest priority) — O(1) domain lookup
+    if (learnedPatterns && learnedPatterns.size > 0) {
+      const parts = hostname.split('.');
+      const domain = parts.length >= 3 && (parts[parts.length - 2] === 'co' || parts[parts.length - 2] === 'gov')
+        ? parts.slice(-3).join('.')
+        : parts.slice(-2).join('.');
+      const patterns = learnedPatterns.get(domain);
 
-          // Check product patterns
-          for (const pattern of patterns.product) {
-            try {
-              const regex = new RegExp(pattern, 'i');
-              if (regex.test(url)) {
-                return { isProduct: true, isCategory: false, matched: true, vendor: domain };
-              }
-            } catch (e) {
-              console.warn(`Invalid learned product pattern for ${domain}: ${pattern}`);
-            }
-          }
+      if (patterns) {
+        // Use pre-compiled RegExp if available, otherwise compile on the fly
+        const catRegexes = patterns.categoryRegex || patterns.category.map(p => { try { return new RegExp(p, 'i'); } catch { return null; } }).filter(Boolean) as RegExp[];
+        const prodRegexes = patterns.productRegex || patterns.product.map(p => { try { return new RegExp(p, 'i'); } catch { return null; } }).filter(Boolean) as RegExp[];
 
-          // Matched domain but no pattern match - likely category
-          return { isProduct: false, isCategory: false, matched: true, vendor: domain };
+        // Check category patterns
+        for (const regex of catRegexes) {
+          if (regex.test(url)) {
+            return { isProduct: false, isCategory: true, matched: true, vendor: domain };
+          }
         }
+
+        // Check product patterns
+        for (const regex of prodRegexes) {
+          if (regex.test(url)) {
+            return { isProduct: true, isCategory: false, matched: true, vendor: domain };
+          }
+        }
+
+        // Matched domain but no pattern match - likely category
+        return { isProduct: false, isCategory: false, matched: true, vendor: domain };
       }
     }
 
@@ -480,7 +495,7 @@ export function checkVendorUrlPattern(
 export function isProductPageUrl(
   url: string,
   genericCategoryCheck: (url: string) => boolean,
-  learnedPatterns?: Map<string, { product: string[], category: string[] }>
+  learnedPatterns?: Map<string, { product: string[], category: string[], productRegex?: RegExp[], categoryRegex?: RegExp[] }>
 ): boolean {
   const check = checkVendorUrlPattern(url, learnedPatterns);
 
@@ -495,7 +510,7 @@ export function isProductPageUrl(
       return true;
     }
     // Vendor matched but no pattern hit - be aggressive, accept
-    console.log(`[URLPattern] REJECT no pattern match: ${url} (vendor: ${check.vendor})`);
+    console.log(`[URLPattern] ACCEPT no pattern match (assume product): ${url} (vendor: ${check.vendor})`);
     return true;
   }
 
