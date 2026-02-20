@@ -98,6 +98,25 @@ async function processBatch(
         error: updateError.message,
       });
     } else {
+      // Reset erpnext_updated_at on the corresponding pending_product so it re-syncs
+      const { error: resetError } = await supabaseClient
+        .from('pending_products')
+        .update({
+          erpnext_updated_at: null,
+          sync_started_at: null,
+          failed_sync_error_message: null,
+          failed_sync_at: null,
+          sync_full_product: true,
+          last_updated_by_scraper: new Date().toISOString(),
+        })
+        .eq('url', url.trim());
+
+      if (resetError) {
+        console.warn(`[UPDATE_SCRAPED_PRODUCT] Updated scraped_product but failed to reset sync for ${url}:`, resetError);
+      } else {
+        console.log(`[UPDATE_SCRAPED_PRODUCT] Reset ERPNext sync for ${url} - will re-sync on next run`);
+      }
+
       results.push({
         url,
         success: true,

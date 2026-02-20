@@ -21,6 +21,7 @@ interface ProductHeaderProps {
   erpnextUpdatedAt?: string | null
   failedSyncAt?: string | null
   scraperUpdatedAt?: string | null
+  lastUpdatedByScraper?: string | null
   pinned?: boolean
   onTogglePin?: () => void
   togglingPin?: boolean
@@ -48,6 +49,7 @@ export function ProductHeader({
   erpnextUpdatedAt,
   failedSyncAt,
   scraperUpdatedAt,
+  lastUpdatedByScraper,
   pinned = false,
   onTogglePin,
   togglingPin = false,
@@ -282,6 +284,11 @@ export function ProductHeader({
                     <Scale className="h-3 w-3" />
                     Compare Prices
                   </button>
+                )}
+                {lastUpdatedByScraper && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Scraper updated: {formatDateTime(lastUpdatedByScraper)}
+                  </p>
                 )}
               </div>
             )}

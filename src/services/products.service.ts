@@ -112,6 +112,46 @@ class ProductsService {
         }
       }
 
+      // Use RPC function for last_updated_by_scraper sorting (shows only products updated by scraper)
+      if (sortBy === 'last_updated_by_scraper') {
+        const limit = filters.limit || 20
+        const offset = filters.offset || 0
+
+        const { data, error } = await supabase.rpc('get_products_sorted_by_scraper_update', {
+          p_limit: limit,
+          p_offset: offset,
+          p_ascending: sortOrder === 'asc',
+          p_search: filters.search || null,
+          p_vendor: filters.vendor || null,
+          p_pinned_only: false,
+        })
+
+        if (error) throw error
+
+        const products = (data || []).map((product: any) => {
+          let sync_status: 'synced' | 'failed' | 'pending' = 'pending'
+          if (product.erpnext_updated_at && (!product.failed_sync_at || new Date(product.failed_sync_at) < new Date(product.erpnext_updated_at))) {
+            sync_status = 'synced'
+          } else if (product.failed_sync_at && (!product.erpnext_updated_at || new Date(product.failed_sync_at) > new Date(product.erpnext_updated_at))) {
+            sync_status = 'failed'
+          }
+
+          const { total_count, ...productData } = product
+          return {
+            ...productData,
+            sync_status,
+          } as ScrapedProduct
+        })
+
+        const totalCount = data && data.length > 0 ? Number(data[0].total_count) : 0
+
+        return {
+          products,
+          count: totalCount,
+          error: null,
+        }
+      }
+
       // Regular query for other sort fields
       // Join with pending_products to get sync status and ai_title
       // Use 'planned' count for better performance with large datasets (estimates count from query planner)
@@ -849,6 +889,46 @@ class ProductsService {
           return {
             ...productData,
             sync_status: 'failed' as const,
+          } as ScrapedProduct
+        })
+
+        const totalCount = data && data.length > 0 ? Number(data[0].total_count) : 0
+
+        return {
+          products,
+          count: totalCount,
+          error: null,
+        }
+      }
+
+      // Use RPC function for last_updated_by_scraper sorting (shows only products updated by scraper)
+      if (sortBy === 'last_updated_by_scraper') {
+        const limit = filters.limit || 20
+        const offset = filters.offset || 0
+
+        const { data, error } = await supabase.rpc('get_products_sorted_by_scraper_update', {
+          p_limit: limit,
+          p_offset: offset,
+          p_ascending: sortOrder === 'asc',
+          p_search: filters.search || null,
+          p_vendor: filters.vendor || null,
+          p_pinned_only: true,
+        })
+
+        if (error) throw error
+
+        const products = (data || []).map((product: any) => {
+          let sync_status: 'synced' | 'failed' | 'pending' = 'pending'
+          if (product.erpnext_updated_at && (!product.failed_sync_at || new Date(product.failed_sync_at) < new Date(product.erpnext_updated_at))) {
+            sync_status = 'synced'
+          } else if (product.failed_sync_at && (!product.erpnext_updated_at || new Date(product.failed_sync_at) > new Date(product.erpnext_updated_at))) {
+            sync_status = 'failed'
+          }
+
+          const { total_count, ...productData } = product
+          return {
+            ...productData,
+            sync_status,
           } as ScrapedProduct
         })
 

@@ -378,7 +378,7 @@ export interface ProductFilters {
   vendor?: string
   status?: AgentStatus | string
   dynamicFilters?: DynamicFilter[]
-  sortBy?: 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
+  sortBy?: 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at' | 'last_updated_by_scraper'
   sortOrder?: 'asc' | 'desc'
   limit?: number
   offset?: number

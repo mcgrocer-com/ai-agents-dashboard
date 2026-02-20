@@ -22,7 +22,7 @@ import type { SyncDataSource } from '@/services/user.service'
 import type { ScrapedProduct, ProductFilters } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
-type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
+type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at' | 'last_updated_by_scraper'
 type SortDirection = 'asc' | 'desc'
 type TabType = 'all' | 'pinned' | 'price_updated' | 'validation_issues' | 'blacklisted'
 
@@ -624,6 +624,8 @@ export function ScraperAgentPage() {
           <option value="scraper_updated_at-asc">Least Recently Price Updated</option>
           <option value="erpnext_updated_at-desc">Recently Synced to ERPNext</option>
           <option value="erpnext_updated_at-asc">Least Recently Synced to ERPNext</option>
+          <option value="last_updated_by_scraper-desc">Recently Updated by Scraper</option>
+          <option value="last_updated_by_scraper-asc">Least Recently Updated by Scraper</option>
           <option value="failed_sync_at-desc">Recently Failed Syncs</option>
           <option value="failed_sync_at-asc">Oldest Failed Syncs</option>
           <option value="name-asc">Name A-Z</option>
