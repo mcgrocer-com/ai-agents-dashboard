@@ -89,6 +89,9 @@ export interface PendingProduct {
   stock_status: string | null;
   variants: unknown;
 
+  // Scraper timestamp from scraped_products join
+  timestamp: string | null;
+
   // Classification fields from scraped_products join
   classification: string | null;
   rejected: boolean | null;
@@ -135,6 +138,9 @@ export interface ERPNextItemPayload {
 
   // FAQs (stringified JSON array)
   faqs?: string;
+
+  // Scraper update timestamp
+  last_scrapped_at?: string;
 }
 
 export interface ERPNextAPIResponse {
@@ -318,6 +324,11 @@ export function productToERPNextFormat(
   // Add FAQs if present (stringify the array for ERPNext, limit to 3)
   if (product.faq && Array.isArray(product.faq) && product.faq.length > 0) {
     payload.faqs = JSON.stringify(product.faq.slice(0, 3));
+  }
+
+  // Add scraper timestamp
+  if (product.timestamp) {
+    payload.last_scrapped_at = product.timestamp;
   }
 
   return payload;

@@ -20,62 +20,67 @@ class StatsService {
     error: Error | null
   }> {
     try {
-      // Get processing products
-      const { count: processingProducts } = await supabase
-        .from('pending_products')
-        .select('*', { count: 'exact', head: true })
-        .or(
-          'category_status.eq.processing,weight_and_dimension_status.eq.processing,seo_status.eq.processing'
-        )
+      // Run all independent queries in parallel
+      // Note: success rate is computed from agent metrics in LiveMetrics component
+      // to avoid a duplicate get_agent_metrics_optimized RPC call
+      const [
+        processingResult,
+        partialResult,
+        fullResult,
+        summariesResult,
+      ] = await Promise.all([
+        // Get processing products
+        supabase
+          .from('pending_products')
+          .select('*', { count: 'exact', head: true })
+          .or(
+            'category_status.eq.processing,weight_and_dimension_status.eq.processing,seo_status.eq.processing'
+          ),
+        // Get partial sanitized (category AND weight complete)
+        supabase
+          .from('pending_products')
+          .select('*', { count: 'exact', head: true })
+          .eq('category_status', 'complete')
+          .eq('weight_and_dimension_status', 'complete'),
+        // Get full sanitized (category, weight, AND seo complete)
+        supabase
+          .from('pending_products')
+          .select('*', { count: 'exact', head: true })
+          .eq('category_status', 'complete')
+          .eq('weight_and_dimension_status', 'complete')
+          .eq('seo_status', 'complete'),
+        // Get total cost from processing summaries
+        supabase
+          .from('agent_processing_summary')
+          .select('total_ai_cost'),
+      ])
 
-      // Get partial sanitized (category AND weight complete)
-      const { count: partialSanitized } = await supabase
-        .from('pending_products')
-        .select('*', { count: 'exact', head: true })
-        .eq('category_status', 'complete')
-        .eq('weight_and_dimension_status', 'complete')
+      // Use whatever data succeeded - don't fail the whole response if some queries timed out.
+      // Supabase returns { count: null, error } on failure, so null counts become 0 via || 0.
+      const processingProducts = processingResult.count
+      const partialSanitized = partialResult.count
+      const fullSanitized = fullResult.count
 
-      // Get full sanitized (category, weight, AND seo complete)
-      const { count: fullSanitized } = await supabase
-        .from('pending_products')
-        .select('*', { count: 'exact', head: true })
-        .eq('category_status', 'complete')
-        .eq('weight_and_dimension_status', 'complete')
-        .eq('seo_status', 'complete')
-
-      // Get agent metrics to calculate average success rate
-      const { data: agentMetrics } = await supabase.rpc('get_agent_metrics_optimized')
-
-      // Calculate average success rate from all agents
-      let successRate = 0
-      if (agentMetrics && agentMetrics.length > 0) {
-        const agentSuccessRates = agentMetrics.map((agent: any) => {
-          const finishedItems = Number(agent.complete_count) + Number(agent.failed_count)
-          return finishedItems > 0 ? Number(agent.complete_count) / finishedItems : 0
-        })
-        successRate = agentSuccessRates.reduce((sum: number, rate: number) => sum + rate, 0) / agentSuccessRates.length
-      }
-
-      // Get total cost from processing summaries
-      const { data: summaries } = await supabase
-        .from('agent_processing_summary')
-        .select('total_ai_cost')
-
-      const totalCost = summaries?.reduce(
+      const totalCost = summariesResult.data?.reduce(
         (sum, s) => sum + (s.total_ai_cost || 0),
         0
       ) || 0
 
-      return {
-        metrics: {
-          partialSanitized: partialSanitized || 0,
-          fullSanitized: fullSanitized || 0,
-          processingProducts: processingProducts || 0,
-          totalCost,
-          successRate,
-        },
-        error: null,
+      const metrics = {
+        partialSanitized: partialSanitized || 0,
+        fullSanitized: fullSanitized || 0,
+        processingProducts: processingProducts || 0,
+        totalCost,
+        successRate: 0, // Computed from agent metrics in LiveMetrics component
       }
+
+      // If ALL queries failed, signal error so SWR keeps stale data on retries
+      const allFailed = processingResult.error && partialResult.error && fullResult.error && summariesResult.error
+      if (allFailed) {
+        return { metrics: null, error: new Error(processingResult.error.message) }
+      }
+
+      return { metrics, error: null }
     } catch (error) {
       return {
         metrics: null,

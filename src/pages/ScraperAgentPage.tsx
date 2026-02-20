@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban } from 'lucide-react'
 import { productsService, blacklistService } from '@/services'
-import { scraperProductsService } from '@/services/scraperProducts.service'
+
 import { supabase } from '@/lib/supabase/client'
 import { Pagination } from '@/components/ui/Pagination'
 import { DebouncedSearchInput } from '@/components/ui/DebouncedSearchInput'
@@ -110,22 +110,13 @@ export function ScraperAgentPage() {
   const [vendorsList, setVendorsList] = useState<{ name: string; count: number; syncCount?: number }[]>([])
 
   // Fetch vendors on mount and set default vendor filter
+  // Sync counts per vendor are deferred to VendorSelectionDialog (lazy-loaded when dialog opens)
   useEffect(() => {
     const loadVendors = async () => {
       const { vendors: vendorList } = await productsService.getVendors()
       if (vendorList && vendorList.length > 0) {
-        // Fetch sync-ready counts for each vendor
-        const vendorsWithSyncCounts = await Promise.all(
-          vendorList.map(async (vendor: { name: string; count: number }) => {
-            const stats = await scraperProductsService.getVendorStatistics(vendor.name)
-            return {
-              ...vendor,
-              syncCount: stats?.withAllData || 0
-            }
-          })
-        )
-
-        setVendorsList(vendorsWithSyncCounts)
+        // Store vendor list without sync counts (loaded lazily in VendorSelectionDialog)
+        setVendorsList(vendorList)
         setDefaultVendor('all')
 
         // Create dropdown options from vendors with "All Vendors" at top

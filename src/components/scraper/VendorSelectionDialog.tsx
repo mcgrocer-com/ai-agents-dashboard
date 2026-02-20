@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Check, ChevronDown } from 'lucide-react'
+import { scraperProductsService } from '@/services/scraperProducts.service'
 import type { SyncDataSource } from '@/services/user.service'
 
 interface VendorOption {
@@ -45,12 +46,38 @@ export function VendorSelectionDialog({
   const [isPrioritizeCopyright, setIsPrioritizeCopyright] = useState(prioritizeCopyright)
   const [selectedDataSource, setSelectedDataSource] = useState<SyncDataSource>(dataSource)
   const [saving, setSaving] = useState(false)
+  const [vendorsWithCounts, setVendorsWithCounts] = useState<VendorOption[]>(vendors)
+  const [loadingSyncCounts, setLoadingSyncCounts] = useState(false)
 
   useEffect(() => {
     setSelected(selectedVendors)
     setIsPrioritizeCopyright(prioritizeCopyright)
     setSelectedDataSource(dataSource)
   }, [selectedVendors, prioritizeCopyright, dataSource, open])
+
+  // Lazy-load sync counts when dialog opens (only if not already loaded)
+  useEffect(() => {
+    if (!open) return
+    setVendorsWithCounts(vendors)
+
+    const needsSyncCounts = vendors.some((v) => v.syncCount === undefined)
+    if (!needsSyncCounts) {
+      setVendorsWithCounts(vendors)
+      return
+    }
+
+    setLoadingSyncCounts(true)
+    Promise.all(
+      vendors.map(async (vendor) => {
+        if (vendor.syncCount !== undefined) return vendor
+        const stats = await scraperProductsService.getVendorStatistics(vendor.name)
+        return { ...vendor, syncCount: stats?.withAllData || 0 }
+      })
+    ).then((result) => {
+      setVendorsWithCounts(result)
+      setLoadingSyncCounts(false)
+    })
+  }, [open, vendors])
 
   if (!open) return null
 
@@ -129,7 +156,7 @@ export function VendorSelectionDialog({
 
           {/* Vendor List */}
           <div className="space-y-2">
-            {vendors.map((vendor) => (
+            {vendorsWithCounts.map((vendor) => (
               <label
                 key={vendor.name}
                 className="flex items-center p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
@@ -149,7 +176,9 @@ export function VendorSelectionDialog({
                     <span className="text-xs text-gray-500">
                       {vendor.syncCount !== undefined
                         ? `${vendor.syncCount.toLocaleString()} / ${vendor.count.toLocaleString()}`
-                        : vendor.count.toLocaleString()
+                        : loadingSyncCounts
+                          ? `${vendor.count.toLocaleString()} ...`
+                          : vendor.count.toLocaleString()
                       } products
                     </span>
                   </div>

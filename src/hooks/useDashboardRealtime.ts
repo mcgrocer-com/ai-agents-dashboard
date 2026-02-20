@@ -3,17 +3,60 @@
  *
  * Optimized realtime updates for dashboard metrics and agent data.
  * Uses SWR for caching and Supabase realtime for live updates.
+ * Throttles revalidation to prevent query storms during rapid updates.
  */
 
-import { useEffect } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { mutate } from 'swr'
 import { supabase } from '@/lib/supabase/client'
+
+/** Minimum interval (ms) between revalidation triggers */
+const THROTTLE_MS = 5000
+
+/**
+ * Returns a throttled version of the callback that fires at most once per interval.
+ * Trailing calls are coalesced: if called during the cooldown, one final call
+ * fires when the cooldown expires.
+ */
+function useThrottledCallback(callback: () => void, intervalMs: number) {
+  const lastRun = useRef(0)
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const callbackRef = useRef(callback)
+  callbackRef.current = callback
+
+  return useCallback(() => {
+    const now = Date.now()
+    const elapsed = now - lastRun.current
+
+    if (elapsed >= intervalMs) {
+      lastRun.current = now
+      callbackRef.current()
+    } else if (!pending.current) {
+      // Schedule a trailing call
+      pending.current = setTimeout(() => {
+        lastRun.current = Date.now()
+        pending.current = null
+        callbackRef.current()
+      }, intervalMs - elapsed)
+    }
+  }, [intervalMs])
+}
 
 /**
  * Subscribe to pending_products changes and trigger SWR revalidation
  * This ensures all dashboard components stay in sync with minimal queries
  */
 export function useDashboardRealtime() {
+  const throttledRevalidate = useThrottledCallback(() => {
+    mutate('dashboard-metrics')
+    mutate('agent-metrics')
+    mutate(
+      (key) => typeof key === 'string' && key.startsWith('pending-products-'),
+      undefined,
+      { revalidate: true }
+    )
+  }, THROTTLE_MS)
+
   useEffect(() => {
     // Subscribe to pending_products table changes
     const channel = supabase
@@ -25,17 +68,8 @@ export function useDashboardRealtime() {
           schema: 'public',
           table: 'pending_products',
         },
-        (payload) => {
-          console.log('Dashboard realtime update:', payload.eventType)
-          
-          // Revalidate all dashboard-related SWR caches
-          mutate('dashboard-metrics')
-          mutate('agent-metrics')
-          mutate(
-            (key) => typeof key === 'string' && key.startsWith('pending-products-'),
-            undefined,
-            { revalidate: true }
-          )
+        () => {
+          throttledRevalidate()
         }
       )
       .subscribe()
@@ -44,7 +78,7 @@ export function useDashboardRealtime() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [throttledRevalidate])
 }
 
 /**
@@ -52,6 +86,19 @@ export function useDashboardRealtime() {
  * Optimized for individual agent pages
  */
 export function useAgentRealtime(agentType: 'category' | 'weight_dimension' | 'seo' | 'faq') {
+  const throttledRevalidate = useThrottledCallback(() => {
+    mutate('agent-metrics')
+    mutate(`pending-products-${agentType}`)
+    mutate(
+      (key) =>
+        typeof key === 'string' &&
+        (key.startsWith(`pending-products-${agentType}`) ||
+          key.startsWith('dashboard-metrics')),
+      undefined,
+      { revalidate: true }
+    )
+  }, THROTTLE_MS)
+
   useEffect(() => {
     const statusFieldMap: Record<string, string> = {
       category: 'category_status',
@@ -72,20 +119,8 @@ export function useAgentRealtime(agentType: 'category' | 'weight_dimension' | 's
           table: 'pending_products',
           filter: `${statusField}=neq.pending`,
         },
-        (payload) => {
-          console.log(`${agentType} agent realtime update:`, payload.eventType)
-          
-          // Revalidate agent-specific caches
-          mutate('agent-metrics')
-          mutate(`pending-products-${agentType}`)
-          mutate(
-            (key) =>
-              typeof key === 'string' &&
-              (key.startsWith(`pending-products-${agentType}`) ||
-                key.startsWith('dashboard-metrics')),
-            undefined,
-            { revalidate: true }
-          )
+        () => {
+          throttledRevalidate()
         }
       )
       .subscribe()
@@ -94,7 +129,7 @@ export function useAgentRealtime(agentType: 'category' | 'weight_dimension' | 's
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [agentType])
+  }, [agentType, throttledRevalidate])
 }
 
 /**
@@ -104,6 +139,17 @@ export function useAgentRealtime(agentType: 'category' | 'weight_dimension' | 's
  * @param onUpdate - Callback function to trigger when updates occur
  */
 export function useRecentActivityRealtime(onUpdate?: () => void) {
+  const throttledUpdate = useThrottledCallback(() => {
+    if (onUpdate) {
+      onUpdate()
+    }
+    mutate(
+      (key) => typeof key === 'string' && key.startsWith('recent-activity'),
+      undefined,
+      { revalidate: true }
+    )
+  }, THROTTLE_MS)
+
   useEffect(() => {
     // Subscribe to all status changes (processing, complete, failed)
     const channel = supabase
@@ -115,20 +161,8 @@ export function useRecentActivityRealtime(onUpdate?: () => void) {
           schema: 'public',
           table: 'pending_products',
         },
-        (payload) => {
-          console.log('Recent activity realtime update:', payload.eventType)
-
-          // Call the callback if provided (for direct state updates)
-          if (onUpdate) {
-            onUpdate()
-          }
-
-          // Also revalidate SWR caches (for future SWR-based implementations)
-          mutate(
-            (key) => typeof key === 'string' && key.startsWith('recent-activity'),
-            undefined,
-            { revalidate: true }
-          )
+        () => {
+          throttledUpdate()
         }
       )
       .subscribe()
@@ -137,6 +171,5 @@ export function useRecentActivityRealtime(onUpdate?: () => void) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [onUpdate])
+  }, [throttledUpdate])
 }
-

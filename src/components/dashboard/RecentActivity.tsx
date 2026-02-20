@@ -6,7 +6,7 @@
  * Uses optimized realtime subscriptions for live updates.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Activity } from 'lucide-react'
 import { formatRelativeTime } from '@/lib/utils/format'
 import { useNavigate } from 'react-router-dom'
@@ -17,6 +17,82 @@ import type { AgentFilter, ActivityStats } from '@/services/activityStats.servic
 
 type TabType = 'processing' | 'complete'
 type DateFilterType = 'today' | 'thisWeek' | 'thisMonth' | 'lastMonth'
+
+// Pure utility functions - no need to recreate on each render
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'complete':
+      return 'bg-green-100 text-green-800'
+    case 'failed':
+      return 'bg-red-100 text-red-800'
+    case 'processing':
+      return 'bg-yellow-100 text-yellow-800'
+    case 'pending':
+      return 'bg-blue-100 text-blue-800'
+    default:
+      return 'bg-gray-100 text-gray-800'
+  }
+}
+
+const getAgentColor = (agent: string) => {
+  if (agent.includes('Category')) return 'text-blue-600'
+  if (agent.includes('Weight') || agent.includes('Dimension')) return 'text-green-600'
+  if (agent.includes('SEO')) return 'text-purple-600'
+  if (agent.includes('Copyright')) return 'text-orange-600'
+  if (agent.includes('FAQ')) return 'text-teal-600'
+  return 'text-gray-600'
+}
+
+// Date filter helpers (using UTC to match database timestamps)
+const isToday = (date: Date) => {
+  const today = new Date()
+  return (
+    date.getUTCDate() === today.getUTCDate() &&
+    date.getUTCMonth() === today.getUTCMonth() &&
+    date.getUTCFullYear() === today.getUTCFullYear()
+  )
+}
+
+const isThisWeek = (date: Date) => {
+  const today = new Date()
+  const startOfWeek = new Date(today)
+  startOfWeek.setUTCDate(today.getUTCDate() - today.getUTCDay())
+  startOfWeek.setUTCHours(0, 0, 0, 0)
+  return date >= startOfWeek
+}
+
+const isThisMonth = (date: Date) => {
+  const today = new Date()
+  return (
+    date.getUTCMonth() === today.getUTCMonth() &&
+    date.getUTCFullYear() === today.getUTCFullYear()
+  )
+}
+
+const isLastMonth = (date: Date) => {
+  const today = new Date()
+  const lastMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1))
+  return (
+    date.getUTCMonth() === lastMonth.getUTCMonth() &&
+    date.getUTCFullYear() === lastMonth.getUTCFullYear()
+  )
+}
+
+const filterByDate = (activity: RecentActivityType, dateFilter: DateFilterType) => {
+  const activityDate = new Date(activity.timestamp)
+  switch (dateFilter) {
+    case 'today':
+      return isToday(activityDate)
+    case 'thisWeek':
+      return isThisWeek(activityDate)
+    case 'thisMonth':
+      return isThisMonth(activityDate)
+    case 'lastMonth':
+      return isLastMonth(activityDate)
+    default:
+      return true
+  }
+}
 
 export function RecentActivity() {
   const navigate = useNavigate()
@@ -44,30 +120,7 @@ export function RecentActivity() {
     [navigate]
   )
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'complete':
-        return 'bg-green-100 text-green-800'
-      case 'failed':
-        return 'bg-red-100 text-red-800'
-      case 'processing':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'pending':
-        return 'bg-blue-100 text-blue-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const getAgentColor = (agent: string) => {
-    if (agent.includes('Category')) return 'text-blue-600'
-    if (agent.includes('Weight') || agent.includes('Dimension')) return 'text-green-600'
-    if (agent.includes('SEO')) return 'text-purple-600'
-    if (agent.includes('Copyright')) return 'text-orange-600'
-    if (agent.includes('FAQ')) return 'text-teal-600'
-    return 'text-gray-600'
-  }
-  const fetchCompleteActivities = async () => {
+  const fetchCompleteActivities = useCallback(async () => {
     const { data, error } = await activityStatsService.getRecentProductsByVendor(
       selectedVendor || null,
       selectedAgents,
@@ -114,9 +167,9 @@ export function RecentActivity() {
 
       setCompleteActivities(freshActivities)
     }
-  }
+  }, [selectedVendor, selectedAgents])
 
-  const fetchProcessingActivities = async () => {
+  const fetchProcessingActivities = useCallback(async () => {
     // Processing tab - fetch processing activities using service
     const { data, error } = await activityStatsService.getProcessingProducts(30)
 
@@ -215,8 +268,7 @@ export function RecentActivity() {
 
       setProcessingActivities(freshActivities)
     }
-
-  }
+  }, [])
 
   // Function to fetch aggregated statistics
   const refreshStats = useCallback(async () => {
@@ -227,137 +279,65 @@ export function RecentActivity() {
     setActivityStats(stats)
   }, [selectedAgents, selectedVendor])
 
-  // Function to fetch and update activities
+  // Fetch only the data needed for the active tab
   const refreshActivities = useCallback(async () => {
-     
     try {
-      // Fetch aggregated stats
-      await refreshStats()
-
-      // Fetch recent activities for display using RPC for reliable vendor and agent filtering
-
-      fetchCompleteActivities()
-      fetchProcessingActivities()
-
-
-
+      if (activeTab === 'processing') {
+        await fetchProcessingActivities()
+      } else {
+        // Complete tab: fetch stats, activities, and vendors in parallel
+        await Promise.all([
+          refreshStats(),
+          fetchCompleteActivities(),
+          activityStatsService.getVendors(selectedAgents).then(setVendors),
+        ])
+      }
     } catch (error) {
       console.error('Error refreshing activities:', error)
-    } finally {
-      
     }
-  }, [refreshStats, activeTab, selectedVendor, selectedAgents])
-
+  }, [activeTab, refreshStats, fetchCompleteActivities, fetchProcessingActivities, selectedAgents])
 
   // Enable realtime updates - triggers refreshActivities when database changes
   useRecentActivityRealtime(refreshActivities)
 
-  // Load initial stats on mount
+  // Fetch data when tab, vendor, or agent selection changes
   useEffect(() => {
-    refreshStats()
-  }, [refreshStats])
+    refreshActivities()
+  }, [refreshActivities])
 
-  // Reload vendors when agent selection changes
-  useEffect(() => {
-    if (activeTab === 'complete') {
-      activityStatsService.getVendors(selectedAgents).then(setVendors)
-    }
-  }, [selectedAgents, activeTab])
+  // Memoize derived/filtered data to avoid recalculating on every render
+  const allProcessingActivities = useMemo(
+    () =>
+      processingActivities
+        .filter((activity) => activity.status === 'processing')
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [processingActivities]
+  )
 
-  // Refresh activities when vendor or agent selection changes
-  useEffect(() => {
-    if (activeTab === 'complete') {
-      refreshActivities()
-    }
-  }, [selectedVendor, selectedAgents, activeTab, refreshActivities])
+  const allCompleteActivities = useMemo(
+    () =>
+      completeActivities
+        .filter((activity) => activity.status === 'complete')
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [completeActivities]
+  )
 
-  // Initial load for processing tab
-  useEffect(() => {
-    if (activeTab === 'processing') {
-      refreshActivities()
-    }
-  }, [activeTab, refreshActivities])
+  // Filter complete activities by selected date range (for display only)
+  const filteredCompleteActivities = useMemo(
+    () =>
+      activeTab === 'complete'
+        ? allCompleteActivities.filter((a) => filterByDate(a, dateFilter))
+        : allCompleteActivities,
+    [activeTab, allCompleteActivities, dateFilter]
+  )
 
-  // Date filter helper functions (using UTC to match database timestamps)
-  const isToday = (date: Date) => {
-    const today = new Date()
-    return (
-      date.getUTCDate() === today.getUTCDate() &&
-      date.getUTCMonth() === today.getUTCMonth() &&
-      date.getUTCFullYear() === today.getUTCFullYear()
-    )
-  }
+  // Final display lists (limit to 20 items)
+  const sortedActivities = useMemo(() => {
+    if (activeTab === 'processing') return allProcessingActivities.slice(0, 20)
+    return filteredCompleteActivities.slice(0, 20)
+  }, [activeTab, allProcessingActivities, filteredCompleteActivities])
 
-  const isThisWeek = (date: Date) => {
-    const today = new Date()
-    // Get the start of this week (Sunday)
-    const startOfWeek = new Date(today)
-    startOfWeek.setUTCDate(today.getUTCDate() - today.getUTCDay())
-    startOfWeek.setUTCHours(0, 0, 0, 0)
-
-    return date >= startOfWeek
-  }
-
-  const isThisMonth = (date: Date) => {
-    const today = new Date()
-    return (
-      date.getUTCMonth() === today.getUTCMonth() &&
-      date.getUTCFullYear() === today.getUTCFullYear()
-    )
-  }
-
-  const isLastMonth = (date: Date) => {
-    const today = new Date()
-    const lastMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1))
-    return (
-      date.getUTCMonth() === lastMonth.getUTCMonth() &&
-      date.getUTCFullYear() === lastMonth.getUTCFullYear()
-    )
-  }
-
-  const filterByDate = (activity: RecentActivityType) => {
-    const activityDate = new Date(activity.timestamp)
-    switch (dateFilter) {
-      case 'today':
-        return isToday(activityDate)
-      case 'thisWeek':
-        return isThisWeek(activityDate)
-      case 'thisMonth':
-        return isThisMonth(activityDate)
-      case 'lastMonth':
-        return isLastMonth(activityDate)
-      default:
-        return true
-    }
-  }
-
-  // Filter and sort by tab
-  const allProcessingActivities = processingActivities
-    .filter((activity) => activity.status === 'processing')
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-
-  const allCompleteActivities = completeActivities
-    .filter((activity) => activity.status === 'complete')
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-
-  // Get filtered activities based on selected date filter (for display only)
-  const filteredCompleteActivities =
-    activeTab === 'complete' ? allCompleteActivities.filter(filterByDate) : allCompleteActivities
-
-  // Get counts - use aggregated stats for complete, activities.length for processing
   const processingCount = allProcessingActivities.length
-  const completeTodayCount = activityStats.today
-  const completeThisWeekCount = activityStats.thisWeek
-  const completeThisMonthCount = activityStats.thisMonth
-  const completeLastMonthCount = activityStats.lastMonth
-
-  // Now slice for display (limit to 20 items displayed)
-  const displayProcessingActivities = allProcessingActivities.slice(0, 20)
-  const displayCompleteActivities = filteredCompleteActivities.slice(0, 20)
-
-  const sortedActivities = activeTab === 'processing' ? displayProcessingActivities : displayCompleteActivities
-
-  // Format count for display (show 20+ if over 20)
   const formatCount = (count: number) => (count > 20 ? '20+' : count.toString())
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 h-[500px] flex flex-col">
@@ -505,7 +485,7 @@ export function RecentActivity() {
                   : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
                 }`}
             >
-              Today ({completeTodayCount})
+              Today ({activityStats.today})
             </button>
             <button
               onClick={() => setDateFilter('thisWeek')}
@@ -514,7 +494,7 @@ export function RecentActivity() {
                   : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
                 }`}
             >
-              This Week ({completeThisWeekCount})
+              This Week ({activityStats.thisWeek})
             </button>
             <button
               onClick={() => setDateFilter('thisMonth')}
@@ -523,7 +503,7 @@ export function RecentActivity() {
                   : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
                 }`}
             >
-              This Month ({completeThisMonthCount})
+              This Month ({activityStats.thisMonth})
             </button>
             <button
               onClick={() => setDateFilter('lastMonth')}
@@ -532,7 +512,7 @@ export function RecentActivity() {
                   : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
                 }`}
             >
-              Last Month ({completeLastMonthCount})
+              Last Month ({activityStats.lastMonth})
             </button>
           </div>
         </div>

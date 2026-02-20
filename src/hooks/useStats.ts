@@ -10,18 +10,25 @@ import { statsService } from '@/services'
 export function useDashboardMetrics() {
   const { data, error, isLoading, mutate } = useSWR(
     'dashboard-metrics',
-    () => statsService.getDashboardMetrics(),
+    async () => {
+      const result = await statsService.getDashboardMetrics()
+      // Throw on error so SWR keeps stale cached data instead of overwriting with empty
+      if (result.error) throw result.error
+      return result
+    },
     {
       revalidateOnFocus: false, // Realtime handles updates
       revalidateOnReconnect: true,
-      dedupingInterval: 2000, // Prevent duplicate requests within 2s
+      dedupingInterval: 5000, // Prevent duplicate requests within 5s
+      errorRetryInterval: 10000, // Wait 10s before retrying on error
+      errorRetryCount: 3, // Max 3 retries on error
     }
   )
 
   return {
     metrics: data?.metrics || null,
     isLoading,
-    error: data?.error || error,
+    error: error || data?.error || null,
     refresh: mutate,
   }
 }

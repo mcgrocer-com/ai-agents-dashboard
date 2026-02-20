@@ -13,38 +13,33 @@ import { RecentActivity } from '@/components/dashboard/RecentActivity'
 import { JobQueueManager } from '@/components/dashboard/JobQueueManager'
 import { Tag, Scale, FileText, Shield, HelpCircle } from 'lucide-react'
 
+const emptyAgent = (agentType: string) => ({
+  agentType: agentType as any,
+  totalProducts: 0,
+  pending: 0,
+  processing: 0,
+  complete: 0,
+  failed: 0,
+  avgConfidence: 0,
+  totalCost: 0,
+  lastRun: null,
+})
+
 export function DashboardPage() {
   // Enable realtime updates for entire dashboard
   useDashboardRealtime()
 
-  const { metrics: agentMetrics } = useAgentMetrics()
+  const { metrics: agentMetrics, isLoading: agentMetricsLoading } = useAgentMetrics()
 
-  // Find specific agent metrics
+  // Find specific agent metrics (fall back to empty defaults so sections aren't blocked)
   const categoryAgent = agentMetrics?.find((a) => a.agentType === 'category')
   const weightAgent = agentMetrics?.find((a) => a.agentType === 'weight_dimension')
   const seoAgent = agentMetrics?.find((a) => a.agentType === 'seo')
-  const copyrightAgent = agentMetrics?.find((a) => a.agentType === 'copyright') || {
-    agentType: 'copyright' as const,
-    totalProducts: 0,
-    pending: 0,
-    processing: 0,
-    complete: 0,
-    failed: 0,
-    avgConfidence: 0,
-    totalCost: 0,
-    lastRun: null,
-  }
-  const faqAgent = agentMetrics?.find((a) => a.agentType === 'faq') || {
-    agentType: 'faq' as const,
-    totalProducts: 0,
-    pending: 0,
-    processing: 0,
-    complete: 0,
-    failed: 0,
-    avgConfidence: 0,
-    totalCost: 0,
-    lastRun: null,
-  }
+  const copyrightAgent = agentMetrics?.find((a) => a.agentType === 'copyright') || emptyAgent('copyright')
+  const faqAgent = agentMetrics?.find((a) => a.agentType === 'faq') || emptyAgent('faq')
+
+  // Only show shimmer on initial load, not on subsequent failures
+  const showAgentShimmer = agentMetricsLoading && !agentMetrics?.length
 
   return (
     <div className="space-y-6">
@@ -62,10 +57,9 @@ export function DashboardPage() {
       {/* Live Metrics Cards - No loading spinner, uses shimmer in component */}
       <LiveMetrics />
 
-      {/* Agent Status Cards - Show shimmer while loading */}
+      {/* Agent Status Cards - Show shimmer only during initial load */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        {!categoryAgent || !weightAgent || !seoAgent ? (
-          // Shimmer loading skeleton
+        {showAgentShimmer ? (
           <>
             {[...Array(5)].map((_, i) => (
               <div
@@ -103,19 +97,19 @@ export function DashboardPage() {
         ) : (
           <>
             <AgentStatusCard
-              agent={categoryAgent}
+              agent={categoryAgent || emptyAgent('category')}
               icon={Tag}
               color="blue"
               name="Category Mapper"
             />
             <AgentStatusCard
-              agent={weightAgent}
+              agent={weightAgent || emptyAgent('weight_dimension')}
               icon={Scale}
               color="green"
               name="Weight & Dimension"
             />
             <AgentStatusCard
-              agent={seoAgent}
+              agent={seoAgent || emptyAgent('seo')}
               icon={FileText}
               color="purple"
               name="SEO Optimizer"
@@ -136,43 +130,16 @@ export function DashboardPage() {
         )}
       </div>
 
-      {/* Processing Queue and Recent Activity - Show shimmer while loading */}
+      {/* Processing Queue and Recent Activity - render independently */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {!categoryAgent || !weightAgent || !seoAgent ? (
-          // Shimmer loading skeleton
-          <>
-            {[...Array(2)].map((_, i) => (
-              <div
-                key={i}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 h-[500px] animate-pulse"
-              >
-                <div className="h-6 w-40 bg-gray-200 rounded mb-4"></div>
-                <div className="space-y-3">
-                  {[...Array(5)].map((_, j) => (
-                    <div key={j} className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-gray-200 rounded"></div>
-                      <div className="flex-1">
-                        <div className="h-4 w-3/4 bg-gray-200 rounded mb-2"></div>
-                        <div className="h-3 w-1/2 bg-gray-200 rounded"></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </>
-        ) : (
-          <>
-            <ProcessingQueue
-              categoryAgent={categoryAgent}
-              weightAgent={weightAgent}
-              seoAgent={seoAgent}
-              copyrightAgent={copyrightAgent}
-              faqAgent={faqAgent}
-            />
-            <RecentActivity />
-          </>
-        )}
+        <ProcessingQueue
+          categoryAgent={categoryAgent || emptyAgent('category')}
+          weightAgent={weightAgent || emptyAgent('weight_dimension')}
+          seoAgent={seoAgent || emptyAgent('seo')}
+          copyrightAgent={copyrightAgent}
+          faqAgent={faqAgent}
+        />
+        <RecentActivity />
       </div>
     </div>
   )

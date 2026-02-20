@@ -201,13 +201,13 @@ async function getProductsNeedingSync(
       pp.*,
       sp.name, sp.price, sp.original_price, sp.description, sp.images,
       sp.main_image, sp.stock_status, sp.variants, sp.url AS scraped_url, sp.product_id AS scraped_product_vendor_id,
-      sp.classification, sp.rejected, sp.blacklisted, sp.id AS scraped_product_db_id
+      sp.classification, sp.rejected, sp.blacklisted, sp.id AS scraped_product_db_id,
+      sp.timestamp
     FROM pending_products pp
     INNER JOIN scraped_products sp ON pp.scraped_product_id = sp.id
     WHERE pp.category_status = 'complete'
       AND pp.weight_and_dimension_status = 'complete'
       AND pp.seo_status = 'complete'
-      AND pp.faq_status = 'complete'
       AND (
         pp.erpnext_updated_at IS NULL
         OR pp.updated_at > pp.erpnext_updated_at

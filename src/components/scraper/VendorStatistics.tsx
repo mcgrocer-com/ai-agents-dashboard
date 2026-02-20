@@ -5,7 +5,7 @@
  * Shows metrics for category/weight completion, full data completion, ERPNext sync status.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw, RotateCcw, Settings, Power } from 'lucide-react'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
@@ -35,17 +35,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
   const [showPushToQueueConfirm, setShowPushToQueueConfirm] = useState(false)
   const [showFailedSyncDialog, setShowFailedSyncDialog] = useState(false)
 
-  useEffect(() => {
-    if (!vendor) {
-      setStats(null)
-      setIsLoading(false)
-      return
-    }
-
-    fetchStatistics()
-  }, [vendor])
-
-  const fetchStatistics = async () => {
+  const fetchStatistics = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
@@ -62,7 +52,17 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [vendor])
+
+  useEffect(() => {
+    if (!vendor) {
+      setStats(null)
+      setIsLoading(false)
+      return
+    }
+
+    fetchStatistics()
+  }, [vendor, fetchStatistics])
 
   const handlePushToPending = () => {
     if (!vendor || vendor === 'all') return

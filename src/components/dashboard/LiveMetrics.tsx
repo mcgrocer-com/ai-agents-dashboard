@@ -6,13 +6,25 @@
  * Updates are triggered by useDashboardRealtime hook in parent component.
  */
 
+import { useMemo } from 'react'
 import { Package, Activity, TrendingUp } from 'lucide-react'
-import { useDashboardMetrics } from '@/hooks'
+import { useDashboardMetrics, useAgentMetrics } from '@/hooks'
 import { formatNumber, formatPercentage } from '@/lib/utils/format'
 import { StatCard } from './StatCard'
 
 export function LiveMetrics() {
   const { metrics, isLoading, error } = useDashboardMetrics()
+  const { metrics: agentMetrics } = useAgentMetrics()
+
+  // Compute success rate from agent metrics (avoids duplicate RPC call)
+  const successRate = useMemo(() => {
+    if (!agentMetrics || agentMetrics.length === 0) return 0
+    const rates = agentMetrics.map((agent) => {
+      const finished = agent.complete + agent.failed
+      return finished > 0 ? agent.complete / finished : 0
+    })
+    return rates.reduce((sum, rate) => sum + rate, 0) / rates.length
+  }, [agentMetrics])
 
   if (isLoading && !metrics) {
     return (
@@ -72,7 +84,7 @@ export function LiveMetrics() {
       />
       <StatCard
         title="Success Rate"
-        value={formatPercentage(metrics.successRate)}
+        value={formatPercentage(successRate)}
         icon={TrendingUp}
         color="indigo"
         subtitle="Average of all agents"
