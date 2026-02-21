@@ -173,13 +173,14 @@ export function VendorSelectionDialog({
                     <span className="text-sm font-medium text-gray-900 capitalize">
                       {vendor.name}
                     </span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-500 flex items-center gap-1.5">
                       {vendor.syncCount !== undefined
                         ? `${vendor.syncCount.toLocaleString()} / ${vendor.count.toLocaleString()}`
-                        : loadingSyncCounts
-                          ? `${vendor.count.toLocaleString()} ...`
-                          : vendor.count.toLocaleString()
+                        : vendor.count.toLocaleString()
                       } products
+                      {vendor.syncCount === undefined && loadingSyncCounts && (
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-primary-500" />
+                      )}
                     </span>
                   </div>
                 </div>

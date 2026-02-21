@@ -326,6 +326,27 @@ class ProductsService {
   }
 
   /**
+   * Reset validation errors by category
+   * Clears validation_error for all products matching the given error category,
+   * allowing the validation pipeline to re-check them on the next run.
+   */
+  async resetValidationErrors(category: string): Promise<{ resetCount: number; error: Error | null }> {
+    try {
+      const { data, error } = await supabase.rpc('reset_validation_errors_by_category', {
+        p_error_category: category,
+      })
+
+      if (error) throw error
+
+      const resetCount = data?.[0]?.reset_count ?? 0
+      return { resetCount: Number(resetCount), error: null }
+    } catch (error) {
+      console.error('[ProductsService] Error resetting validation errors:', error)
+      return { resetCount: 0, error: error as Error }
+    }
+  }
+
+  /**
    * Get single product by ID
    */
   async getProductById(id: string) {

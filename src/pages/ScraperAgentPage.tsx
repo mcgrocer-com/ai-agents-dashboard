@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban } from 'lucide-react'
+import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban, RotateCcw } from 'lucide-react'
 import { productsService, blacklistService } from '@/services'
 
 import { supabase } from '@/lib/supabase/client'
@@ -100,6 +100,7 @@ export function ScraperAgentPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [defaultVendor, setDefaultVendor] = useState<string>('')
   const [validationErrorCategory, setValidationErrorCategory] = useState<ValidationErrorCategory | undefined>(undefined)
+  const [isResettingErrors, setIsResettingErrors] = useState(false)
 
   // Selection states
   const [selectionMode, setSelectionMode] = useState(false)
@@ -247,6 +248,32 @@ export function ScraperAgentPage() {
     setSelectedProductIds(new Set())
     setSelectionMode(false)
   }, [])
+
+  const handleRetryValidationErrors = useCallback(async () => {
+    if (!validationErrorCategory || isResettingErrors) return
+
+    const categoryLabels: Record<string, string> = {
+      http_error: 'HTTP Error',
+      timeout: 'Timeout',
+      unreachable: 'Unreachable',
+      post_processing: 'Post-processing',
+      image_mismatch: 'Image Mismatch',
+    }
+
+    setIsResettingErrors(true)
+    try {
+      const { resetCount, error } = await productsService.resetValidationErrors(validationErrorCategory)
+      if (error) throw error
+
+      showToast(`Reset ${resetCount.toLocaleString()} ${categoryLabels[validationErrorCategory]} errors for retry`, 'success')
+      fetchProducts()
+    } catch (err) {
+      showToast('Failed to reset validation errors', 'error')
+      console.error('[ScraperAgentPage] Error resetting validation errors:', err)
+    } finally {
+      setIsResettingErrors(false)
+    }
+  }, [validationErrorCategory, isResettingErrors, fetchProducts, showToast])
 
   // Selection handlers
   const toggleSelectionMode = useCallback(() => {
@@ -658,6 +685,16 @@ export function ScraperAgentPage() {
               {cat.label}
             </button>
           ))}
+          {validationErrorCategory && (
+            <button
+              onClick={handleRetryValidationErrors}
+              disabled={isResettingErrors}
+              className="ml-2 px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-300 hover:bg-amber-200 transition-colors disabled:opacity-50 flex items-center gap-1"
+            >
+              <RotateCcw className={`w-3 h-3 ${isResettingErrors ? 'animate-spin' : ''}`} />
+              {isResettingErrors ? 'Resetting...' : 'Retry All'}
+            </button>
+          )}
         </div>
       )}
 
