@@ -373,12 +373,15 @@ export interface DynamicFilter {
   value: any
 }
 
+export type ValidationErrorCategory = 'http_error' | 'timeout' | 'unreachable' | 'post_processing' | 'image_mismatch'
+
 export interface ProductFilters {
   search?: string
   vendor?: string
   status?: AgentStatus | string
+  validationErrorCategory?: ValidationErrorCategory
   dynamicFilters?: DynamicFilter[]
-  sortBy?: 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at' | 'last_updated_by_scraper'
+  sortBy?: 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
   sortOrder?: 'asc' | 'desc'
   limit?: number
   offset?: number

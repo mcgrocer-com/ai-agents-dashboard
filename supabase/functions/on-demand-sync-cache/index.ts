@@ -111,15 +111,46 @@ function mapAvailabilityToStockStatus(availability: string): string | null {
 }
 
 /**
- * Process a single cache entry and sync to scraped_products
+ * Call update-scraped-product edge function to update products and trigger ERPNext sync
+ */
+async function callUpdateScrapedProduct(
+  supabaseUrl: string,
+  serviceKey: string,
+  items: Array<{ url: string; [key: string]: any }>
+): Promise<{ success: boolean; results: Array<{ url: string; success: boolean; error?: string }> }> {
+  const response = await fetch(`${supabaseUrl}/functions/v1/update-scraped-product`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${serviceKey}`,
+    },
+    body: JSON.stringify(items),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[Sync] update-scraped-product returned ${response.status}: ${errorText}`);
+    return { success: false, results: items.map(i => ({ url: i.url, success: false, error: `HTTP ${response.status}` })) };
+  }
+
+  return await response.json();
+}
+
+/**
+ * Process a single cache entry and sync to scraped_products via update-scraped-product
  */
 async function processCacheEntry(
   supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
   entry: CacheEntry,
   stats: SyncStats
 ): Promise<void> {
   const results = entry.results || [];
   console.log(`[Sync] Processing cache entry ${entry.id}: "${entry.query_normalized}" (${results.length} products)`);
+
+  // Collect update payloads for matched products
+  const updateItems: Array<{ url: string; price?: number; original_price?: number; stock_status?: string }> = [];
 
   for (const result of results) {
     stats.products_checked++;
@@ -140,7 +171,7 @@ async function processCacheEntry(
     // Normalize URL for matching (strip query params)
     const normalizedUrl = normalizeUrl(result.source_url);
 
-    // Find matching scraped product by URL
+    // Find matching scraped product by URL to verify it exists
     const { data: matchedProduct, error: matchError } = await supabase
       .from('scraped_products')
       .select('id, url, price, stock_status, vendor')
@@ -155,61 +186,42 @@ async function processCacheEntry(
 
     stats.products_matched++;
 
-    // Prepare update data
-    const stockStatus = mapAvailabilityToStockStatus(result.availability);
-    const updateData: Record<string, any> = {
-      scraper_updated_at: new Date().toISOString(),
-    };
+    // Build update payload for update-scraped-product
+    const updateItem: { url: string; price?: number; original_price?: number; stock_status?: string; timestamp?: string } = { url: matchedProduct.url, timestamp: new Date().toISOString() };
 
-    // Update price if we have a valid one (apply markup and store both prices)
+    // Apply markup and prepare price fields
+    const stockStatus = mapAvailabilityToStockStatus(result.availability);
+
     if (result.price && result.price > 0) {
       const markedUpPrice = applyDynamicMarkup(result.price);
-      updateData.original_price = result.price;  // Store original vendor price
-      updateData.price = markedUpPrice;          // Store marked up price
+      updateItem.original_price = result.price;
+      updateItem.price = markedUpPrice;
       console.log(
-        `[Sync] Price markup applied: ${result.price} → ${markedUpPrice} (${Math.round(((markedUpPrice - result.price) / result.price) * 100)}% markup)`
+        `[Sync] Price markup applied for ${matchedProduct.vendor}: ${result.price} → ${markedUpPrice} (${Math.round(((markedUpPrice - result.price) / result.price) * 100)}% markup)`
       );
     }
 
-    // Update stock status if we have a definitive one
     if (stockStatus) {
-      updateData.stock_status = stockStatus;
+      updateItem.stock_status = stockStatus;
     }
 
-    // Update the scraped product
-    const { error: updateError } = await supabase
-      .from('scraped_products')
-      .update(updateData)
-      .eq('id', matchedProduct.id);
+    updateItems.push(updateItem);
+  }
 
-    if (updateError) {
-      console.error(`[Sync] Error updating product ${matchedProduct.id}:`, updateError);
-      stats.errors++;
-    } else {
-      stats.products_updated++;
-      console.log(
-        `[Sync] Updated ${matchedProduct.vendor}: price=${updateData.price ?? 'unchanged'}, stock=${stockStatus ?? 'unchanged'}`
-      );
+  // Call update-scraped-product with collected items
+  if (updateItems.length > 0) {
+    console.log(`[Sync] Sending ${updateItems.length} products to update-scraped-product`);
 
-      // Reset erpnext_updated_at and set sync_full_product to trigger ERPNext re-sync
-      // The cron picks up products where erpnext_updated_at IS NULL or updated_at > erpnext_updated_at
-      // sync_full_product=true ensures price + stock_status are included in the sync payload
-      const { data: pendingData, error: pendingError } = await supabase
-        .from('pending_products')
-        .update({
-          updated_at: new Date().toISOString(),
-          erpnext_updated_at: null,
-          sync_full_product: true,
-        })
-        .eq('scraped_product_id', matchedProduct.id)
-        .select('id');
+    const updateResponse = await callUpdateScrapedProduct(supabaseUrl, serviceKey, updateItems);
 
-      if (pendingError || !pendingData || pendingData.length === 0) {
-        // Not an error if no pending_product exists - product might not be in sync queue
-        console.log(`[Sync] No pending_product found for ${matchedProduct.id}`);
-      } else {
+    for (const result of updateResponse.results || []) {
+      if (result.success) {
+        stats.products_updated++;
         stats.pending_products_triggered++;
-        console.log(`[Sync] Triggered ERPNext sync for ${matchedProduct.vendor}`);
+        console.log(`[Sync] Updated via update-scraped-product: ${result.url}`);
+      } else {
+        stats.errors++;
+        console.error(`[Sync] Failed to update ${result.url}: ${result.error}`);
       }
     }
   }
@@ -313,7 +325,7 @@ Deno.serve(async (req) => {
 
     // Process each cache entry
     for (const entry of cacheEntries) {
-      await processCacheEntry(supabase, entry, stats);
+      await processCacheEntry(supabase, supabaseUrl, supabaseServiceKey, entry, stats);
     }
 
     const duration = Date.now() - startTime;

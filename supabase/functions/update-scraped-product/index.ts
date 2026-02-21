@@ -24,7 +24,8 @@ const ALLOWED_UPDATE_FIELDS = [
   'variants',
   'variant_count',
   'ean_code',
-  'product_id'
+  'product_id',
+  'timestamp'
 ] as const;
 
 const BATCH_SIZE = 10;
@@ -82,11 +83,13 @@ async function processBatch(
       continue;
     }
 
+    const now = new Date().toISOString();
     const { error: updateError } = await supabaseClient
       .from('scraped_products')
       .update({
         ...filteredUpdates,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
+        scraper_updated_at: now,
       })
       .eq('url', url.trim());
 
@@ -107,7 +110,6 @@ async function processBatch(
           failed_sync_error_message: null,
           failed_sync_at: null,
           sync_full_product: true,
-          last_updated_by_scraper: new Date().toISOString(),
         })
         .eq('url', url.trim());
 

@@ -15,6 +15,7 @@ export type {
   RecentActivity,
   DashboardMetrics,
   ProductFilters,
+  ValidationErrorCategory,
   FaqItem,
 } from './database'
 

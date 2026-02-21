@@ -581,7 +581,6 @@ export function ProductDetailPage() {
         erpnextUpdatedAt={product.erpnext_updated_at || undefined}
         failedSyncAt={product.failed_sync_at || undefined}
         scraperUpdatedAt={product.scraper_updated_at || undefined}
-        lastUpdatedByScraper={product.last_updated_by_scraper || undefined}
         pinned={product.pinned || false}
         onTogglePin={handleTogglePin}
         togglingPin={togglingPin}

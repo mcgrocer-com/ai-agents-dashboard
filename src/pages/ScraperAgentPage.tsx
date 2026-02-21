@@ -19,12 +19,12 @@ import { ProductActionsMenu } from '@/components/scraper/ProductActionsMenu'
 import { useToast } from '@/hooks/useToast'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { SyncDataSource } from '@/services/user.service'
-import type { ScrapedProduct, ProductFilters } from '@/types'
+import type { ScrapedProduct, ProductFilters, ValidationErrorCategory } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
-type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at' | 'last_updated_by_scraper'
+type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
 type SortDirection = 'asc' | 'desc'
-type TabType = 'all' | 'pinned' | 'price_updated' | 'validation_issues' | 'blacklisted'
+type TabType = 'all' | 'pinned' | 'validation_issues' | 'blacklisted'
 
 // All available columns including vendor (for default filter column selector)
 const ALL_COLUMNS: FilterColumn[] = [
@@ -99,6 +99,7 @@ export function ScraperAgentPage() {
   const [filters, setFilters] = useState<FilterRule[]>([])
   const [showFilters, setShowFilters] = useState(false)
   const [defaultVendor, setDefaultVendor] = useState<string>('')
+  const [validationErrorCategory, setValidationErrorCategory] = useState<ValidationErrorCategory | undefined>(undefined)
 
   // Selection states
   const [selectionMode, setSelectionMode] = useState(false)
@@ -146,7 +147,7 @@ export function ScraperAgentPage() {
 
   useEffect(() => {
     fetchProducts()
-  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters])
+  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters, validationErrorCategory])
 
   // Convert FilterRules to DynamicFilters for the API
   const convertToDynamicFilters = (filterRules: FilterRule[]): DynamicFilter[] => {
@@ -175,18 +176,6 @@ export function ScraperAgentPage() {
     // Build dynamic filters
     let dynamicFilters = filters.length > 0 ? convertToDynamicFilters(filters) : []
 
-    // For price_updated tab, add filter for scraper_updated_at IS NOT NULL
-    if (activeTab === 'price_updated') {
-      dynamicFilters = [
-        ...dynamicFilters,
-        {
-          field: 'scraper_updated_at',
-          operator: 'is not null',
-          value: null,
-        },
-      ]
-    }
-
     // For blacklisted tab, add filter for blacklisted = true
     if (activeTab === 'blacklisted') {
       dynamicFilters = [
@@ -201,11 +190,12 @@ export function ScraperAgentPage() {
 
     const productFilters: ProductFilters = {
       search: searchTerm || undefined,
-      sortBy: activeTab === 'price_updated' ? 'scraper_updated_at' : sortField,
-      sortOrder: activeTab === 'price_updated' ? 'desc' : sortDirection,
+      sortBy: sortField,
+      sortOrder: sortDirection,
       limit: pageSize,
       offset: (page - 1) * pageSize,
       dynamicFilters: dynamicFilters.length > 0 ? dynamicFilters : undefined,
+      validationErrorCategory: activeTab === 'validation_issues' ? validationErrorCategory : undefined,
     }
 
     // Use appropriate service method based on active tab
@@ -241,7 +231,7 @@ export function ScraperAgentPage() {
     }
 
     setIsLoading(false)
-  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters])
+  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters, validationErrorCategory])
 
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term)
@@ -252,6 +242,7 @@ export function ScraperAgentPage() {
     setActiveTab(tab)
     setPage(1)
     setSearchTerm('')
+    setValidationErrorCategory(undefined)
     // Clear selection when changing tabs
     setSelectedProductIds(new Set())
     setSelectionMode(false)
@@ -482,18 +473,6 @@ export function ScraperAgentPage() {
             </div>
           </button>
           <button
-            onClick={() => handleTabChange('price_updated')}
-            className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'price_updated'
-              ? 'border-primary-500 text-primary-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              Price Updated
-            </div>
-          </button>
-          <button
             onClick={() => handleTabChange('validation_issues')}
             className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'validation_issues'
               ? 'border-primary-500 text-primary-600'
@@ -611,12 +590,10 @@ export function ScraperAgentPage() {
           <option value="created_at-asc">Oldest First</option>
           <option value="updated_at-desc">Recently Updated</option>
           <option value="updated_at-asc">Least Recently Updated</option>
-          <option value="scraper_updated_at-desc">Recently Price Updated</option>
-          <option value="scraper_updated_at-asc">Least Recently Price Updated</option>
+          <option value="scraper_updated_at-desc">Recently Updated by Scraper</option>
+          <option value="scraper_updated_at-asc">Least Recently Updated by Scraper</option>
           <option value="erpnext_updated_at-desc">Recently Synced to ERPNext</option>
           <option value="erpnext_updated_at-asc">Least Recently Synced to ERPNext</option>
-          <option value="last_updated_by_scraper-desc">Recently Updated by Scraper</option>
-          <option value="last_updated_by_scraper-asc">Least Recently Updated by Scraper</option>
           <option value="failed_sync_at-desc">Recently Failed Syncs</option>
           <option value="failed_sync_at-asc">Oldest Failed Syncs</option>
           <option value="name-asc">Name A-Z</option>
@@ -651,6 +628,36 @@ export function ScraperAgentPage() {
               setPage(1) // Reset to first page when filters change
             }}
           />
+        </div>
+      )}
+
+      {/* Validation Error Category Filter - Only on validation_issues tab */}
+      {activeTab === 'validation_issues' && (
+        <div className="flex-shrink-0 flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-secondary-500 mr-1">Error Type:</span>
+          {([
+            { key: undefined as ValidationErrorCategory | undefined, label: 'All Errors' },
+            { key: 'http_error' as const, label: 'HTTP Error' },
+            { key: 'timeout' as const, label: 'Timeout' },
+            { key: 'unreachable' as const, label: 'Unreachable' },
+            { key: 'post_processing' as const, label: 'Post-processing' },
+            { key: 'image_mismatch' as const, label: 'Image Mismatch' },
+          ]).map((cat) => (
+            <button
+              key={cat.label}
+              onClick={() => {
+                setValidationErrorCategory(cat.key)
+                setPage(1)
+              }}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                validationErrorCategory === cat.key
+                  ? 'bg-red-100 text-red-700 border border-red-300'
+                  : 'bg-secondary-100 text-secondary-600 border border-secondary-200 hover:bg-secondary-200'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -710,7 +717,7 @@ export function ScraperAgentPage() {
         <div className="flex items-center gap-4">
           <p className="text-secondary-600">
             Showing {products.length} of {count.toLocaleString()}{' '}
-            {activeTab === 'pinned' ? 'pinned ' : activeTab === 'price_updated' ? 'price-updated ' : activeTab === 'validation_issues' ? 'products with validation issues' : activeTab === 'blacklisted' ? 'blacklisted products' : 'products'}
+            {activeTab === 'pinned' ? 'pinned ' : activeTab === 'validation_issues' ? 'products with validation issues' : activeTab === 'blacklisted' ? 'blacklisted products' : 'products'}
           </p>
           {selectionMode && selectedProductIds.size > 0 && (
             <p className="text-primary-600 font-medium">
@@ -1038,13 +1045,6 @@ const ProductsList = memo(({ products, isLoading, showPinned = false, tabType = 
             gradient: 'from-yellow-100 via-yellow-50 to-amber-100 border-yellow-200',
             title: 'No pinned products found',
             message: 'Pin products from the product detail page to see them here'
-          }
-        case 'price_updated':
-          return {
-            icon: <Clock className="w-10 h-10 text-blue-500" />,
-            gradient: 'from-blue-100 via-blue-50 to-indigo-100 border-blue-200',
-            title: 'No price-updated products found',
-            message: 'Products updated through price comparison sync will appear here'
           }
         case 'validation_issues':
           return {
