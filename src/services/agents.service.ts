@@ -189,6 +189,9 @@ class AgentsService {
 
       // Search in pending product data
       if (search) {
+        // Escape special PostgREST characters in search term to prevent parse errors
+        const escapedSearch = search.replace(/[,|()&.]/g, (c) => encodeURIComponent(c))
+
         // Check if search looks like a UUID for exact matching (performance optimization)
         const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(search)
 
@@ -197,12 +200,12 @@ class AgentsService {
           const normalizedUuid = normalizeUuid(search)
           // Use exact match for UUID (much faster than ilike)
           query = query.or(
-            `id.eq.${normalizedUuid},product_id.ilike.%${search}%,item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
+            `id.eq.${normalizedUuid},product_id.ilike.%${escapedSearch}%,item_code.ilike.%${escapedSearch}%,vendor.ilike.%${escapedSearch}%,url.ilike.%${escapedSearch}%`
           )
         } else {
           // Use pattern matching for text search only
           query = query.or(
-            `product_id.ilike.%${search}%,item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
+            `product_id.ilike.%${escapedSearch}%,item_code.ilike.%${escapedSearch}%,vendor.ilike.%${escapedSearch}%,url.ilike.%${escapedSearch}%`
           )
         }
       }
@@ -331,6 +334,9 @@ class AgentsService {
 
       // Search in pending product data
       if (search) {
+        // Escape special PostgREST characters in search term to prevent parse errors
+        const escapedSearch = search.replace(/[,|()&.]/g, (c) => encodeURIComponent(c))
+
         // Check if search looks like a UUID for exact matching (performance optimization)
         const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(search)
 
@@ -339,12 +345,12 @@ class AgentsService {
           const normalizedUuid = normalizeUuid(search)
           // Use exact match for UUID (much faster than ilike)
           query = query.or(
-            `id.eq.${normalizedUuid},product_id.ilike.%${search}%,item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
+            `id.eq.${normalizedUuid},product_id.ilike.%${escapedSearch}%,item_code.ilike.%${escapedSearch}%,vendor.ilike.%${escapedSearch}%,url.ilike.%${escapedSearch}%`
           )
         } else {
           // Use pattern matching for text search only
           query = query.or(
-            `product_id.ilike.%${search}%,item_code.ilike.%${search}%,vendor.ilike.%${search}%,url.ilike.%${search}%`
+            `product_id.ilike.%${escapedSearch}%,item_code.ilike.%${escapedSearch}%,vendor.ilike.%${escapedSearch}%,url.ilike.%${escapedSearch}%`
           )
         }
       }

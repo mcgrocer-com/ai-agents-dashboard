@@ -55,7 +55,7 @@ export function VendorSelectionDialog({
     setSelectedDataSource(dataSource)
   }, [selectedVendors, prioritizeCopyright, dataSource, open])
 
-  // Lazy-load sync counts when dialog opens (only if not already loaded)
+  // Lazy-load sync counts when dialog opens (single batch call instead of N individual calls)
   useEffect(() => {
     if (!open) return
     setVendorsWithCounts(vendors)
@@ -67,13 +67,11 @@ export function VendorSelectionDialog({
     }
 
     setLoadingSyncCounts(true)
-    Promise.all(
-      vendors.map(async (vendor) => {
-        if (vendor.syncCount !== undefined) return vendor
-        const stats = await scraperProductsService.getVendorStatistics(vendor.name)
-        return { ...vendor, syncCount: stats?.withAllData || 0 }
-      })
-    ).then((result) => {
+    scraperProductsService.getVendorSyncCounts().then((syncCountMap) => {
+      const result = vendors.map((vendor) => ({
+        ...vendor,
+        syncCount: vendor.syncCount ?? (syncCountMap.get(vendor.name) || 0),
+      }))
       setVendorsWithCounts(result)
       setLoadingSyncCounts(false)
     })

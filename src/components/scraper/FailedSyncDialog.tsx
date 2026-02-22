@@ -6,11 +6,13 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { X, AlertTriangle, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { X, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 
 interface FailedProduct {
   id: string
+  scraped_product_id: string
   url: string
   name: string | null
   vendor: string | null
@@ -25,6 +27,7 @@ interface FailedSyncDialogProps {
 }
 
 export function FailedSyncDialog({ open, onClose, vendor }: FailedSyncDialogProps) {
+  const navigate = useNavigate()
   const [products, setProducts] = useState<FailedProduct[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -174,19 +177,16 @@ export function FailedSyncDialog({ open, onClose, vendor }: FailedSyncDialogProp
                         </p>
                         <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
                           <span>Failed at: {formatDate(product.failed_sync_at)}</span>
-                          {product.url && (
-                            <>
-                              <span>•</span>
-                              <a
-                                href={product.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary-600 hover:text-primary-700 flex items-center gap-1"
-                              >
-                                View Product <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </>
-                          )}
+                          <span>•</span>
+                          <button
+                            onClick={() => {
+                              onClose()
+                              navigate(`/scraper-agent/${product.scraped_product_id}`)
+                            }}
+                            className="text-primary-600 hover:text-primary-700 flex items-center gap-1 hover:underline"
+                          >
+                            View Product
+                          </button>
                         </div>
                         {/* Error Message */}
                         <div className="bg-red-50 border border-red-200 rounded-lg p-3">

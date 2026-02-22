@@ -109,74 +109,9 @@ const HEMP_FOOD_EXCLUSIONS = [
   'hemp seed', 'hemp protein', 'hemp heart', 'hemp flour', 'hemp milk',
 ];
 
-/** Fresh/perishable product terms - these products require cold chain logistics */
-const FRESH_PERISHABLE_TERMS = [
-  // Fresh meat & poultry
-  'fresh chicken', 'fresh beef', 'fresh pork', 'fresh lamb', 'fresh turkey',
-  'fresh mince', 'fresh steak', 'chicken breast', 'chicken thigh', 'chicken drumstick',
-  'chicken wing', 'pork chop', 'pork loin', 'lamb chop', 'lamb leg',
-  'beef mince', 'pork mince', 'turkey mince', 'diced beef', 'diced chicken',
-  'sirloin steak', 'rump steak', 'ribeye', 'fillet steak',
-  'sausage', 'sausages', 'bacon rashers', 'streaky bacon', 'back bacon',
-  'raw chicken', 'raw beef', 'raw pork', 'raw lamb', 'raw turkey',
-  // Fresh fish & seafood
-  'fresh salmon', 'fresh cod', 'fresh haddock', 'fresh tuna', 'fresh prawns',
-  'fresh fish', 'fresh seafood', 'raw prawns', 'raw salmon',
-  'salmon fillet', 'cod fillet', 'haddock fillet', 'sea bass fillet',
-  'smoked salmon', 'king prawns',
-  // Dairy & chilled
-  'fresh milk', 'whole milk', 'semi-skimmed milk', 'skimmed milk',
-  'double cream', 'single cream', 'clotted cream', 'soured cream',
-  'fresh cream', 'whipping cream', 'creme fraiche',
-  'natural yoghurt', 'greek yoghurt', 'yogurt',
-  'butter', 'margarine', 'spreadable butter',
-  'cheddar cheese', 'mozzarella', 'brie', 'camembert', 'stilton',
-  'grated cheese', 'sliced cheese', 'cream cheese',
-  'fresh eggs', 'free range eggs',
-  // Fresh fruit & vegetables
-  'fresh fruit', 'fresh vegetables', 'fresh veg',
-  'banana', 'bananas', 'apple', 'apples', 'orange', 'oranges',
-  'strawberry', 'strawberries', 'raspberry', 'raspberries', 'blueberry', 'blueberries',
-  'grape', 'grapes', 'melon', 'watermelon', 'pineapple', 'mango', 'kiwi',
-  'avocado', 'avocados', 'tomato', 'tomatoes', 'cucumber', 'lettuce',
-  'broccoli', 'cauliflower', 'carrot', 'carrots', 'potato', 'potatoes',
-  'onion', 'onions', 'pepper', 'peppers', 'mushroom', 'mushrooms',
-  'spinach', 'kale', 'courgette', 'aubergine', 'celery', 'sweetcorn',
-  'spring onion', 'spring onions', 'leek', 'leeks',
-  'salad bag', 'salad leaves', 'mixed salad', 'rocket salad',
-  'baby spinach', 'watercress',
-  // Chilled prepared foods
-  'fresh pasta', 'fresh soup', 'fresh pizza', 'fresh juice',
-  'coleslaw', 'hummus', 'dip', 'guacamole', 'tzatziki',
-  'sandwich', 'sandwiches', 'wrap', 'wraps',
-  'ready meal', 'ready meals',
-  // Frozen
-  'frozen chicken', 'frozen fish', 'frozen prawns', 'frozen vegetables',
-  'frozen pizza', 'frozen chips', 'frozen peas', 'frozen berries',
-  'ice cream', 'ice lolly', 'ice lollies',
-  // Bakery (short shelf life)
-  'fresh bread', 'fresh rolls', 'fresh croissant', 'fresh pastry',
-];
-
-/** Fresh/perishable category terms - categories that indicate perishable products */
-const FRESH_PERISHABLE_CATEGORIES = [
-  'fresh food', 'fresh meat', 'fresh fish', 'fresh fruit', 'fresh vegetables',
-  'chilled', 'chilled food', 'dairy', 'bakery', 'frozen food', 'frozen',
-  'meat & poultry', 'fish & seafood', 'fruit & veg', 'fruit & vegetables',
-  'deli', 'deli counter', 'salads', 'ready meals',
-];
-
-/** Exclusions: products that contain fresh/perishable terms but are NOT perishable */
-const FRESH_PERISHABLE_EXCLUSIONS = [
-  // Shelf-stable products that might match
-  'air freshener', 'fresh scent', 'fresh fragrance', 'fresh linen',
-  'fresh cotton', 'fresh burst', 'fresh clean', 'freshener',
-  // Preserved/canned versions
-  'canned', 'tinned', 'dried', 'powder', 'concentrate', 'long life',
-  'uht', 'ambient', 'dehydrated', 'freeze-dried', 'freeze dried',
-  // Non-food "fresh" products
-  'fresh foam', 'fresh feel', 'fresh look', 'fresh start',
-];
+// NOTE: Fresh/perishable pre-filter removed — too many false positives
+// (e.g. "carrot" matching baby food, "potato" matching soup, "butter" matching biscuits).
+// Gemini AI now handles all fresh_perishable classification with full product context.
 
 /**
  * Deterministic pre-filter for obvious tobacco/CBD products.
@@ -185,10 +120,8 @@ const FRESH_PERISHABLE_EXCLUSIONS = [
  */
 export function preClassifyProduct(
   productName: string,
-  productCategory?: string
 ): ClassificationResult | null {
   const nameLower = productName.toLowerCase();
-  const categoryLower = (productCategory || '').toLowerCase();
 
   // --- TOBACCO PRE-FILTER ---
 
@@ -295,38 +228,8 @@ export function preClassifyProduct(
     }
   }
 
-  // --- FRESH/PERISHABLE PRE-FILTER ---
-
-  // Exclusion: skip if product is clearly a non-food "fresh" product (air freshener, fragrance, etc.)
-  const isFreshExcluded = FRESH_PERISHABLE_EXCLUSIONS.some(term => nameLower.includes(term));
-
-  if (!isFreshExcluded) {
-    // Rule 1: Product name contains a known fresh/perishable product term
-    for (const term of FRESH_PERISHABLE_TERMS) {
-      if (nameLower.includes(term)) {
-        console.log(`[Classification] Pre-filter FRESH_PERISHABLE match: term "${term}" in "${productName}"`);
-        return {
-          rejected: true,
-          classification: 'fresh_perishable',
-          reason: `Pre-filter: product name contains fresh/perishable term "${term}"`,
-          confidence: 0.97,
-        };
-      }
-    }
-
-    // Rule 2: Product category indicates fresh/perishable
-    for (const term of FRESH_PERISHABLE_CATEGORIES) {
-      if (categoryLower.includes(term)) {
-        console.log(`[Classification] Pre-filter FRESH_PERISHABLE match: category term "${term}" in category "${productCategory}"`);
-        return {
-          rejected: true,
-          classification: 'fresh_perishable',
-          reason: `Pre-filter: product category contains fresh/perishable term "${term}"`,
-          confidence: 0.95,
-        };
-      }
-    }
-  }
+  // Fresh/perishable detection is handled entirely by Gemini AI (no pre-filter)
+  // to avoid false positives on generic food terms like "carrot", "potato", "butter"
 
   // No pre-filter match - fall through to Gemini AI
   return null;
@@ -525,7 +428,7 @@ export async function classifyProduct(
   productCategory?: string
 ): Promise<ClassificationResult> {
   // Tier 1: Keyword pre-filter for obvious tobacco/CBD products (no API cost)
-  const preFilterResult = preClassifyProduct(productName, productCategory);
+  const preFilterResult = preClassifyProduct(productName);
   if (preFilterResult) {
     return preFilterResult;
   }

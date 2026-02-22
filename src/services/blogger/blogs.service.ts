@@ -155,6 +155,9 @@ export async function getUserBlogs(
     }
 
     if (filters?.search) {
+      // Escape special PostgREST characters in search term to prevent parse errors
+      const escapedSearch = filters.search.replace(/[,|()&.]/g, (c: string) => encodeURIComponent(c));
+
       // Check if search looks like a UUID for exact matching (performance optimization)
       const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(filters.search);
 
@@ -163,12 +166,12 @@ export async function getUserBlogs(
         const normalizedUuid = normalizeUuid(filters.search);
         // Use exact match for UUID (much faster than ilike)
         query = query.or(
-          `id.eq.${normalizedUuid},title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`
+          `id.eq.${normalizedUuid},title.ilike.%${escapedSearch}%,content.ilike.%${escapedSearch}%`
         );
       } else {
         // Use pattern matching for text search only
         query = query.or(
-          `title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`
+          `title.ilike.%${escapedSearch}%,content.ilike.%${escapedSearch}%`
         );
       }
     }

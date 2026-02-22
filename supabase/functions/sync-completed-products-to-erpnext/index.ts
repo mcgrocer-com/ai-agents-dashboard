@@ -196,6 +196,8 @@ async function getProductsNeedingSync(
   // 3. Have a valid scraped_product_id that exists in scraped_products
   // 4. Have a valid price (not NULL and not '0' or 0)
   // 5. If prioritizeCopyright is true, only sync products with copyright_status = 'complete'
+  // 6. Skip products that failed sync recently (30 min cooldown) to prevent bad products from
+  //    blocking entire batches. Failed products will be retried after the cooldown expires.
   const products = await sql`
     SELECT
       pp.*,
@@ -215,6 +217,10 @@ async function getProductsNeedingSync(
       AND (
         pp.sync_started_at IS NULL
         OR pp.sync_started_at < NOW() - INTERVAL '10 minutes'
+      )
+      AND (
+        pp.failed_sync_at IS NULL
+        OR pp.failed_sync_at < NOW() - INTERVAL '30 minutes'
       )
       AND pp.scraped_product_id IS NOT NULL
       AND sp.price IS NOT NULL

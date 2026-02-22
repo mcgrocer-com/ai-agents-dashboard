@@ -235,6 +235,28 @@ class ScraperProductsService {
   }
 
   /**
+   * Get sync-ready counts for all vendors in a single batch call.
+   * Used by VendorSelectionDialog instead of N individual getVendorStatistics calls.
+   */
+  async getVendorSyncCounts(): Promise<Map<string, number>> {
+    try {
+      const { data, error } = await supabase.rpc('get_vendor_sync_counts')
+      if (error) {
+        console.error('Error fetching vendor sync counts:', error)
+        return new Map()
+      }
+      const map = new Map<string, number>()
+      for (const row of data || []) {
+        map.set(row.vendor, Number(row.sync_count))
+      }
+      return map
+    } catch (error) {
+      console.error('Exception fetching vendor sync counts:', error)
+      return new Map()
+    }
+  }
+
+  /**
    * Get products that failed to sync to ERPNext
    */
   async getFailedSyncProducts(
@@ -243,6 +265,7 @@ class ScraperProductsService {
   ): Promise<{
     products: Array<{
       id: string
+      scraped_product_id: string
       url: string
       name: string | null
       vendor: string | null
@@ -260,6 +283,7 @@ class ScraperProductsService {
         .select(
           `
           id,
+          scraped_product_id,
           url,
           vendor,
           failed_sync_error_message,
@@ -286,6 +310,7 @@ class ScraperProductsService {
       // Transform the data to flatten the nested structure
       const products = (data || []).map((item: any) => ({
         id: item.id,
+        scraped_product_id: item.scraped_product_id,
         url: item.url,
         name: item.scraped_products?.name || null,
         vendor: item.vendor,

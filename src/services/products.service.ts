@@ -134,6 +134,9 @@ class ProductsService {
       // Apply search filter on id, product_id, name, description, and ai_title
       // For ID field, use exact match for performance; for text fields use pattern matching
       if (filters.search) {
+        // Escape special PostgREST characters in search term to prevent parse errors
+        const escapedSearch = filters.search.replace(/[,|()&.]/g, (c) => encodeURIComponent(c))
+
         // Check if search looks like a UUID (8-4-4-4-12 format with hyphens or 32 hex chars)
         const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(filters.search)
 
@@ -142,12 +145,12 @@ class ProductsService {
           const cleanedId = filters.search.replace(/-/g, '')
           // Use exact match for ID (much faster than ilike)
           query = query.or(
-            `id.eq.${cleanedId},product_id.ilike.%${filters.search}%,name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
+            `id.eq.${cleanedId},product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%`
           )
         } else {
           // Use pattern matching for text search only
           query = query.or(
-            `product_id.ilike.%${filters.search}%,name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
+            `product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%`
           )
         }
       }
@@ -907,6 +910,9 @@ class ProductsService {
       // Apply search filter on id, product_id, name, description, and ai_title
       // For ID field, use exact match for performance; for text fields use pattern matching
       if (filters.search) {
+        // Escape special PostgREST characters in search term to prevent parse errors
+        const escapedSearch = filters.search.replace(/[,|()&.]/g, (c) => encodeURIComponent(c))
+
         // Check if search looks like a UUID (8-4-4-4-12 format with hyphens or 32 hex chars)
         const isUuidFormat = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(filters.search)
 
@@ -915,12 +921,12 @@ class ProductsService {
           const cleanedId = filters.search.replace(/-/g, '')
           // Use exact match for ID (much faster than ilike)
           query = query.or(
-            `id.eq.${cleanedId},product_id.ilike.%${filters.search}%,name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
+            `id.eq.${cleanedId},product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%`
           )
         } else {
           // Use pattern matching for text search only
           query = query.or(
-            `product_id.ilike.%${filters.search}%,name.ilike.%${filters.search}%,description.ilike.%${filters.search}%,ai_title.ilike.%${filters.search}%`
+            `product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%`
           )
         }
       }
