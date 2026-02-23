@@ -23,6 +23,7 @@ import {
   Zap,
   Square,
   Loader2,
+  Link2,
 } from 'lucide-react'
 import { Dialog } from '@/components/ui/Dialog'
 import { Toast } from '@/components/ui/Toast'
@@ -37,6 +38,8 @@ interface JobQueue {
   max_batches: number | null
   max_concurrent: number
   force_sync: boolean
+  force_reprocess: boolean
+  priority_urls: string[] | null
   request: 'start' | 'stop' | null
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   created_at: string
@@ -56,6 +59,8 @@ interface JobFormData {
   max_batches: number | null
   max_concurrent: number
   force_sync: boolean
+  force_reprocess: boolean
+  priority_urls: string[]
 }
 
 const AGENT_OPTIONS = [
@@ -166,6 +171,8 @@ export function JobQueueManager() {
         max_batches: formData.max_batches,
         max_concurrent: formData.max_concurrent,
         force_sync: formData.force_sync,
+        force_reprocess: formData.force_reprocess,
+        priority_urls: formData.priority_urls.length > 0 ? formData.priority_urls : null,
         status: 'pending',
         products_processed: 0,
         products_successful: 0,
@@ -196,6 +203,8 @@ export function JobQueueManager() {
           max_batches: formData.max_batches,
           max_concurrent: formData.max_concurrent,
           force_sync: formData.force_sync,
+          force_reprocess: formData.force_reprocess,
+          priority_urls: formData.priority_urls.length > 0 ? formData.priority_urls : null,
         })
         .eq('id', editingJob.id)
 
@@ -539,6 +548,8 @@ export function JobQueueManager() {
             max_batches: editingJob.max_batches,
             max_concurrent: editingJob.max_concurrent,
             force_sync: editingJob.force_sync,
+            force_reprocess: editingJob.force_reprocess,
+            priority_urls: editingJob.priority_urls || [],
           }}
           onSubmit={handleUpdateJob}
           onClose={() => {
@@ -734,6 +745,15 @@ function JobItem({
             <Zap className="h-3 w-3 text-gray-500" />
             Concurrency: {job.max_concurrent}
           </span>
+          {job.priority_urls && job.priority_urls.length > 0 && (
+            <>
+              <span className="text-gray-400">•</span>
+              <span className="flex items-center gap-1 text-indigo-600 font-medium">
+                <Link2 className="h-3 w-3" />
+                {job.priority_urls.length} URL{job.priority_urls.length !== 1 ? 's' : ''}
+              </span>
+            </>
+          )}
         </div>
 
         {/* Progress Row */}
@@ -778,6 +798,8 @@ function JobFormDialog({
       max_batches: null,
       max_concurrent: 10,
       force_sync: false,
+      force_reprocess: false,
+      priority_urls: [],
     }
   )
   const [vendors, setVendors] = useState<{ name: string; count: number }[]>([])
@@ -826,7 +848,11 @@ function JobFormDialog({
 
     const concurrencyText = `with ${formData.max_concurrent} batch${formData.max_concurrent > 1 ? 'es' : ''} running concurrently`
 
-    return `Deploy ${agentNames} agent${formData.agent_types.length > 1 ? 's' : ''} to process ${batchText} ${vendorText}, ${concurrencyText}`
+    const urlText = formData.priority_urls.length > 0
+      ? ` (prioritising ${formData.priority_urls.length} specific URL${formData.priority_urls.length !== 1 ? 's' : ''})`
+      : ''
+
+    return `Deploy ${agentNames} agent${formData.agent_types.length > 1 ? 's' : ''} to process ${batchText} ${vendorText}, ${concurrencyText}${urlText}`
   }
 
   return (
@@ -854,6 +880,30 @@ function JobFormDialog({
               ))}
             </select>
           )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Priority URLs (optional)
+          </label>
+          <textarea
+            value={formData.priority_urls.join('\n')}
+            onChange={(e) => {
+              const urls = e.target.value
+                .split('\n')
+                .map((u) => u.trim())
+                .filter((u) => u.length > 0)
+              setFormData({ ...formData, priority_urls: urls })
+            }}
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono"
+            placeholder="Paste product URLs, one per line"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            {formData.priority_urls.length > 0
+              ? `${formData.priority_urls.length} URL${formData.priority_urls.length !== 1 ? 's' : ''} added — these will be processed first`
+              : 'Leave empty to process all products from the selected vendor'}
+          </p>
         </div>
 
         <div>
@@ -999,6 +1049,28 @@ function JobFormDialog({
               <span className="text-sm font-medium text-gray-700">Force Sync</span>
               <p className="text-xs text-gray-500">
                 Force sync server products with supabase
+              </p>
+            </div>
+          </label>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.force_reprocess}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  force_reprocess: e.target.checked,
+                })
+              }
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700">Force Reprocess</span>
+              <p className="text-xs text-gray-500">
+                Reprocess products even if already completed
               </p>
             </div>
           </label>

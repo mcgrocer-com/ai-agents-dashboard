@@ -98,54 +98,108 @@ async function getUnclassifiedProducts(
 
   if (retryError) {
     console.error('[Classify-Unclassified] Error querying retry log:', retryError);
-    // Continue anyway - worst case we'll try to classify a product that's also in retry
   }
 
   const excludeIds = (retryIds || []).map((r: any) => r.scraped_product_id);
 
-  // Query scraped_products where classification IS NULL
+  // Phase 1: Prioritize sync-ready products (all agent data complete but no classification)
+  // These are blocking ERPNext sync and should be classified first
+  const syncReadyProducts = await querySyncReadyUnclassified(supabase, batchSize, vendor, excludeIds);
+
+  if (syncReadyProducts.length >= batchSize) {
+    console.log(`[Classify-Unclassified] Found ${syncReadyProducts.length} sync-ready products (prioritized)`);
+    return syncReadyProducts;
+  }
+
+  // Phase 2: Fill remaining slots with any other unclassified products (oldest first)
+  const remaining = batchSize - syncReadyProducts.length;
+  const syncReadyIds = new Set(syncReadyProducts.map(p => p.id));
+
+  const otherProducts = await queryOtherUnclassified(supabase, remaining, vendor, excludeIds, syncReadyIds);
+
+  const combined = [...syncReadyProducts, ...otherProducts];
+  console.log(`[Classify-Unclassified] Found ${combined.length} products: ${syncReadyProducts.length} sync-ready (priority) + ${otherProducts.length} other`);
+  return combined;
+}
+
+/**
+ * Query unclassified products that have all agent data complete in pending_products.
+ * These are blocking ERPNext sync and should be classified first.
+ */
+async function querySyncReadyUnclassified(
+  supabase: any,
+  limit: number,
+  vendor?: string,
+  excludeIds: string[] = []
+): Promise<UnclassifiedProduct[]> {
+  const { data, error } = await supabase.rpc('get_sync_ready_unclassified', {
+    p_limit: limit,
+    p_vendor: vendor || null,
+  });
+
+  if (error) {
+    console.warn('[Classify-Unclassified] Sync-ready query failed, falling back to basic query:', error.message);
+    return [];
+  }
+
+  let filtered = data || [];
+
+  // Client-side exclude if needed
+  if (excludeIds.length > 0) {
+    const excludeSet = new Set(excludeIds);
+    filtered = filtered.filter((p: any) => !excludeSet.has(p.id));
+  }
+
+  return filtered.slice(0, limit);
+}
+
+/**
+ * Query any unclassified products (oldest first), excluding already-selected IDs.
+ */
+async function queryOtherUnclassified(
+  supabase: any,
+  limit: number,
+  vendor?: string,
+  excludeIds: string[] = [],
+  alreadySelectedIds: Set<string> = new Set()
+): Promise<UnclassifiedProduct[]> {
   let query = supabase
     .from('scraped_products')
     .select('id, name, description, vendor, url, category')
     .is('classification', null)
-    .not('name', 'is', null); // Skip products with no name
+    .not('name', 'is', null);
 
   if (vendor) {
     query = query.eq('vendor', vendor);
   }
 
-  // Exclude products already being retried
-  if (excludeIds.length > 0) {
-    // Use NOT IN filter - Supabase doesn't have a direct "not in" so we filter client-side for large sets
-    // For small sets, we can use .not('id', 'in', `(${excludeIds.join(',')})`)
-    if (excludeIds.length <= 100) {
-      query = query.not('id', 'in', `(${excludeIds.join(',')})`);
-    }
+  if (excludeIds.length > 0 && excludeIds.length <= 100) {
+    query = query.not('id', 'in', `(${excludeIds.join(',')})`);
   }
 
+  // Fetch extra to account for client-side filtering
+  const fetchLimit = limit + alreadySelectedIds.size + (excludeIds.length > 100 ? excludeIds.length : 0);
+
   const { data: products, error: queryError } = await query
-    .order('created_at', { ascending: true }) // Oldest first
-    .limit(batchSize);
+    .order('created_at', { ascending: true })
+    .limit(fetchLimit);
 
   if (queryError) {
     console.error('[Classify-Unclassified] Error querying scraped_products:', queryError);
-    throw new Error(`Failed to query scraped_products: ${queryError.message}`);
-  }
-
-  if (!products || products.length === 0) {
-    console.log('[Classify-Unclassified] No unclassified products found');
     return [];
   }
 
-  // If we couldn't filter by ID in the query (too many retry IDs), filter client-side
-  let filtered = products;
-  if (excludeIds.length > 100) {
-    const excludeSet = new Set(excludeIds);
-    filtered = products.filter((p: any) => !excludeSet.has(p.id));
-  }
+  let filtered = products || [];
 
-  console.log(`[Classify-Unclassified] Found ${filtered.length} unclassified products to process`);
-  return filtered;
+  // Client-side filtering
+  const excludeSet = excludeIds.length > 100 ? new Set(excludeIds) : null;
+  filtered = filtered.filter((p: any) => {
+    if (alreadySelectedIds.has(p.id)) return false;
+    if (excludeSet && excludeSet.has(p.id)) return false;
+    return true;
+  });
+
+  return filtered.slice(0, limit);
 }
 
 /**

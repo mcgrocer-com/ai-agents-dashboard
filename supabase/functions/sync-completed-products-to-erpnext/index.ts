@@ -5,14 +5,18 @@
  * Replaces the background threading approach from mcgrocer/main.py.
  *
  * Flow:
- * 1. Query products needing ERPNext sync (where agent status is 'complete' and erpnext_updated_at is NULL)
- * 2. Mark products as "syncing" to prevent duplicate processing
- * 3. Batch process products using ERPNext API (batch_size=5)
- * 4. Push to Production ERPNext (REQUIRED - failures block process)
- * 5. Verify successful updates via ERPNext API
- * 6. Update erpnext_updated_at timestamps for verified products
- * 7. Sync agent data back to scraped_products (category, breadcrumbs, ai_title, ai_description, weight, height, width, length, volumetric_weight)
- * 8. Clear sync marks for failed products (enable retry)
+ * 1. Query products needing ERPNext sync (where agent status is 'complete', classification IS NOT NULL, and erpnext_updated_at is NULL)
+ * 2. Filter out rejected classifications (pharmacy, pom, unclear, cbd, tobacco, fresh_perishable)
+ * 3. Mark products as "syncing" to prevent duplicate processing
+ * 4. Batch process products using ERPNext API (batch_size=25)
+ * 5. Push to Production ERPNext (REQUIRED - failures block process)
+ * 6. Verify successful updates via ERPNext API
+ * 7. Update erpnext_updated_at timestamps for verified products
+ * 8. Sync agent data back to scraped_products (category, breadcrumbs, ai_title, ai_description, weight, height, width, length, volumetric_weight)
+ * 9. Clear sync marks for failed products (enable retry)
+ *
+ * Note: Classification is handled by the classify-unclassified-products cron job.
+ * This function only syncs products that are already classified.
  */
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -28,7 +32,6 @@ import {
   type ExistingERPNextItem,
   productToERPNextFormat,
   sendToERPNextAPI,
-  fetchWithTimeout,
   getExistingERPNextItems,
   updateVerifiedProducts,
   syncAgentDataToScrapedProducts,
@@ -284,19 +287,20 @@ async function clearSyncMarks(productIds: string[]): Promise<number> {
 }
 
 /**
- * Process products classification validation
+ * Filter products by classification acceptance status.
  *
  * IMPORTANT: This is a critical safety function that prevents regulated medical products
  * from being added to ERPNext. UK law requires proper licensing for pharmacy and POM items.
  *
+ * Note: Classification is handled by the classify-unclassified-products cron job.
+ * All products reaching this point already have sp.classification IS NOT NULL.
+ *
  * Flow:
- * - Classifies unclassified products using Gemini AI (parallel batch processing with retry)
- * - Updates all classifications in parallel for optimal performance
- * - Filters out rejected products (pharmacy, pom, unclear)
+ * - Filters out rejected products (pharmacy, pom, unclear, cbd, tobacco, fresh_perishable)
  * - Syncs agent data to scraped_products before removal (preserves AI work)
  * - Removes rejected products from pending_products table
  *
- * @param products - Products to validate and classify
+ * @param products - Pre-classified products to validate
  * @returns Only products that are safe to sync to ERPNext (not_medicine or GSL only)
  */
 async function processClassificationValidation(
@@ -306,162 +310,10 @@ async function processClassificationValidation(
 
   console.log(`[CLASSIFICATION] Processing ${products.length} products for classification validation`);
 
-  const unclassifiedProducts: PendingProduct[] = [];
-  const alreadyClassifiedProducts: PendingProduct[] = [];
-
-  // Separate products by classification status
-  for (const product of products) {
-    if (!product.classification) {
-      unclassifiedProducts.push(product);
-    } else {
-      alreadyClassifiedProducts.push(product);
-    }
-  }
-
-  console.log(`[CLASSIFICATION] Initial breakdown: ${alreadyClassifiedProducts.length} already classified, ${unclassifiedProducts.length} need classification`);
-
-  // Step 1: Classify unclassified products in parallel
-  if (unclassifiedProducts.length > 0) {
-    console.log(`[CLASSIFICATION] Classifying ${unclassifiedProducts.length} unclassified products using Gemini AI (parallel batch)`);
-
-    // Check for API key
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!geminiApiKey) {
-      console.error(`[CLASSIFICATION] GEMINI_API_KEY not configured - cannot classify ${unclassifiedProducts.length} products`);
-      console.log(`[CLASSIFICATION] Proceeding with ${alreadyClassifiedProducts.length} already classified products only`);
-    } else {
-      // Import classification service with retry support
-      const { classifyProduct, RetryableError, GEMINI_MODELS } = await import('../_shared/gemini-classification.ts');
-
-      // Retry helper with model fallback
-      async function retryWithBackoff<T>(
-        fn: (modelName: string) => Promise<T>,
-        maxRetries: number = 3,
-        baseDelay: number = 1000
-      ): Promise<T> {
-        let lastError: Error | undefined;
-        const actualMaxRetries = Math.min(maxRetries, GEMINI_MODELS.length - 1);
-
-        for (let attempt = 0; attempt <= actualMaxRetries; attempt++) {
-          try {
-            const modelName = GEMINI_MODELS[attempt];
-            console.log(`[CLASSIFICATION Retry] Attempt ${attempt + 1}/${actualMaxRetries + 1} using model: ${modelName}`);
-            return await fn(modelName);
-          } catch (error) {
-            lastError = error instanceof Error ? error : new Error(String(error));
-
-            if (!(error instanceof RetryableError)) {
-              throw error;
-            }
-
-            if (attempt === actualMaxRetries) {
-              break;
-            }
-
-            const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
-            console.log(`[CLASSIFICATION Retry] Failed with ${lastError.name}, retrying in ${Math.round(delay)}ms with next model...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-        }
-
-        console.error(`[CLASSIFICATION Retry] All ${actualMaxRetries + 1} attempts failed across different models`);
-        throw lastError;
-      }
-
-      // Classify all products in parallel with retry logic
-      const classificationPromises = unclassifiedProducts.map(async (product) => {
-        // Validate scraped_product_db_id exists
-        if (!product.scraped_product_db_id) {
-          console.error(`[CLASSIFICATION] Product ${product.name} missing scraped_product_db_id - skipping`);
-          return {
-            product,
-            result: null,
-            error: 'Missing scraped_product_db_id'
-          };
-        }
-
-        try {
-          const result = await retryWithBackoff(
-            (modelName) => classifyProduct(
-              product.name || 'Unknown',
-              product.description || '',
-              geminiApiKey,
-              undefined, // No supabase client
-              modelName  // Model name from retry logic
-            ),
-            3, // Max 3 retries (will use up to 4 different models)
-            1000 // 1 second base delay
-          );
-
-          return {
-            product,
-            result,
-            error: null
-          };
-        } catch (error) {
-          console.error(`[CLASSIFICATION] Error classifying product ${product.name}:`, error);
-          return {
-            product,
-            result: null,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          };
-        }
-      });
-
-      const classificationResults = await Promise.all(classificationPromises);
-
-      // Build batch update data (only for products with valid scraped_product_db_id)
-      const updatePromises = classificationResults
-        .filter(({ product }) => product.scraped_product_db_id != null)
-        .map(({ product, result, error }) => {
-          if (result) {
-            // Update local product object
-            product.classification = result.classification;
-            product.rejected = result.rejected;
-
-            console.log(`[CLASSIFICATION] ${product.name}: ${result.classification} (rejected: ${result.rejected})`);
-
-            // Update database
-            return sql`
-              UPDATE scraped_products
-              SET classification = ${result.classification},
-                  rejected = ${result.rejected},
-                  classification_confidence = ${result.confidence},
-                  classification_reason = ${result.reason},
-                  updated_at = NOW()
-              WHERE id = ${product.scraped_product_db_id}
-            `;
-          } else {
-            // On error, mark as unclear and rejected for safety
-            product.classification = 'unclear';
-            product.rejected = true;
-
-            return sql`
-              UPDATE scraped_products
-              SET classification = 'unclear',
-                  rejected = true,
-                  classification_confidence = 0,
-                  classification_reason = ${`Classification failed: ${error}`},
-                  updated_at = NOW()
-              WHERE id = ${product.scraped_product_db_id}
-            `;
-          }
-        });
-
-      // Execute all updates in parallel
-      if (updatePromises.length > 0) {
-        await Promise.all(updatePromises);
-        console.log(`[CLASSIFICATION] Completed batch classification and database updates for ${updatePromises.length} products`);
-      }
-    }
-  }
-
-  // Step 2: Combine all products and separate by acceptance status
-  const allProducts = [...alreadyClassifiedProducts, ...unclassifiedProducts];
   const acceptedProducts: PendingProduct[] = [];
   const rejectedProducts: PendingProduct[] = [];
 
-  for (const product of allProducts) {
+  for (const product of products) {
     // Check if product is explicitly rejected in database
     if (product.rejected === true) {
       rejectedProducts.push(product);
@@ -485,21 +337,19 @@ async function processClassificationValidation(
       // Rejected: cannot sell
       rejectedProducts.push(product);
     } else {
-      // No classification or unknown type - treat as rejected for safety
-      console.warn(`[CLASSIFICATION] Product ${product.name} has unknown/null classification: "${classification}" - treating as rejected`);
+      // Unknown classification type - treat as rejected for safety
+      console.warn(`[CLASSIFICATION] Product ${product.name} has unknown classification: "${classification}" - treating as rejected`);
       rejectedProducts.push(product);
     }
   }
 
-  console.log(`[CLASSIFICATION] Final breakdown: ${acceptedProducts.length} accepted, ${rejectedProducts.length} rejected`);
+  console.log(`[CLASSIFICATION] Breakdown: ${acceptedProducts.length} accepted, ${rejectedProducts.length} rejected`);
 
-  // Step 3: Sync agent data to scraped_products BEFORE removing rejected products
+  // Sync agent data to scraped_products BEFORE removing rejected products
   // This preserves category, breadcrumbs, ai_title, ai_description, weight, dimensions, etc.
   if (rejectedProducts.length > 0) {
     console.log(`[CLASSIFICATION] Syncing agent data for ${rejectedProducts.length} rejected products before removal`);
 
-    // Create "verified" products list from rejected products (using their scraped_product_db_id)
-    // Note: We use dummy values for erpnext_modified and verified since these products won't go to ERPNext
     const rejectedVerified: VerifiedProduct[] = rejectedProducts
       .filter(p => p.scraped_product_db_id)
       .map(p => ({
@@ -515,7 +365,7 @@ async function processClassificationValidation(
     }
   }
 
-  // Step 4: Remove rejected products from pending_products table
+  // Remove rejected products from pending_products table
   if (rejectedProducts.length > 0) {
     console.log(`[CLASSIFICATION] Removing ${rejectedProducts.length} rejected products (pharmacy/pom/unclear) from pending_products`);
 
@@ -620,43 +470,6 @@ async function validateProductAgentData(product: PendingProduct): Promise<{
     isValid: invalidFields.length === 0,
     invalidFields
   };
-}
-
-/**
- * Get item from ERPNext by URL using frappe.desk.reportview.get endpoint
- * NOTE: This function is not currently used but kept for potential future use
- */
-async function getERPNextItemByUrl(url: string): Promise<{ name: string } | null> {
-  const erpnextBaseUrl = Deno.env.get("ERPNEXT_BASE_URL") || "https://erpnext.mcgrocer.com";
-  const erpnextAuthToken = Deno.env.get("ERPNEXT_AUTH_TOKEN");
-
-  if (!erpnextAuthToken) {
-    throw new Error("ERPNEXT_AUTH_TOKEN environment variable not set");
-  }
-
-  const response = await fetchWithTimeout(`${erpnextBaseUrl}/api/method/frappe.desk.reportview.get`, {
-    method: "POST",
-    headers: {
-      "Authorization": `token ${erpnextAuthToken}`,
-      "Content-Type": "application/json",
-      "Cookie": "full_name=Guest; sid=Guest; system_user=no; user_id=Guest; user_image="
-    },
-    body: JSON.stringify({
-      doctype: "Item",
-      filters: [["Item Supplier", "custom_product_url", "=", url]]
-    })
-  });
-
-  if (!response.ok) {
-    console.error(`Error checking item existence: ${response.status}`);
-    return null;
-  }
-
-  const result = await response.json();
-  if (result.message?.values && result.message.values.length > 0) {
-    return { name: result.message.values[0][0] };
-  }
-  return null;
 }
 
 /**
@@ -938,14 +751,12 @@ async function syncCompletedProducts(
       return result;
     }
 
-    // 2. Process classification validation
-    // - Classifies unclassified products
-    // - Filters out rejected products (pharmacy, pom, unclear)
-    // - Resets rejected products back to pending
+    // 2. Filter out rejected classifications (pharmacy, pom, unclear, etc.)
+    // Classification is handled by the classify-unclassified-products cron
     const products = await processClassificationValidation(allProducts);
 
     if (products.length === 0) {
-      console.log(`[SYNC] No products passed classification validation - all rejected or need classification`);
+      console.log(`[SYNC] No products passed classification validation - all rejected`);
       return result;
     }
 
