@@ -51,6 +51,10 @@ const ClassificationBadge = ({ classification, rejected }: ClassificationBadgePr
     fresh_perishable: {
       className: 'bg-cyan-100 text-cyan-800',
       label: 'Fresh/Perishable'
+    },
+    medical_device: {
+      className: 'bg-rose-100 text-rose-800',
+      label: 'IVD/Medical Device'
     }
   }
 

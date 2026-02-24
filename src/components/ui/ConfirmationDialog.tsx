@@ -5,19 +5,24 @@
  * Supports different variants (danger, warning, info) with appropriate styling.
  */
 
+import { useState, useEffect } from 'react'
 import { AlertTriangle, AlertCircle, Info } from 'lucide-react'
 import { createPortal } from 'react-dom'
 
 interface ConfirmationDialogProps {
   open: boolean
   onClose: () => void
-  onConfirm: () => void
+  onConfirm: (inputValue?: string) => void
   title: string
   message: string
   confirmText?: string
   cancelText?: string
   variant?: 'danger' | 'warning' | 'info'
   loading?: boolean
+  /** Optional text input field */
+  inputLabel?: string
+  inputPlaceholder?: string
+  inputRequired?: boolean
 }
 
 export function ConfirmationDialog({
@@ -30,7 +35,16 @@ export function ConfirmationDialog({
   cancelText = 'Cancel',
   variant = 'warning',
   loading = false,
+  inputLabel,
+  inputPlaceholder,
+  inputRequired = false,
 }: ConfirmationDialogProps) {
+  const [inputValue, setInputValue] = useState('')
+
+  useEffect(() => {
+    if (!open) setInputValue('')
+  }, [open])
+
   if (!open) return null
 
   const variantStyles = {
@@ -57,8 +71,11 @@ export function ConfirmationDialog({
   const style = variantStyles[variant]
   const IconComponent = style.Icon
 
+  const isConfirmDisabled = loading || (inputRequired && inputValue.trim() === '')
+
   const handleConfirm = () => {
-    onConfirm()
+    if (isConfirmDisabled) return
+    onConfirm(inputLabel ? inputValue.trim() : undefined)
     onClose()
   }
 
@@ -92,6 +109,20 @@ export function ConfirmationDialog({
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
             <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">{message}</p>
+            {inputLabel && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">{inputLabel}</label>
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !isConfirmDisabled) handleConfirm() }}
+                  placeholder={inputPlaceholder}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  autoFocus
+                />
+              </div>
+            )}
             <div className="flex gap-3 justify-end">
               <button
                 onClick={handleCancel}
@@ -102,7 +133,7 @@ export function ConfirmationDialog({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={loading}
+                disabled={isConfirmDisabled}
                 className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${style.buttonBg}`}
               >
                 {loading && (

@@ -28,7 +28,7 @@ export class QuotaExceededError extends RetryableError {
  */
 export interface ClassificationResult {
   rejected: boolean;
-  classification: 'not_medicine' | 'gsl' | 'pharmacy' | 'pom' | 'unclear' | 'cbd' | 'tobacco' | 'fresh_perishable';
+  classification: 'not_medicine' | 'gsl' | 'pharmacy' | 'pom' | 'unclear' | 'cbd' | 'tobacco' | 'fresh_perishable' | 'medical_device';
   reason: string;
   confidence: number;
 }
@@ -107,6 +107,35 @@ const TOBACCO_FRAGRANCE_EXCLUSIONS = [
 /** Context words that indicate hemp seed (food) not CBD */
 const HEMP_FOOD_EXCLUSIONS = [
   'hemp seed', 'hemp protein', 'hemp heart', 'hemp flour', 'hemp milk',
+];
+
+/** IVD (In-Vitro Diagnostic) and pregnancy test terms - customs restricted */
+const IVD_TERMS = [
+  'pregnancy test', 'pregnancy testing', 'pregnancy kit',
+  'ovulation test', 'ovulation kit', 'fertility test', 'fertility kit',
+  'hcg test', 'hcg strip',
+  'blood glucose test', 'blood glucose monitor', 'blood glucose meter',
+  'glucose test strip', 'glucose strips', 'glucose meter',
+  'cholesterol test', 'cholesterol kit',
+  'drug test', 'drug testing kit', 'drug screening',
+  'urine test strip', 'urine analysis', 'urine dipstick',
+  'rapid test kit', 'rapid antigen test', 'lateral flow test', 'lateral flow',
+  'covid test', 'covid-19 test', 'coronavirus test',
+  'hiv test', 'hiv testing', 'hiv self-test',
+  'blood typing', 'blood type test',
+  'ketone test', 'ketone strip',
+  'diagnostic test kit', 'diagnostic kit',
+  'self-test kit', 'self-testing kit', 'home test kit', 'home testing kit',
+  'in vitro diagnostic', 'in-vitro diagnostic', 'ivd test',
+  'lancet', 'lancets', 'blood lancet',
+  'test cassette', 'test cartridge',
+  'clearblue', 'first response',
+];
+
+/** Exclusions - products that mention IVD terms in non-IVD context */
+const IVD_EXCLUSIONS = [
+  'test drive', 'test match', 'pregnancy pillow', 'pregnancy vitamin',
+  'pregnancy book', 'pregnancy journal', 'pregnancy support',
 ];
 
 // NOTE: Fresh/perishable pre-filter removed — too many false positives
@@ -228,6 +257,25 @@ export function preClassifyProduct(
     }
   }
 
+  // --- IVD / PREGNANCY TEST PRE-FILTER ---
+
+  // Exclusion: skip if product uses IVD terms in non-diagnostic context
+  const isIvdExcluded = IVD_EXCLUSIONS.some(term => nameLower.includes(term));
+
+  if (!isIvdExcluded) {
+    for (const term of IVD_TERMS) {
+      if (nameLower.includes(term)) {
+        console.log(`[Classification] Pre-filter MEDICAL_DEVICE match: IVD term "${term}" in "${productName}"`);
+        return {
+          rejected: true,
+          classification: 'medical_device',
+          reason: `Pre-filter: In-Vitro Diagnostic (IVD) product - customs restricted, cannot be shipped "${term}"`,
+          confidence: 0.98,
+        };
+      }
+    }
+  }
+
   // Fresh/perishable detection is handled entirely by Gemini AI (no pre-filter)
   // to avoid false positives on generic food terms like "carrot", "potato", "butter"
 
@@ -248,7 +296,9 @@ A product is a medicine if it meets ALL of these criteria:
 - Falls under UK Medicines Act 1968 or Human Medicines Regulations 2012
 
 WHAT IS NOT A MEDICINE?
-Medical DEVICES and electronic health devices are NOT medicines, even if they make health or treatment claims. Devices work through physical/mechanical/electrical means, NOT through pharmacological, immunological, or metabolic action. Examples: tDCS headsets, TENS machines, blood pressure monitors, insulin pumps, hearing aids, nebulisers, thermometers, fitness trackers, pulse oximeters.
+Medical DEVICES and electronic health devices are NOT medicines, even if they make health or treatment claims. Devices work through physical/mechanical/electrical means, NOT through pharmacological, immunological, or metabolic action. Examples of ACCEPTED devices: tDCS headsets, TENS machines, blood pressure monitors, insulin pumps, hearing aids, nebulisers, thermometers, fitness trackers, pulse oximeters.
+
+EXCEPTION - In-Vitro Diagnostic (IVD) products and pregnancy test kits ARE restricted (see medical_device category below). These cannot be shipped internationally as customs will block them. IVD products include: pregnancy tests, ovulation tests, blood glucose test strips/monitors, cholesterol test kits, drug test kits, rapid antigen/lateral flow tests, HIV self-tests, urine test strips, diagnostic test cassettes, lancets for blood sampling.
 
 Also NOT medicines: food, drinks, cosmetics, personal care items, household products, electronics, toys, sex toys, dietary supplements without medicinal claims, vitamins, herbal products without medicinal claims.
 
@@ -292,9 +342,15 @@ CLASSIFICATION CATEGORIES:
    IMPORTANT: Shelf-stable versions (canned, dried, UHT, long-life, ambient) should NOT be classified as fresh_perishable - classify as not_medicine instead
    → REJECTED
 
+9. medical_device - In-Vitro Diagnostic (IVD) products, pregnancy test kits, and related diagnostic medical devices
+   These products are regulated under the UK Medical Devices Regulations and CANNOT be shipped internationally (customs will block them).
+   Examples: Pregnancy tests (Clearblue, First Response), ovulation test kits, blood glucose monitors/test strips, cholesterol test kits, drug testing kits, rapid antigen/lateral flow tests (COVID, flu), HIV self-test kits, urine test strips/dipsticks, blood lancets, diagnostic test cassettes/cartridges, ketone test strips, blood typing kits
+   IMPORTANT: Non-IVD medical devices like TENS machines, blood pressure monitors, hearing aids, thermometers, fitness trackers should be classified as not_medicine (they are ACCEPTED)
+   → REJECTED
+
 DECISION RULE:
 - ACCEPTED = not_medicine OR gsl
-- REJECTED = pharmacy OR pom OR unclear OR cbd OR tobacco OR fresh_perishable
+- REJECTED = pharmacy OR pom OR unclear OR cbd OR tobacco OR fresh_perishable OR medical_device
 
 DEFAULT STANCE: If unsure whether something is a medicine at all, classify as "not_medicine" with lower confidence. Only use "unclear" if you're certain it's a medicine but unsure which type.
 
@@ -362,7 +418,23 @@ Category: "Dairy > Milk"
 
 Product: "John West Tuna Chunks in Brine 4x145g"
 Category: "Food & Drink > Canned Fish"
-{"result": "ACCEPTED", "classification": "not_medicine", "reason": "Canned/shelf-stable food product, not perishable", "confidence": 0.98}`;
+{"result": "ACCEPTED", "classification": "not_medicine", "reason": "Canned/shelf-stable food product, not perishable", "confidence": 0.98}
+
+Product: "Clearblue Digital Pregnancy Test 2 Pack"
+Category: "Health & Wellness > Family Planning"
+{"result": "REJECTED", "classification": "medical_device", "reason": "In-Vitro Diagnostic (IVD) pregnancy test - customs restricted, cannot be shipped internationally", "confidence": 0.99}
+
+Product: "OneTouch Verio Blood Glucose Test Strips 50 Pack"
+Category: "Health & Wellness > Diabetes"
+{"result": "REJECTED", "classification": "medical_device", "reason": "IVD blood glucose test strips - regulated diagnostic device, customs restricted", "confidence": 0.99}
+
+Product: "FlowFlex COVID-19 Rapid Antigen Test 5 Pack"
+Category: "Health & Wellness > Testing"
+{"result": "REJECTED", "classification": "medical_device", "reason": "IVD rapid lateral flow test kit - customs restricted diagnostic device", "confidence": 0.99}
+
+Product: "Omron M3 Comfort Blood Pressure Monitor"
+Category: "Health & Wellness > Medical Devices"
+{"result": "ACCEPTED", "classification": "not_medicine", "reason": "Non-IVD medical device (blood pressure monitor) - works through mechanical/electrical means, not a diagnostic test kit", "confidence": 0.95}`;
 
 /**
  * Fetch custom guidelines from database and append to base system prompt
@@ -484,7 +556,7 @@ Classify this product according to UK medicine regulations and return the JSON r
 
     // Validate classification value
     const validClassifications: ClassificationResult['classification'][] = [
-      'not_medicine', 'gsl', 'pharmacy', 'pom', 'unclear', 'cbd', 'tobacco', 'fresh_perishable'
+      'not_medicine', 'gsl', 'pharmacy', 'pom', 'unclear', 'cbd', 'tobacco', 'fresh_perishable', 'medical_device'
     ];
     if (!validClassifications.includes(classification)) {
       throw new Error(`Invalid classification value: ${classification}`);

@@ -86,6 +86,7 @@ export function BulkClassificationDialog({
               <option value="cbd">CBD Product</option>
               <option value="tobacco">Tobacco/Vape</option>
               <option value="fresh_perishable">Fresh/Perishable</option>
+              <option value="medical_device">IVD/Medical Device</option>
             </select>
             <p className="text-xs text-secondary-500 mt-1">
               {classification === 'not_medicine' && 'Non-medicinal product - ACCEPTED'}
@@ -96,6 +97,7 @@ export function BulkClassificationDialog({
               {classification === 'cbd' && 'CBD/Cannabidiol product - REJECTED'}
               {classification === 'tobacco' && 'Tobacco/vape/nicotine product - REJECTED'}
               {classification === 'fresh_perishable' && 'Fresh/perishable product - REJECTED'}
+              {classification === 'medical_device' && 'IVD/diagnostic medical device - REJECTED'}
             </p>
           </div>
 
@@ -118,7 +120,7 @@ export function BulkClassificationDialog({
           </div>
 
           {/* Warning */}
-          {(classification === 'pharmacy' || classification === 'pom' || classification === 'unclear' || classification === 'cbd' || classification === 'tobacco' || classification === 'fresh_perishable') && (
+          {(classification === 'pharmacy' || classification === 'pom' || classification === 'unclear' || classification === 'cbd' || classification === 'tobacco' || classification === 'fresh_perishable' || classification === 'medical_device') && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
               <p className="text-sm text-amber-800">
                 <strong>Warning:</strong> These products will be marked as REJECTED and removed from the processing queue.

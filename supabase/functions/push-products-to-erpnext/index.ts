@@ -48,11 +48,11 @@ import {
   type PendingProduct,
   type ERPNextItemPayload,
   type VerifiedProduct,
+  type ExistingERPNextItem,
   productToERPNextFormat,
   sendToERPNextAPI,
-
   getExistingERPNextItems,
-  verifyItemsUpdated,
+  getValidMainImage,
   updateVerifiedProducts,
   syncAgentDataToScrapedProducts,
   clearSuccessfulSyncErrors,
@@ -123,8 +123,13 @@ async function processPush(products: PendingProduct[]): Promise<PushResult[]> {
         continue;
       }
 
-      const erpnextItemCode = existingItems.get(product.url) || product.item_code;
+      // Extract itemCode from ExistingERPNextItem object (not the object itself)
+      const existingItem: ExistingERPNextItem | undefined = existingItems.get(product.url);
+      const erpnextItemCode = existingItem?.itemCode || product.item_code;
       const isUpdate = !!erpnextItemCode;
+
+      // Check sync_full_product flag
+      const syncFullProduct = product.sync_full_product === true;
 
       // For creation, require either copyright description or original description
       if (!isUpdate && !product.non_copyright_desc && !product.description) {
@@ -137,11 +142,23 @@ async function processPush(products: PendingProduct[]): Promise<PushResult[]> {
         continue;
       }
 
+      // Validate main_image URL — ERPNext requires valid http/https URLs
+      const validMainImage = getValidMainImage(product);
+      if (!validMainImage) {
+        results.push({
+          productId: product.id,
+          url: product.url,
+          status: 'failed',
+          error: 'Invalid or missing main_image URL'
+        });
+        continue;
+      }
+
       if (erpnextItemCode && !product.item_code) {
         product.item_code = erpnextItemCode;
       }
 
-      const itemData = productToERPNextFormat(product, isUpdate);
+      const itemData = productToERPNextFormat(product, isUpdate, syncFullProduct);
       batchItems.push(itemData);
       productUrlMap.set(product.url, product);
 
@@ -165,18 +182,42 @@ async function processPush(products: PendingProduct[]): Promise<PushResult[]> {
 
     console.log(`[PUSH] ERPNext API Response:`, JSON.stringify(apiResponse, null, 2));
 
-    const createdOrUpdated: string[] = [];
+    const verified: VerifiedProduct[] = [];
     const failed: Array<{ productId: string; url: string; error: string }> = [];
 
     if (apiResponse.message && typeof apiResponse.message === "object") {
       const message = apiResponse.message;
       const createdItems = message.created_items || [];
       const updatedItems = message.updated_items || [];
+      const skippedItems = message.skipped_items || [];
       const errors = message.errors || [];
 
-      console.log(`[PUSH] Created=${createdItems.length}, Updated=${updatedItems.length}, Errors=${errors.length}`);
+      console.log(`[PUSH] Created=${createdItems.length}, Updated=${updatedItems.length}, Skipped=${skippedItems.length}, Errors=${errors.length}`);
 
-      createdOrUpdated.push(...createdItems, ...updatedItems);
+      const now = new Date().toISOString();
+
+      // Process created + updated + skipped items
+      // Handle both new format (object with item_code + url) and legacy format (plain string)
+      for (const item of [...createdItems, ...updatedItems, ...skippedItems]) {
+        const itemCode = typeof item === 'string' ? item : item.item_code;
+        const itemUrl = typeof item === 'string' ? null : item.url;
+
+        // Match to our product by URL (preferred) or item_code (fallback)
+        const product = itemUrl
+          ? productUrlMap.get(itemUrl)
+          : products.find(p => p.item_code === itemCode);
+
+        if (product && itemCode) {
+          verified.push({
+            product_id: product.id,
+            item_code: itemCode,
+            erpnext_modified: now,
+            verified: true
+          });
+        } else {
+          console.warn(`[PUSH] Could not match item ${itemCode} (url: ${itemUrl}) to a product`);
+        }
+      }
 
       // Extract error details
       for (const err of errors) {
@@ -190,12 +231,9 @@ async function processPush(products: PendingProduct[]): Promise<PushResult[]> {
           });
         }
       }
+    } else {
+      console.warn(`[PUSH] API Response unexpected format. Type: ${typeof apiResponse.message}`);
     }
-
-    // Verify items in ERPNext
-    const verified = createdOrUpdated.length > 0
-      ? await verifyItemsUpdated(createdOrUpdated, products)
-      : [];
 
     // Update verified products
     if (verified.length > 0) {

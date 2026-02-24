@@ -350,6 +350,47 @@ class ProductsService {
   }
 
   /**
+   * Clear validation errors for specific products by their IDs.
+   * Used for "Remove Errors" when products are selected.
+   */
+  async clearValidationErrorsByIds(productIds: string[]): Promise<{ resetCount: number; error: Error | null }> {
+    try {
+      const { data, error } = await supabase.rpc('clear_validation_errors_by_ids', {
+        p_scraped_product_ids: productIds,
+      })
+
+      if (error) throw error
+
+      const resetCount = data?.[0]?.reset_count ?? 0
+      return { resetCount: Number(resetCount), error: null }
+    } catch (error) {
+      console.error('[ProductsService] Error clearing validation errors by IDs:', error)
+      return { resetCount: 0, error: error as Error }
+    }
+  }
+
+  /**
+   * Get all product URLs for a given validation error category.
+   * Used for "Archive All in Category" bulk action.
+   */
+  async getValidationErrorUrls(category?: string, vendor?: string): Promise<{ urls: string[]; error: Error | null }> {
+    try {
+      const { data, error } = await supabase.rpc('get_validation_error_urls', {
+        p_error_category: category || null,
+        p_vendor: vendor || null,
+      })
+
+      if (error) throw error
+
+      const urls = (data || []).map((row: any) => row.url).filter(Boolean)
+      return { urls, error: null }
+    } catch (error) {
+      console.error('[ProductsService] Error fetching validation error URLs:', error)
+      return { urls: [], error: error as Error }
+    }
+  }
+
+  /**
    * Get single product by ID
    */
   async getProductById(id: string) {

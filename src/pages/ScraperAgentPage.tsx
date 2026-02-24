@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban, RotateCcw } from 'lucide-react'
+import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban, RotateCcw, Eraser } from 'lucide-react'
 import { productsService, blacklistService } from '@/services'
 
 import { supabase } from '@/lib/supabase/client'
@@ -16,6 +16,7 @@ import { AdvancedFilterBuilder, type FilterRule, type FilterColumn } from '@/com
 import { VendorStatistics } from '@/components/scraper/VendorStatistics'
 import { VendorSelectionDialog } from '@/components/scraper/VendorSelectionDialog'
 import { ProductActionsMenu } from '@/components/scraper/ProductActionsMenu'
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { useToast } from '@/hooks/useToast'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { SyncDataSource } from '@/services/user.service'
@@ -106,6 +107,12 @@ export function ScraperAgentPage() {
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
   const [isSendingBulk, setIsSendingBulk] = useState(false)
+  const [isBlacklistingAll, setIsBlacklistingAll] = useState(false)
+  const [blacklistConfirmOpen, setBlacklistConfirmOpen] = useState(false)
+  const [blacklistConfirmMessage, setBlacklistConfirmMessage] = useState('')
+  const [removeErrorsConfirmOpen, setRemoveErrorsConfirmOpen] = useState(false)
+  const [removeErrorsConfirmMessage, setRemoveErrorsConfirmMessage] = useState('')
+  const [isRemovingErrors, setIsRemovingErrors] = useState(false)
 
   // Vendor selection dialog states
   const [showVendorDialog, setShowVendorDialog] = useState(false)
@@ -383,7 +390,7 @@ export function ScraperAgentPage() {
     }
   }, [selectedProductIds, showToast, clearSelection, fetchProducts])
 
-  // Bulk action to blacklist products
+  // Bulk action to blacklist products (also disables in ERPNext)
   const handleBulkBlacklist = useCallback(async () => {
     if (selectedProductIds.size === 0) {
       showToast('No products selected', 'error')
@@ -398,7 +405,12 @@ export function ScraperAgentPage() {
 
     try {
       const productIdsArray = Array.from(selectedProductIds)
-      const result = await blacklistService.bulkBlacklistProducts(productIdsArray, reason.trim())
+      // Collect URLs from selected products for ERPNext disable
+      const selectedUrls = products
+        .filter((p) => selectedProductIds.has(p.id) && p.url)
+        .map((p) => p.url as string)
+
+      const result = await blacklistService.bulkBlacklistProducts(productIdsArray, reason.trim(), selectedUrls)
 
       if (result.success) {
         showToast(
@@ -414,7 +426,7 @@ export function ScraperAgentPage() {
       console.error('Error in bulk blacklist:', err)
       showToast('An error occurred while blacklisting products', 'error')
     }
-  }, [selectedProductIds, showToast, clearSelection, fetchProducts])
+  }, [selectedProductIds, products, showToast, clearSelection, fetchProducts])
 
   // Bulk action to unblacklist products
   const handleBulkUnblacklist = useCallback(async () => {
@@ -442,6 +454,177 @@ export function ScraperAgentPage() {
       showToast('An error occurred while unblacklisting products', 'error')
     }
   }, [selectedProductIds, showToast, clearSelection, fetchProducts])
+
+  // Open blacklist confirmation dialog
+  const handleBlacklistValidation = useCallback(() => {
+    const categoryLabels: Record<string, string> = {
+      http_error: 'HTTP Error',
+      timeout: 'Timeout',
+      unreachable: 'Unreachable',
+      post_processing: 'Post-processing',
+      image_mismatch: 'Image Mismatch',
+    }
+
+    const label = validationErrorCategory
+      ? categoryLabels[validationErrorCategory] || validationErrorCategory
+      : 'All Errors'
+
+    const hasSelection = selectionMode && selectedProductIds.size > 0
+    const vendorFilter = filters.find((f) => f.column === 'vendor')
+    const activeVendor = vendorFilter && vendorFilter.value !== 'all' ? vendorFilter.value : undefined
+
+    const message = hasSelection
+      ? `This will blacklist ${selectedProductIds.size} selected product${selectedProductIds.size === 1 ? '' : 's'} and disable ${selectedProductIds.size === 1 ? 'it' : 'them'} in ERPNext.`
+      : `This will blacklist ALL ${count.toLocaleString()} products with "${label}" validation errors${activeVendor ? ` for vendor "${activeVendor}"` : ''} and disable them in ERPNext.`
+
+    setBlacklistConfirmMessage(message)
+    setBlacklistConfirmOpen(true)
+  }, [validationErrorCategory, filters, selectionMode, selectedProductIds, count])
+
+  // Execute blacklist after confirmation
+  const handleBlacklistConfirm = useCallback(async (reason?: string) => {
+    if (!reason || reason.trim() === '') {
+      showToast('Blacklist operation cancelled - reason is required', 'info')
+      return
+    }
+
+    const hasSelection = selectionMode && selectedProductIds.size > 0
+    const vendorFilter = filters.find((f) => f.column === 'vendor')
+    const activeVendor = vendorFilter && vendorFilter.value !== 'all' ? vendorFilter.value : undefined
+
+    const categoryLabels: Record<string, string> = {
+      http_error: 'HTTP Error',
+      timeout: 'Timeout',
+      unreachable: 'Unreachable',
+      post_processing: 'Post-processing',
+      image_mismatch: 'Image Mismatch',
+    }
+    const label = validationErrorCategory
+      ? categoryLabels[validationErrorCategory] || validationErrorCategory
+      : 'All Errors'
+
+    setIsBlacklistingAll(true)
+    try {
+      if (hasSelection) {
+        const productIdsArray = Array.from(selectedProductIds)
+        const selectedUrls = products
+          .filter((p) => selectedProductIds.has(p.id) && p.url)
+          .map((p) => p.url as string)
+
+        const result = await blacklistService.bulkBlacklistProducts(productIdsArray, reason.trim(), selectedUrls)
+        if (result.success) {
+          showToast(
+            `Successfully blacklisted ${result.data?.count || productIdsArray.length} product${productIdsArray.length === 1 ? '' : 's'}`,
+            'success'
+          )
+        } else {
+          showToast(result.error?.message || 'Failed to blacklist products', 'error')
+        }
+      } else {
+        const { urls, error } = await productsService.getValidationErrorUrls(
+          validationErrorCategory,
+          activeVendor
+        )
+
+        if (error) throw error
+
+        if (urls.length === 0) {
+          showToast('No products found to blacklist', 'info')
+          return
+        }
+
+        const result = await blacklistService.bulkBlacklistByUrls(urls, reason.trim())
+        if (result.success) {
+          showToast(
+            `Successfully blacklisted ${result.data?.count || urls.length} "${label}" product${urls.length === 1 ? '' : 's'}`,
+            'success'
+          )
+        } else {
+          showToast(result.error?.message || 'Failed to blacklist products', 'error')
+        }
+      }
+
+      clearSelection()
+      await fetchProducts()
+    } catch (err) {
+      console.error('Error blacklisting validation products:', err)
+      showToast('An error occurred while blacklisting products', 'error')
+    } finally {
+      setIsBlacklistingAll(false)
+    }
+  }, [validationErrorCategory, filters, selectionMode, selectedProductIds, products, showToast, clearSelection, fetchProducts])
+
+  // Open remove errors confirmation dialog
+  const handleRemoveErrorsValidation = useCallback(() => {
+    const categoryLabels: Record<string, string> = {
+      http_error: 'HTTP Error',
+      timeout: 'Timeout',
+      unreachable: 'Unreachable',
+      post_processing: 'Post-processing',
+      image_mismatch: 'Image Mismatch',
+    }
+
+    const label = validationErrorCategory
+      ? categoryLabels[validationErrorCategory] || validationErrorCategory
+      : 'All Errors'
+
+    const hasSelection = selectionMode && selectedProductIds.size > 0
+
+    const message = hasSelection
+      ? `This will clear validation errors for ${selectedProductIds.size} selected product${selectedProductIds.size === 1 ? '' : 's'}. They will be re-validated on the next pipeline run.`
+      : `This will clear ALL ${count.toLocaleString()} "${label}" validation errors. Products will be re-validated on the next pipeline run.`
+
+    setRemoveErrorsConfirmMessage(message)
+    setRemoveErrorsConfirmOpen(true)
+  }, [validationErrorCategory, selectionMode, selectedProductIds, count])
+
+  // Execute remove errors after confirmation
+  const handleRemoveErrorsConfirm = useCallback(async () => {
+    const hasSelection = selectionMode && selectedProductIds.size > 0
+
+    const categoryLabels: Record<string, string> = {
+      http_error: 'HTTP Error',
+      timeout: 'Timeout',
+      unreachable: 'Unreachable',
+      post_processing: 'Post-processing',
+      image_mismatch: 'Image Mismatch',
+    }
+    const label = validationErrorCategory
+      ? categoryLabels[validationErrorCategory] || validationErrorCategory
+      : 'All Errors'
+
+    setIsRemovingErrors(true)
+    try {
+      if (hasSelection) {
+        const productIdsArray = Array.from(selectedProductIds)
+        const { resetCount, error } = await productsService.clearValidationErrorsByIds(productIdsArray)
+        if (error) throw error
+        showToast(
+          `Cleared validation errors for ${resetCount} product${resetCount === 1 ? '' : 's'}`,
+          'success'
+        )
+      } else {
+        if (!validationErrorCategory) {
+          showToast('Please select an error category first', 'info')
+          return
+        }
+        const { resetCount, error } = await productsService.resetValidationErrors(validationErrorCategory)
+        if (error) throw error
+        showToast(
+          `Cleared ${resetCount} "${label}" validation error${resetCount === 1 ? '' : 's'}`,
+          'success'
+        )
+      }
+
+      clearSelection()
+      await fetchProducts()
+    } catch (err) {
+      console.error('Error removing validation errors:', err)
+      showToast('An error occurred while removing validation errors', 'error')
+    } finally {
+      setIsRemovingErrors(false)
+    }
+  }, [validationErrorCategory, selectionMode, selectedProductIds, showToast, clearSelection, fetchProducts])
 
   // Handler for saving vendor sync preferences
   const handleSaveVendorPreferences = async (
@@ -695,11 +878,37 @@ export function ScraperAgentPage() {
               {isResettingErrors ? 'Resetting...' : 'Retry All'}
             </button>
           )}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={handleRemoveErrorsValidation}
+              disabled={isRemovingErrors}
+              className="px-4 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 border border-amber-300 hover:bg-amber-200 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Eraser className="w-3.5 h-3.5" />
+              {isRemovingErrors
+                ? 'Removing...'
+                : selectionMode && selectedProductIds.size > 0
+                  ? `Remove ${selectedProductIds.size} Errors`
+                  : 'Remove All Errors'}
+            </button>
+            <button
+              onClick={handleBlacklistValidation}
+              disabled={isBlacklistingAll}
+              className="px-4 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Ban className="w-3.5 h-3.5" />
+              {isBlacklistingAll
+                ? 'Blacklisting...'
+                : selectionMode && selectedProductIds.size > 0
+                  ? `Blacklist ${selectedProductIds.size} Selected`
+                  : 'Blacklist All'}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Bulk Actions Bar - Shows when items are selected */}
-      {selectionMode && selectedProductIds.size > 0 && (
+      {/* Bulk Actions Bar - Shows when items are selected (not on validation tab, which has its own blacklist button) */}
+      {selectionMode && selectedProductIds.size > 0 && activeTab !== 'validation_issues' && (
         <div className="flex-shrink-0 bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CheckSquare className="w-5 h-5 text-primary-600" />
@@ -813,6 +1022,31 @@ export function ScraperAgentPage() {
         prioritizeCopyright={preferences?.prioritize_copyright || false}
         dataSource={preferences?.sync_data_source || 'All'}
         onSave={handleSaveVendorPreferences}
+      />
+
+      <ConfirmationDialog
+        open={blacklistConfirmOpen}
+        onClose={() => setBlacklistConfirmOpen(false)}
+        onConfirm={handleBlacklistConfirm}
+        title="Blacklist Products"
+        message={blacklistConfirmMessage}
+        confirmText="Blacklist"
+        variant="danger"
+        loading={isBlacklistingAll}
+        inputLabel="Reason for blacklisting"
+        inputPlaceholder="e.g. Invalid product images"
+        inputRequired
+      />
+
+      <ConfirmationDialog
+        open={removeErrorsConfirmOpen}
+        onClose={() => setRemoveErrorsConfirmOpen(false)}
+        onConfirm={handleRemoveErrorsConfirm}
+        title="Remove Validation Errors"
+        message={removeErrorsConfirmMessage}
+        confirmText="Remove Errors"
+        variant="warning"
+        loading={isRemovingErrors}
       />
     </div>
   )

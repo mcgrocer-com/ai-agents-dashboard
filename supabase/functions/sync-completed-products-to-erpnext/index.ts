@@ -6,7 +6,7 @@
  *
  * Flow:
  * 1. Query products needing ERPNext sync (where agent status is 'complete', classification IS NOT NULL, and erpnext_updated_at is NULL)
- * 2. Filter out rejected classifications (pharmacy, pom, unclear, cbd, tobacco, fresh_perishable)
+ * 2. Filter out rejected classifications (pharmacy, pom, unclear, cbd, tobacco, fresh_perishable, medical_device)
  * 3. Mark products as "syncing" to prevent duplicate processing
  * 4. Batch process products using ERPNext API (batch_size=25)
  * 5. Push to Production ERPNext (REQUIRED - failures block process)
@@ -333,7 +333,7 @@ async function processClassificationValidation(
     if (classification === 'not_medicine' || classification === 'gsl') {
       // Accepted: safe to sell
       acceptedProducts.push(product);
-    } else if (classification === 'pharmacy' || classification === 'pom' || classification === 'unclear' || classification === 'cbd' || classification === 'tobacco' || classification === 'fresh_perishable') {
+    } else if (classification === 'pharmacy' || classification === 'pom' || classification === 'unclear' || classification === 'cbd' || classification === 'tobacco' || classification === 'fresh_perishable' || classification === 'medical_device') {
       // Rejected: cannot sell
       rejectedProducts.push(product);
     } else {

@@ -133,7 +133,8 @@ export async function getClassificationStats(): Promise<ServiceResponse<Classifi
       unclear: 0,
       cbd: 0,
       tobacco: 0,
-      fresh_perishable: 0
+      fresh_perishable: 0,
+      medical_device: 0
     }
 
     // Count each classification type separately using count queries
@@ -301,7 +302,7 @@ export async function updateClassification(
     const wasRejected = currentProduct?.rejected === true
 
     // Determine if the new classification should mark as rejected
-    const isRejected = classification === 'pharmacy' || classification === 'pom' || classification === 'unclear' || classification === 'cbd' || classification === 'tobacco' || classification === 'fresh_perishable'
+    const isRejected = classification === 'pharmacy' || classification === 'pom' || classification === 'unclear' || classification === 'cbd' || classification === 'tobacco' || classification === 'fresh_perishable' || classification === 'medical_device'
 
     // Update scraped_products with new classification
     const { error: updateError } = await supabase

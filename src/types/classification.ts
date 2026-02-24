@@ -16,7 +16,7 @@
  * - pom: Prescription Only Medicine (REJECTED)
  * - unclear: Borderline or uncertain classification (REJECTED)
  */
-export type ClassificationType = 'not_medicine' | 'gsl' | 'pharmacy' | 'pom' | 'unclear' | 'cbd' | 'tobacco' | 'fresh_perishable'
+export type ClassificationType = 'not_medicine' | 'gsl' | 'pharmacy' | 'pom' | 'unclear' | 'cbd' | 'tobacco' | 'fresh_perishable' | 'medical_device'
 
 /**
  * Classification result from AI
@@ -46,6 +46,7 @@ export interface ClassificationStats {
     cbd: number
     tobacco: number
     fresh_perishable: number
+    medical_device: number
   }
 }
 
