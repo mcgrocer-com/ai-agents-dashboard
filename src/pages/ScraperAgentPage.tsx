@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban, RotateCcw, Eraser } from 'lucide-react'
+import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban, RotateCcw, Eraser, Power, Undo2 } from 'lucide-react'
 import { productsService, blacklistService } from '@/services'
 
 import { supabase } from '@/lib/supabase/client'
@@ -113,6 +113,12 @@ export function ScraperAgentPage() {
   const [removeErrorsConfirmOpen, setRemoveErrorsConfirmOpen] = useState(false)
   const [removeErrorsConfirmMessage, setRemoveErrorsConfirmMessage] = useState('')
   const [isRemovingErrors, setIsRemovingErrors] = useState(false)
+  const [enableConfirmOpen, setEnableConfirmOpen] = useState(false)
+  const [enableConfirmMessage, setEnableConfirmMessage] = useState('')
+  const [isEnabling, setIsEnabling] = useState(false)
+  const [unblacklistConfirmOpen, setUnblacklistConfirmOpen] = useState(false)
+  const [unblacklistConfirmMessage, setUnblacklistConfirmMessage] = useState('')
+  const [isUnblacklisting, setIsUnblacklisting] = useState(false)
 
   // Vendor selection dialog states
   const [showVendorDialog, setShowVendorDialog] = useState(false)
@@ -437,7 +443,10 @@ export function ScraperAgentPage() {
 
     try {
       const productIdsArray = Array.from(selectedProductIds)
-      const result = await blacklistService.bulkUnblacklistProducts(productIdsArray)
+      const selectedUrls = products
+        .filter((p) => selectedProductIds.has(p.id) && p.url)
+        .map((p) => p.url as string)
+      const result = await blacklistService.bulkUnblacklistProducts(productIdsArray, selectedUrls)
 
       if (result.success) {
         showToast(
@@ -625,6 +634,155 @@ export function ScraperAgentPage() {
       setIsRemovingErrors(false)
     }
   }, [validationErrorCategory, selectionMode, selectedProductIds, showToast, clearSelection, fetchProducts])
+
+  // Open enable in ERPNext confirmation dialog
+  const handleEnableValidation = useCallback(() => {
+    const hasSelection = selectionMode && selectedProductIds.size > 0
+
+    const message = hasSelection
+      ? `This will re-enable ${selectedProductIds.size} selected product${selectedProductIds.size === 1 ? '' : 's'} in ERPNext.`
+      : `This will re-enable ALL ${count.toLocaleString()} blacklisted products in ERPNext.`
+
+    setEnableConfirmMessage(message)
+    setEnableConfirmOpen(true)
+  }, [selectionMode, selectedProductIds, count])
+
+  // Execute enable in ERPNext after confirmation
+  const handleEnableConfirm = useCallback(async () => {
+    const hasSelection = selectionMode && selectedProductIds.size > 0
+
+    setIsEnabling(true)
+    try {
+      if (hasSelection) {
+        const selectedUrls = products
+          .filter((p) => selectedProductIds.has(p.id) && p.url)
+          .map((p) => p.url as string)
+
+        if (selectedUrls.length === 0) {
+          showToast('No product URLs found for selected products', 'info')
+          return
+        }
+
+        const result = await supabase.functions.invoke('disable-products-in-erpnext', {
+          body: { urls: selectedUrls, action: 'enable' },
+        })
+
+        if (result.error) {
+          showToast(`ERPNext enable failed: ${result.error.message}`, 'error')
+        } else {
+          showToast(
+            `Successfully enabled ${selectedUrls.length} product${selectedUrls.length === 1 ? '' : 's'} in ERPNext`,
+            'success'
+          )
+        }
+      } else {
+        // Enable all blacklisted products - get their URLs
+        const { data: blacklistedProducts, error } = await supabase
+          .from('scraped_products')
+          .select('url')
+          .eq('blacklisted', true)
+          .not('url', 'is', null)
+
+        if (error) throw error
+
+        const urls = (blacklistedProducts || []).map((p: { url: string }) => p.url).filter(Boolean)
+
+        if (urls.length === 0) {
+          showToast('No blacklisted product URLs found', 'info')
+          return
+        }
+
+        const result = await supabase.functions.invoke('disable-products-in-erpnext', {
+          body: { urls, action: 'enable' },
+        })
+
+        if (result.error) {
+          showToast(`ERPNext enable failed: ${result.error.message}`, 'error')
+        } else {
+          showToast(
+            `Successfully enabled ${urls.length} product${urls.length === 1 ? '' : 's'} in ERPNext`,
+            'success'
+          )
+        }
+      }
+    } catch (err) {
+      console.error('Error enabling products in ERPNext:', err)
+      showToast('An error occurred while enabling products', 'error')
+    } finally {
+      setIsEnabling(false)
+    }
+  }, [selectionMode, selectedProductIds, products, showToast])
+
+  // Open unblacklist confirmation dialog
+  const handleUnblacklistValidation = useCallback(() => {
+    const hasSelection = selectionMode && selectedProductIds.size > 0
+
+    const message = hasSelection
+      ? `This will unblacklist ${selectedProductIds.size} selected product${selectedProductIds.size === 1 ? '' : 's'} and re-enable ${selectedProductIds.size === 1 ? 'it' : 'them'} in ERPNext.`
+      : `This will unblacklist ALL ${count.toLocaleString()} blacklisted products and re-enable them in ERPNext.`
+
+    setUnblacklistConfirmMessage(message)
+    setUnblacklistConfirmOpen(true)
+  }, [selectionMode, selectedProductIds, count])
+
+  // Execute unblacklist after confirmation
+  const handleUnblacklistConfirm = useCallback(async () => {
+    const hasSelection = selectionMode && selectedProductIds.size > 0
+
+    setIsUnblacklisting(true)
+    try {
+      if (hasSelection) {
+        const productIdsArray = Array.from(selectedProductIds)
+        const selectedUrls = products
+          .filter((p) => selectedProductIds.has(p.id) && p.url)
+          .map((p) => p.url as string)
+
+        const result = await blacklistService.bulkUnblacklistProducts(productIdsArray, selectedUrls)
+        if (result.success) {
+          showToast(
+            `Successfully unblacklisted ${result.data?.count || productIdsArray.length} product${productIdsArray.length === 1 ? '' : 's'}`,
+            'success'
+          )
+        } else {
+          showToast(result.error?.message || 'Failed to unblacklist products', 'error')
+        }
+      } else {
+        // Unblacklist all - get all blacklisted product IDs and URLs
+        const { data: blacklistedProducts, error } = await supabase
+          .from('scraped_products')
+          .select('id, url')
+          .eq('blacklisted', true)
+
+        if (error) throw error
+
+        const ids = (blacklistedProducts || []).map((p: { id: string }) => p.id)
+        const urls = (blacklistedProducts || []).map((p: { url: string }) => p.url).filter(Boolean)
+
+        if (ids.length === 0) {
+          showToast('No blacklisted products found', 'info')
+          return
+        }
+
+        const result = await blacklistService.bulkUnblacklistProducts(ids, urls)
+        if (result.success) {
+          showToast(
+            `Successfully unblacklisted ${result.data?.count || ids.length} product${ids.length === 1 ? '' : 's'}`,
+            'success'
+          )
+        } else {
+          showToast(result.error?.message || 'Failed to unblacklist products', 'error')
+        }
+      }
+
+      clearSelection()
+      await fetchProducts()
+    } catch (err) {
+      console.error('Error unblacklisting products:', err)
+      showToast('An error occurred while unblacklisting products', 'error')
+    } finally {
+      setIsUnblacklisting(false)
+    }
+  }, [selectionMode, selectedProductIds, products, showToast, clearSelection, fetchProducts])
 
   // Handler for saving vendor sync preferences
   const handleSaveVendorPreferences = async (
@@ -907,8 +1065,41 @@ export function ScraperAgentPage() {
         </div>
       )}
 
-      {/* Bulk Actions Bar - Shows when items are selected (not on validation tab, which has its own blacklist button) */}
-      {selectionMode && selectedProductIds.size > 0 && activeTab !== 'validation_issues' && (
+      {/* Blacklisted Tab Action Bar - Persistent buttons for enable/unblacklist */}
+      {activeTab === 'blacklisted' && (
+        <div className="flex-shrink-0 flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-secondary-500 mr-1">Actions:</span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={handleEnableValidation}
+              disabled={isEnabling}
+              className="px-4 py-1.5 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Power className="w-3.5 h-3.5" />
+              {isEnabling
+                ? 'Enabling...'
+                : selectionMode && selectedProductIds.size > 0
+                  ? `Enable ${selectedProductIds.size} Selected`
+                  : 'Enable All in ERPNext'}
+            </button>
+            <button
+              onClick={handleUnblacklistValidation}
+              disabled={isUnblacklisting}
+              className="px-4 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 border border-amber-300 hover:bg-amber-200 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              {isUnblacklisting
+                ? 'Unblacklisting...'
+                : selectionMode && selectedProductIds.size > 0
+                  ? `Unblacklist ${selectedProductIds.size} Selected`
+                  : 'Unblacklist All'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Actions Bar - Shows when items are selected (not on validation/blacklisted tabs, which have their own buttons) */}
+      {selectionMode && selectedProductIds.size > 0 && activeTab !== 'validation_issues' && activeTab !== 'blacklisted' && (
         <div className="flex-shrink-0 bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CheckSquare className="w-5 h-5 text-primary-600" />
@@ -1047,6 +1238,28 @@ export function ScraperAgentPage() {
         confirmText="Remove Errors"
         variant="warning"
         loading={isRemovingErrors}
+      />
+
+      <ConfirmationDialog
+        open={enableConfirmOpen}
+        onClose={() => setEnableConfirmOpen(false)}
+        onConfirm={handleEnableConfirm}
+        title="Enable Products in ERPNext"
+        message={enableConfirmMessage}
+        confirmText="Enable"
+        variant="info"
+        loading={isEnabling}
+      />
+
+      <ConfirmationDialog
+        open={unblacklistConfirmOpen}
+        onClose={() => setUnblacklistConfirmOpen(false)}
+        onConfirm={handleUnblacklistConfirm}
+        title="Unblacklist Products"
+        message={unblacklistConfirmMessage}
+        confirmText="Unblacklist"
+        variant="warning"
+        loading={isUnblacklisting}
       />
     </div>
   )
@@ -1200,6 +1413,7 @@ const ProductCard = memo(({ product, showPinned, onRefresh, selectionMode = fals
               <ProductActionsMenu
                 productId={product.id}
                 productName={product.name || 'Unnamed Product'}
+                productUrl={product.url}
                 onActionComplete={onRefresh}
               />
             </div>

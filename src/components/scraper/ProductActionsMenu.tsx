@@ -15,12 +15,13 @@ import { blacklistService } from '@/services'
 interface ProductActionsMenuProps {
   productId: string
   productName: string
+  productUrl?: string | null
   isBlacklisted?: boolean
   onBlacklistChange?: () => void
   onActionComplete?: () => void
 }
 
-export function ProductActionsMenu({ productId, productName, isBlacklisted, onBlacklistChange, onActionComplete }: ProductActionsMenuProps) {
+export function ProductActionsMenu({ productId, productName, productUrl, isBlacklisted, onBlacklistChange, onActionComplete }: ProductActionsMenuProps) {
   const { showToast } = useToast()
   const [isOpen, setIsOpen] = useState(false)
   const [showResyncConfirm, setShowResyncConfirm] = useState(false)
@@ -100,7 +101,7 @@ export function ProductActionsMenu({ productId, productName, isBlacklisted, onBl
       // Remove from blacklist
       setIsBlacklisting(true)
       try {
-        const result = await blacklistService.unblacklistProduct(productId)
+        const result = await blacklistService.unblacklistProduct(productId, productUrl)
 
         if (result.success) {
           showToast(`Product "${productName}" removed from blacklist`, 'success')
@@ -129,7 +130,7 @@ export function ProductActionsMenu({ productId, productName, isBlacklisted, onBl
 
       setIsBlacklisting(true)
       try {
-        const result = await blacklistService.blacklistProduct(productId, reason)
+        const result = await blacklistService.blacklistProduct(productId, reason, productUrl)
 
         if (result.success) {
           showToast(`Product "${productName}" successfully blacklisted`, 'success')

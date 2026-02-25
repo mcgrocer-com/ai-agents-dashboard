@@ -17,6 +17,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const urls: string[] = body.urls || [];
+    const action: string = body.action || "disable";
 
     if (!Array.isArray(urls) || urls.length === 0) {
       return new Response(
@@ -31,8 +32,21 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (action !== "enable" && action !== "disable") {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "action must be 'enable' or 'disable'",
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     console.log(
-      `[DISABLE] Disabling ${urls.length} products in ERPNext`
+      `[ERPNEXT] ${action === "enable" ? "Enabling" : "Disabling"} ${urls.length} products in ERPNext`
     );
 
     const response = await fetch(
@@ -42,14 +56,14 @@ Deno.serve(async (req) => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ urls }),
+        body: JSON.stringify({ urls, action }),
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error(
-        `[DISABLE] ERPNext API error (${response.status}): ${errorText}`
+        `[ERPNEXT] ERPNext API error (${response.status}): ${errorText}`
       );
       return new Response(
         JSON.stringify({
@@ -65,7 +79,7 @@ Deno.serve(async (req) => {
 
     const result = await response.json();
     console.log(
-      `[DISABLE] Successfully disabled ${urls.length} products`
+      `[ERPNEXT] Successfully ${action === "enable" ? "enabled" : "disabled"} ${urls.length} products`
     );
 
     return new Response(

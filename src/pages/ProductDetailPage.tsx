@@ -161,7 +161,7 @@ export function ProductDetailPage() {
     setUnblacklisting(true)
 
     try {
-      const { success, error } = await blacklistService.unblacklistProduct(product.id)
+      const { success, error } = await blacklistService.unblacklistProduct(product.id, product.url)
 
       if (error || !success) {
         throw error || new Error('Failed to remove product from blacklist')

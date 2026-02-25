@@ -12,15 +12,15 @@ interface ServiceResponse<T> {
 }
 
 /**
- * Disable products in ERPNext by their URLs.
- * Calls the disable-products-in-erpnext edge function which holds the ERPNext auth token server-side.
+ * Toggle products in ERPNext (enable or disable).
+ * Calls the disable-products-in-erpnext edge function server-side.
  */
-async function disableInErpNext(urls: string[]): Promise<{ success: boolean; error?: string }> {
+async function toggleInErpNext(urls: string[], action: 'enable' | 'disable' = 'disable'): Promise<{ success: boolean; error?: string }> {
   if (urls.length === 0) return { success: true }
 
   try {
     const { data, error } = await supabase.functions.invoke('disable-products-in-erpnext', {
-      body: { urls },
+      body: { urls, action },
     })
 
     if (error) {
@@ -48,7 +48,7 @@ export async function blacklistProduct(
   try {
     // Disable in ERPNext if URL is available
     if (url) {
-      const erpResult = await disableInErpNext([url])
+      const erpResult = await toggleInErpNext([url])
       if (!erpResult.success) {
         console.warn(`[Blacklist] ERPNext disable failed for ${productId}: ${erpResult.error}`)
       }
@@ -81,9 +81,18 @@ export async function blacklistProduct(
  * Remove a product from the blacklist
  */
 export async function unblacklistProduct(
-  productId: string
+  productId: string,
+  url?: string | null
 ): Promise<ServiceResponse<{ message: string }>> {
   try {
+    // Re-enable in ERPNext if URL is available
+    if (url) {
+      const erpResult = await toggleInErpNext([url], 'enable')
+      if (!erpResult.success) {
+        console.warn(`[Blacklist] ERPNext enable failed for ${productId}: ${erpResult.error}`)
+      }
+    }
+
     const { error } = await supabase
       .from('scraped_products')
       .update({
@@ -119,7 +128,7 @@ export async function bulkBlacklistProducts(
   try {
     // Disable in ERPNext if URLs are provided
     if (urls && urls.length > 0) {
-      const erpResult = await disableInErpNext(urls)
+      const erpResult = await toggleInErpNext(urls)
       if (!erpResult.success) {
         console.warn(`[Blacklist] ERPNext bulk disable failed: ${erpResult.error}`)
       }
@@ -158,7 +167,7 @@ export async function bulkBlacklistByUrls(
 ): Promise<ServiceResponse<{ count: number }>> {
   try {
     // Disable in ERPNext
-    const erpResult = await disableInErpNext(urls)
+    const erpResult = await toggleInErpNext(urls)
     if (!erpResult.success) {
       console.warn(`[Blacklist] ERPNext bulk disable failed: ${erpResult.error}`)
     }
@@ -191,9 +200,18 @@ export async function bulkBlacklistByUrls(
  * Bulk unblacklist multiple products
  */
 export async function bulkUnblacklistProducts(
-  productIds: string[]
+  productIds: string[],
+  urls?: string[]
 ): Promise<ServiceResponse<{ count: number }>> {
   try {
+    // Re-enable in ERPNext if URLs are provided
+    if (urls && urls.length > 0) {
+      const erpResult = await toggleInErpNext(urls, 'enable')
+      if (!erpResult.success) {
+        console.warn(`[Blacklist] ERPNext bulk enable failed: ${erpResult.error}`)
+      }
+    }
+
     const { error, count } = await supabase
       .from('scraped_products')
       .update({
