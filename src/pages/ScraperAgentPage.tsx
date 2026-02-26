@@ -434,36 +434,6 @@ export function ScraperAgentPage() {
     }
   }, [selectedProductIds, products, showToast, clearSelection, fetchProducts])
 
-  // Bulk action to unblacklist products
-  const handleBulkUnblacklist = useCallback(async () => {
-    if (selectedProductIds.size === 0) {
-      showToast('No products selected', 'error')
-      return
-    }
-
-    try {
-      const productIdsArray = Array.from(selectedProductIds)
-      const selectedUrls = products
-        .filter((p) => selectedProductIds.has(p.id) && p.url)
-        .map((p) => p.url as string)
-      const result = await blacklistService.bulkUnblacklistProducts(productIdsArray, selectedUrls)
-
-      if (result.success) {
-        showToast(
-          `Successfully unblacklisted ${result.data?.count || productIdsArray.length} ${productIdsArray.length === 1 ? 'product' : 'products'}`,
-          'success'
-        )
-        clearSelection()
-        await fetchProducts()
-      } else {
-        showToast(result.error?.message || 'Failed to unblacklist products', 'error')
-      }
-    } catch (err) {
-      console.error('Error in bulk unblacklist:', err)
-      showToast('An error occurred while unblacklisting products', 'error')
-    }
-  }, [selectedProductIds, showToast, clearSelection, fetchProducts])
-
   // Open blacklist confirmation dialog
   const handleBlacklistValidation = useCallback(() => {
     const categoryLabels: Record<string, string> = {
@@ -1121,23 +1091,13 @@ export function ScraperAgentPage() {
               <Send className="w-4 h-4" />
               <span>{isSendingBulk ? 'Sending...' : 'Send to Copyright Agent'}</span>
             </button>
-            {activeTab === 'blacklisted' ? (
-              <button
-                onClick={handleBulkUnblacklist}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
-              >
-                <Ban className="w-4 h-4" />
-                <span>Unblacklist Selected</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleBulkBlacklist}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
-              >
-                <Ban className="w-4 h-4" />
-                <span>Blacklist Selected</span>
-              </button>
-            )}
+            <button
+              onClick={handleBulkBlacklist}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
+            >
+              <Ban className="w-4 h-4" />
+              <span>Blacklist Selected</span>
+            </button>
             <button
               onClick={clearSelection}
               className="flex items-center gap-2 px-4 py-2 border border-secondary-300 bg-white text-secondary-700 rounded-lg text-sm font-medium hover:bg-secondary-50"

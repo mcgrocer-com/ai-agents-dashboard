@@ -10,7 +10,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react'
-import { Package, MoreVertical, Trash2, CheckSquare, Square, type LucideIcon } from 'lucide-react'
+import { Package, MoreVertical, Trash2, CheckSquare, Square, CloudUpload, AlertTriangle, Clock, type LucideIcon } from 'lucide-react'
 import type { AgentProduct, AgentStatus } from '@/types'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import type { AgentType } from '@/services/agents.service'
@@ -145,6 +145,19 @@ export function AgentProductCard({
   const agentStatus = getAgentStatus()
   const agentConfidence = getAgentConfidence()
 
+  // Derive ERPNext sync status from pending data fields
+  const getSyncStatus = (): 'synced' | 'failed' | 'pending' | null => {
+    const { erpnext_updated_at, failed_sync_at } = pendingData
+    if (erpnext_updated_at && (!failed_sync_at || new Date(failed_sync_at) < new Date(erpnext_updated_at))) {
+      return 'synced'
+    }
+    if (failed_sync_at && (!erpnext_updated_at || new Date(failed_sync_at) > new Date(erpnext_updated_at))) {
+      return 'failed'
+    }
+    return null
+  }
+  const syncStatus = getSyncStatus()
+
   // Format price - use the utility function
   const formatPrice = (price: number | null) => {
     if (!price) return 'N/A'
@@ -234,6 +247,34 @@ export function AgentProductCard({
               {pendingData.updated_at && (
                 <span className="text-xs text-secondary-500 font-medium">
                   {formatRelativeTime(pendingData.updated_at)}
+                </span>
+              )}
+              {/* ERPNext Sync Status Badge */}
+              {syncStatus && (
+                <span
+                  className={`text-xs px-2 py-0.5 rounded flex items-center gap-1 ${
+                    syncStatus === 'synced'
+                      ? 'bg-blue-100 text-blue-700'
+                      : syncStatus === 'failed'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-gray-100 text-gray-700'
+                  }`}
+                  title={
+                    syncStatus === 'synced'
+                      ? `Synced to ERPNext${pendingData.item_code ? ` (${pendingData.item_code})` : ''}`
+                      : syncStatus === 'failed'
+                        ? `Sync failed${pendingData.failed_sync_error_message ? `: ${pendingData.failed_sync_error_message}` : ''}`
+                        : 'Not yet synced'
+                  }
+                >
+                  {syncStatus === 'synced' && <CloudUpload className="w-3 h-3" />}
+                  {syncStatus === 'failed' && <AlertTriangle className="w-3 h-3" />}
+                  {syncStatus === 'pending' && <Clock className="w-3 h-3" />}
+                  <span>
+                    {syncStatus === 'synced' && 'Synced'}
+                    {syncStatus === 'failed' && 'Failed'}
+                    {syncStatus === 'pending' && 'Pending'}
+                  </span>
                 </span>
               )}
               {/* Actions Menu - Only for Copyright Agent */}
