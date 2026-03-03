@@ -59,9 +59,17 @@ const TOBACCO_BRANDS = [
 
 /** Unambiguous tobacco product terms - these alone confirm tobacco */
 const TOBACCO_PRODUCT_TERMS = [
-  'cigarette', 'cigarettes', 'cigarillo', 'cigarillos', 'cigar',
+  'cigarette', 'cigarettes', 'cigarillo', 'cigarillos',
   'rolling tobacco', 'tobacco sticks', 'heated tobacco',
   'superkings', 'superking',
+];
+
+/** "cigar" needs special handling — exclude cigar accessories and beverages.
+ *  These products contain "cigar" but are NOT tobacco products. */
+const CIGAR_EXCLUSIONS = [
+  'humidor', 'cutter', 'case', 'ashtray', 'holder', 'lighter', 'box',
+  'whisky', 'whiskey', 'malt', 'bourbon', 'rum', 'brandy', 'cognac',
+  'scent', 'fragrance', 'perfume', 'candle', 'cologne',
 ];
 
 /** Packaging patterns that confirm tobacco when combined with a brand */
@@ -80,12 +88,21 @@ const VAPE_ONLY_BRANDS = [
   'edge vape', 'nordic spirit',
 ];
 
-/** Vape/e-cigarette terms - unambiguous */
+/** Vape/e-cigarette terms - unambiguous (simple substring match) */
 const VAPE_TERMS = [
   'vape liquid', 'vape pod', 'vape pods', 'vape kit', 'vape refill', 'vape juice',
-  'e-liquid', 'e liquid', 'e-cigarette', 'e cigarette',
+  'e-liquid', 'e-cigarette',
   'disposable vape', 'nicotine pouch', 'nicotine pouches',
-  'nicotine salt', 'nic salt',
+  'nicotine salt',
+];
+
+/** Vape terms requiring word-boundary matching to avoid false positives.
+ *  e.g. "e liquid" must not match "Matte Liquid" or "Rescue Liquid",
+ *       "nic salt" must not match "Electronic Salt" */
+const VAPE_REGEX_TERMS = [
+  { pattern: /(?:^|\s)e[\s-]?liquid/i, label: 'e liquid' },
+  { pattern: /(?:^|\s)e[\s-]?cigarette/i, label: 'e cigarette' },
+  { pattern: /(?:^|\s)nic[\s-]?salt/i, label: 'nic salt' },
 ];
 
 /** CBD product terms */
@@ -142,6 +159,19 @@ const IVD_EXCLUSIONS = [
 // (e.g. "carrot" matching baby food, "potato" matching soup, "butter" matching biscuits).
 // Gemini AI now handles all fresh_perishable classification with full product context.
 
+/** NRT (Nicotine Replacement Therapy) brands — licensed medicines, NOT tobacco */
+const NRT_BRANDS = ['nicorette', 'niquitin', 'nicassist'];
+
+/** NRT product terms — these describe licensed medicine forms for smoking cessation */
+const NRT_PRODUCT_TERMS = [
+  'nicotine patch', 'nicotine patches',
+  'nicotine gum',
+  'nicotine lozenge', 'nicotine lozenges',
+  'nicotine inhalator', 'nicotine inhaler',
+  'nicotine nasal spray',
+  'stop smoking aid',
+];
+
 /**
  * Deterministic pre-filter for obvious tobacco/CBD products.
  * Returns a ClassificationResult if high-confidence match found, null otherwise.
@@ -152,13 +182,33 @@ export function preClassifyProduct(
 ): ClassificationResult | null {
   const nameLower = productName.toLowerCase();
 
+  // --- NRT (NICOTINE REPLACEMENT THERAPY) PRE-FILTER ---
+  // Must run BEFORE tobacco filter: NRT products are licensed medicines (pharmacy), not tobacco.
+  // Catches Nicorette, NiQuitin, NicAssist, and generic NRT product descriptions.
+
+  const isNrtBrand = NRT_BRANDS.some(brand => nameLower.includes(brand));
+  const isNrtProduct = NRT_PRODUCT_TERMS.some(term => nameLower.includes(term));
+
+  if (isNrtBrand || isNrtProduct) {
+    const matchedTerm = isNrtBrand
+      ? NRT_BRANDS.find(b => nameLower.includes(b))!
+      : NRT_PRODUCT_TERMS.find(t => nameLower.includes(t))!;
+    console.log(`[Classification] Pre-filter NRT/PHARMACY match: "${matchedTerm}" in "${productName}"`);
+    return {
+      rejected: true,
+      classification: 'pharmacy',
+      reason: `Pre-filter: Nicotine Replacement Therapy (NRT) product - licensed medicine "${matchedTerm}"`,
+      confidence: 0.97,
+    };
+  }
+
   // --- TOBACCO PRE-FILTER ---
 
   // Exclusion: skip if product is clearly a fragrance/candle with "tobacco" as a scent note
   const isFragranceContext = TOBACCO_FRAGRANCE_EXCLUSIONS.some(term => nameLower.includes(term));
 
   if (!isFragranceContext) {
-    // Rule 1: Unambiguous tobacco product terms (e.g. "Cigarettes", "Rolling Tobacco")
+    // Rule 1a: Unambiguous tobacco product terms (e.g. "Cigarettes", "Rolling Tobacco")
     for (const term of TOBACCO_PRODUCT_TERMS) {
       if (nameLower.includes(term)) {
         console.log(`[Classification] Pre-filter TOBACCO match: product term "${term}" in "${productName}"`);
@@ -167,6 +217,20 @@ export function preClassifyProduct(
           classification: 'tobacco',
           reason: `Pre-filter: product name contains tobacco/cigarette term "${term}"`,
           confidence: 0.99,
+        };
+      }
+    }
+
+    // Rule 1b: "cigar" requires special handling - exclude accessories and beverages
+    if (nameLower.includes('cigar') && !nameLower.includes('cigarette')) {
+      const isCigarExcluded = CIGAR_EXCLUSIONS.some(term => nameLower.includes(term));
+      if (!isCigarExcluded) {
+        console.log(`[Classification] Pre-filter TOBACCO match: cigar product in "${productName}"`);
+        return {
+          rejected: true,
+          classification: 'tobacco',
+          reason: `Pre-filter: product name contains cigar term`,
+          confidence: 0.98,
         };
       }
     }
@@ -201,7 +265,7 @@ export function preClassifyProduct(
       }
     }
 
-    // Rule 4: Vape/e-cigarette terms
+    // Rule 4a: Vape/e-cigarette terms (simple substring match)
     for (const term of VAPE_TERMS) {
       if (nameLower.includes(term)) {
         console.log(`[Classification] Pre-filter TOBACCO match: vape term "${term}" in "${productName}"`);
@@ -214,6 +278,19 @@ export function preClassifyProduct(
       }
     }
 
+    // Rule 4b: Vape terms requiring word-boundary matching (avoid "Matte Liquid", "Electronic Salt" etc.)
+    for (const { pattern, label } of VAPE_REGEX_TERMS) {
+      if (pattern.test(productName)) {
+        console.log(`[Classification] Pre-filter TOBACCO match: vape regex term "${label}" in "${productName}"`);
+        return {
+          rejected: true,
+          classification: 'tobacco',
+          reason: `Pre-filter: product name contains vape/e-cigarette term "${label}"`,
+          confidence: 0.98,
+        };
+      }
+    }
+
     // Rule 5: Short brand names requiring word-boundary matching (avoid false positives)
     // "blu" would false-match "blue", so we use regex word boundary
     const shortBrandPatterns = [
@@ -221,10 +298,13 @@ export function preClassifyProduct(
     ];
     for (const { pattern, brand } of shortBrandPatterns) {
       if (pattern.test(productName)) {
-        // Still require a packaging term or vape-related context
+        // Require actual vape/tobacco context — NOT generic "ml" (which matches any "300ml" product)
         const hasVapeContext = VAPE_TERMS.some(t => nameLower.includes(t))
+          || VAPE_REGEX_TERMS.some(({ pattern: p }) => p.test(productName))
           || TOBACCO_PACKAGING_TERMS.some(t => nameLower.includes(t))
-          || nameLower.includes('mg') || nameLower.includes('ml');
+          || nameLower.includes('nicotine') || nameLower.includes('vape')
+          || nameLower.includes('pod') || nameLower.includes('refill')
+          || nameLower.includes('puff') || nameLower.includes('mg nicotine');
         if (hasVapeContext) {
           console.log(`[Classification] Pre-filter TOBACCO match: short brand "${brand}" with vape context in "${productName}"`);
           return {

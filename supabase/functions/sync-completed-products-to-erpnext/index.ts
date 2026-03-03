@@ -120,12 +120,17 @@ async function validateAndResetInvalidAgents(): Promise<{
       )
   `;
 
-  // Reset SEO status for products with missing title or description
+  // Reset SEO status for products with missing title, description, meta_title, or meta_description
   const seoResult = await sql`
     UPDATE pending_products
     SET seo_status = 'pending'
     WHERE seo_status = 'complete'
-      AND (ai_title IS NULL OR ai_title = '' OR ai_description IS NULL OR ai_description = '')
+      AND (
+        ai_title IS NULL OR ai_title = ''
+        OR ai_description IS NULL OR ai_description = ''
+        OR meta_title IS NULL OR meta_title = ''
+        OR meta_description IS NULL OR meta_description = ''
+      )
   `;
 
   // Reset copyright status for products with missing or empty copyright data
@@ -233,6 +238,7 @@ async function getProductsNeedingSync(
       AND sp.blacklisted IS NOT TRUE
       AND (sp.rejected IS NOT TRUE OR sp.rejected IS NULL)
       AND sp.classification IS NOT NULL
+      AND (sp.variants IS NULL OR sp.variants::text = 'null' OR sp.variants::text = '[]')
       ${vendorClause}
       ${copyrightClause}
     ORDER BY
@@ -424,11 +430,15 @@ async function validateProductAgentData(product: PendingProduct): Promise<{
                             (product.length !== null && product.length > 0);
   if (!hasValidDimensions) invalidFields.push('dimensions');
 
-  // SEO validation
+  // SEO validation - all four fields are required
   const hasValidSEO = product.ai_title &&
                      product.ai_title !== '' &&
                      product.ai_description &&
-                     product.ai_description !== '';
+                     product.ai_description !== '' &&
+                     product.meta_title &&
+                     product.meta_title !== '' &&
+                     product.meta_description &&
+                     product.meta_description !== '';
   if (!hasValidSEO) invalidFields.push('SEO');
 
   // If validation failed, reset the appropriate agent statuses to 'pending'
@@ -760,11 +770,9 @@ async function syncCompletedProducts(
       return result;
     }
 
-    // 3. Mark products as syncing (prevent duplicates)
-    const productIds = products.map(p => p.id);
-    result.marked_syncing = await markProductsSyncing(productIds);
-
-    // 4. Process in batches (with time budget enforcement)
+    // 3. Process in batches (with time budget enforcement)
+    // NOTE: Products are marked as syncing batch-by-batch (not all upfront) to minimize
+    // stale locks when 546 platform timeouts kill the function before cleanup runs.
     for (let i = 0; i < products.length; i += apiBatchSize) {
       // Check time budget before starting a new batch
       const elapsed = Date.now() - syncStartTime;
@@ -772,13 +780,16 @@ async function syncCompletedProducts(
         const remainingProducts = products.length - i;
         console.warn(`[SYNC] Time budget exceeded (${Math.round(elapsed / 1000)}s / ${WALL_CLOCK_BUDGET_MS / 1000}s). Stopping with ${remainingProducts} products remaining for next run.`);
         result.errors.push(`Time budget exceeded after ${Math.round(elapsed / 1000)}s - ${remainingProducts} products deferred to next run`);
-        // Clear sync marks for unprocessed products so they retry next run
-        const unprocessedIds = products.slice(i).map(p => p.id);
-        await clearSyncMarks(unprocessedIds);
         break;
       }
 
       const batch = products.slice(i, i + apiBatchSize);
+
+      // Mark only THIS batch as syncing (minimizes stale locks on 546 timeout)
+      const batchIds = batch.map(p => p.id);
+      await markProductsSyncing(batchIds);
+      result.marked_syncing += batchIds.length;
+
       console.log(`[SYNC] Processing batch ${Math.floor(i / apiBatchSize) + 1}: ${batch.length} products (elapsed: ${Math.round(elapsed / 1000)}s)`);
 
       try {

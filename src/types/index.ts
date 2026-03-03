@@ -16,6 +16,7 @@ export type {
   DashboardMetrics,
   ProductFilters,
   ValidationErrorCategory,
+  SyncFilter,
   FaqItem,
 } from './database'
 

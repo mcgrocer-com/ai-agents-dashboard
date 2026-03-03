@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react'
-import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw, RotateCcw, Settings, Power } from 'lucide-react'
+import { CheckCircle, Database, CloudUpload, AlertCircle, Send, Info, RefreshCw, RotateCcw, Settings, Power, Clock, ArrowUpCircle } from 'lucide-react'
 import { scraperProductsService } from '@/services/scraperProducts.service'
 import { supabase } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/useToast'
@@ -14,14 +14,18 @@ import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { FailedSyncDialog } from '@/components/scraper/FailedSyncDialog'
 import type { VendorStatistics as VendorStats } from '@/types/statistics'
 
+type SyncFilterType = 'pending_sync' | 'needs_resync'
+
 interface VendorStatisticsProps {
   vendor: string
   onConfigureClick?: () => void
   syncEnabled?: boolean
   onSyncToggle?: (enabled: boolean) => Promise<boolean>
+  activeSyncFilter?: SyncFilterType
+  onSyncFilterClick?: (filter: SyncFilterType) => void
 }
 
-export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSyncToggle }: VendorStatisticsProps) {
+export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSyncToggle, activeSyncFilter, onSyncFilterClick }: VendorStatisticsProps) {
   const { showToast } = useToast()
   const [stats, setStats] = useState<VendorStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -186,8 +190,8 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
   // Loading skeleton
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
             className="bg-white rounded-lg shadow-sm border border-secondary-200 p-6 animate-pulse"
@@ -228,6 +232,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
       color: 'green' as const,
       description: 'Products with category and weight data',
       onClick: undefined as (() => void) | undefined,
+      active: false,
     },
     {
       title: 'All Data Complete',
@@ -237,6 +242,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
       color: 'indigo' as const,
       description: 'Products with category, weight, and SEO data',
       onClick: undefined as (() => void) | undefined,
+      active: false,
     },
     {
       title: 'Synced to ERPNext',
@@ -246,6 +252,27 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
       color: 'blue' as const,
       description: `Today: ${stats.syncedToday} | Yesterday: ${stats.syncedYesterday} | This week: ${stats.syncedThisWeek}`,
       onClick: undefined as (() => void) | undefined,
+      active: false,
+    },
+    {
+      title: 'Pending First Sync',
+      value: stats.pendingSync,
+      total: stats.totalProducts,
+      icon: Clock,
+      color: 'amber' as const,
+      description: 'Ready but never synced to ERPNext',
+      onClick: onSyncFilterClick ? () => onSyncFilterClick('pending_sync') : undefined,
+      active: activeSyncFilter === 'pending_sync',
+    },
+    {
+      title: 'Needs Resync',
+      value: stats.needsResync,
+      total: stats.totalProducts,
+      icon: ArrowUpCircle,
+      color: 'purple' as const,
+      description: 'Agent data updated since last sync',
+      onClick: onSyncFilterClick ? () => onSyncFilterClick('needs_resync') : undefined,
+      active: activeSyncFilter === 'needs_resync',
     },
     {
       title: 'Failed to Sync',
@@ -255,6 +282,7 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
       color: 'red' as const,
       description: 'Products with sync errors',
       onClick: () => setShowFailedSyncDialog(true),
+      active: false,
     },
   ]
 
@@ -263,6 +291,8 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
     green: 'bg-green-100 text-green-600',
     indigo: 'bg-indigo-100 text-indigo-600',
     red: 'bg-red-100 text-red-600',
+    amber: 'bg-amber-100 text-amber-600',
+    purple: 'bg-purple-100 text-purple-600',
   }
 
   const calculatePercentage = (value: number, total: number) => {
@@ -422,12 +452,16 @@ export function VendorStatistics({ vendor, onConfigureClick, syncEnabled, onSync
 
 
       {/* Statistics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {statCards.map((card, index) => (
           <div
             key={index}
             onClick={card.onClick}
-            className={`bg-white rounded-lg shadow-sm border border-secondary-200 p-6 hover:shadow-md transition-all ${
+            className={`bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-all ${
+              card.active
+                ? 'border-primary-500 ring-2 ring-primary-200 shadow-md'
+                : 'border-secondary-200'
+            } ${
               card.onClick
                 ? 'cursor-pointer hover:border-primary-300 hover:ring-2 hover:ring-primary-100'
                 : ''

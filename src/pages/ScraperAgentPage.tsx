@@ -20,7 +20,7 @@ import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
 import { useToast } from '@/hooks/useToast'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { SyncDataSource } from '@/services/user.service'
-import type { ScrapedProduct, ProductFilters, ValidationErrorCategory } from '@/types'
+import type { ScrapedProduct, ProductFilters, ValidationErrorCategory, SyncFilter } from '@/types'
 import type { DynamicFilter } from '@/types/database'
 
 type SortField = 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
@@ -101,6 +101,7 @@ export function ScraperAgentPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [defaultVendor, setDefaultVendor] = useState<string>('')
   const [validationErrorCategory, setValidationErrorCategory] = useState<ValidationErrorCategory | undefined>(undefined)
+  const [syncFilter, setSyncFilter] = useState<SyncFilter | undefined>(undefined)
   const [isResettingErrors, setIsResettingErrors] = useState(false)
 
   // Selection states
@@ -161,7 +162,7 @@ export function ScraperAgentPage() {
 
   useEffect(() => {
     fetchProducts()
-  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters, validationErrorCategory])
+  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters, validationErrorCategory, syncFilter])
 
   // Convert FilterRules to DynamicFilters for the API
   const convertToDynamicFilters = (filterRules: FilterRule[]): DynamicFilter[] => {
@@ -210,6 +211,7 @@ export function ScraperAgentPage() {
       offset: (page - 1) * pageSize,
       dynamicFilters: dynamicFilters.length > 0 ? dynamicFilters : undefined,
       validationErrorCategory: activeTab === 'validation_issues' ? validationErrorCategory : undefined,
+      syncFilter: activeTab === 'all' ? syncFilter : undefined,
     }
 
     // Use appropriate service method based on active tab
@@ -245,7 +247,7 @@ export function ScraperAgentPage() {
     }
 
     setIsLoading(false)
-  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters, validationErrorCategory])
+  }, [activeTab, page, pageSize, searchTerm, sortField, sortDirection, filters, validationErrorCategory, syncFilter])
 
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term)
@@ -257,10 +259,22 @@ export function ScraperAgentPage() {
     setPage(1)
     setSearchTerm('')
     setValidationErrorCategory(undefined)
+    setSyncFilter(undefined)
     // Clear selection when changing tabs
     setSelectedProductIds(new Set())
     setSelectionMode(false)
   }, [])
+
+  const handleSyncFilterClick = useCallback((filter: SyncFilter) => {
+    // Toggle: clicking the same filter clears it
+    setSyncFilter(prev => prev === filter ? undefined : filter)
+    setPage(1)
+    // Switch to 'all' tab if not already there
+    if (activeTab !== 'all') {
+      setActiveTab('all')
+      setValidationErrorCategory(undefined)
+    }
+  }, [activeTab])
 
   const handleRetryValidationErrors = useCallback(async () => {
     if (!validationErrorCategory || isResettingErrors) return
@@ -845,6 +859,8 @@ export function ScraperAgentPage() {
             onConfigureClick={() => setShowVendorDialog(true)}
             syncEnabled={preferences?.sync_to_erpnext ?? true}
             onSyncToggle={toggleSyncToErpnext}
+            activeSyncFilter={syncFilter}
+            onSyncFilterClick={handleSyncFilterClick}
           />
         </div>
       )}
@@ -913,31 +929,45 @@ export function ScraperAgentPage() {
           {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
 
-        {/* Sort Dropdown */}
+        {/* Sort/Filter Dropdown */}
         <select
-          value={`${sortField}-${sortDirection}`}
+          value={syncFilter ? `sync_filter-${syncFilter}` : `${sortField}-${sortDirection}`}
           onChange={(e) => {
-            const [field, dir] = e.target.value.split('-') as [SortField, SortDirection]
-            setSortField(field)
-            setSortDirection(dir)
-            setPage(1)
+            const val = e.target.value
+            if (val.startsWith('sync_filter-')) {
+              const filter = val.replace('sync_filter-', '') as SyncFilter
+              setSyncFilter(filter)
+              setPage(1)
+            } else {
+              setSyncFilter(undefined)
+              const [field, dir] = val.split('-') as [SortField, SortDirection]
+              setSortField(field)
+              setSortDirection(dir)
+              setPage(1)
+            }
           }}
           className="px-4 py-2 border border-secondary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
         >
-          <option value="created_at-desc">Newest First</option>
-          <option value="created_at-asc">Oldest First</option>
-          <option value="updated_at-desc">Recently Updated</option>
-          <option value="updated_at-asc">Least Recently Updated</option>
-          <option value="scraper_updated_at-desc">Recently Updated by Scraper</option>
-          <option value="scraper_updated_at-asc">Least Recently Updated by Scraper</option>
-          <option value="erpnext_updated_at-desc">Recently Synced to ERPNext</option>
-          <option value="erpnext_updated_at-asc">Least Recently Synced to ERPNext</option>
-          <option value="failed_sync_at-desc">Recently Failed Syncs</option>
-          <option value="failed_sync_at-asc">Oldest Failed Syncs</option>
-          <option value="name-asc">Name A-Z</option>
-          <option value="name-desc">Name Z-A</option>
-          <option value="price-asc">Price Low-High</option>
-          <option value="price-desc">Price High-Low</option>
+          <optgroup label="Sort">
+            <option value="created_at-desc">Newest First</option>
+            <option value="created_at-asc">Oldest First</option>
+            <option value="updated_at-desc">Recently Updated</option>
+            <option value="updated_at-asc">Least Recently Updated</option>
+            <option value="scraper_updated_at-desc">Recently Updated by Scraper</option>
+            <option value="scraper_updated_at-asc">Least Recently Updated by Scraper</option>
+            <option value="erpnext_updated_at-desc">Recently Synced to ERPNext</option>
+            <option value="erpnext_updated_at-asc">Least Recently Synced to ERPNext</option>
+            <option value="failed_sync_at-desc">Recently Failed Syncs</option>
+            <option value="failed_sync_at-asc">Oldest Failed Syncs</option>
+            <option value="name-asc">Name A-Z</option>
+            <option value="name-desc">Name Z-A</option>
+            <option value="price-asc">Price Low-High</option>
+            <option value="price-desc">Price High-Low</option>
+          </optgroup>
+          <optgroup label="Filter">
+            <option value="sync_filter-pending_sync">Pending First Sync</option>
+            <option value="sync_filter-needs_resync">Needs Resync</option>
+          </optgroup>
         </select>
       </div>
 

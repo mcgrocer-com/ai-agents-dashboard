@@ -11,7 +11,7 @@ import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
 // Fetch with Timeout
 // ============================================================================
 
-const ERPNEXT_FETCH_TIMEOUT_MS = 15_000; // 15 seconds (5 batches × 15s = 75s, well under 150s Edge Function limit)
+const ERPNEXT_FETCH_TIMEOUT_MS = 30_000; // 30 seconds per request
 
 /**
  * Wrapper around fetch with an AbortController timeout.
@@ -208,6 +208,34 @@ export function getValidMainImage(product: PendingProduct): string | null {
 }
 
 /**
+ * Sanitize text fields for ERPNext API compatibility.
+ * ERPNext rejects titles/descriptions containing certain characters:
+ * - * (asterisks, e.g. drained weight "56g*")
+ * - " (double quotes / inch marks, e.g. '24" Balloon')
+ * - … (unicode ellipsis)
+ * - Curly/smart quotes (" " ' ')
+ * - Backslashes
+ * - | (pipe, used as separator in some titles)
+ * - ? (question marks — ERPNext validation rejects these since ~Feb 2026)
+ * - Other non-printable or unusual unicode
+ */
+function sanitizeForERPNext(text: string): string {
+  return text
+    .replace(/\\/g, '')              // Remove backslashes
+    .replace(/\*/g, '')              // Remove asterisks
+    .replace(/"/g, '')               // Remove double quotes (inch marks)
+    .replace(/\?/g, '')             // Remove question marks
+    .replace(/\|/g, '-')            // Replace pipe with hyphen
+    .replace(/…/g, '...')            // Replace unicode ellipsis with three dots
+    .replace(/["\u201C\u201D]/g, '') // Remove curly double quotes
+    .replace(/['\u2018\u2019]/g, "'") // Replace curly single quotes with straight
+    .replace(/[\u2013\u2014]/g, '-') // Replace en/em dashes with hyphen
+    .replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, '') // Remove remaining non-printable unicode
+    .replace(/\s+/g, ' ')           // Collapse multiple spaces
+    .trim();
+}
+
+/**
  * Transform product data to ERPNext API format
  */
 export function productToERPNextFormat(
@@ -225,7 +253,7 @@ export function productToERPNextFormat(
 
   // For creation OR full product sync, include all product fields
   if (!isUpdate || syncFullProduct) {
-    if (product.name) payload.name = product.name;
+    if (product.name) payload.name = sanitizeForERPNext(product.name);
 
     if (product.description) {
       payload.description = product.description;
@@ -243,9 +271,13 @@ export function productToERPNextFormat(
       // Normalize stock_status casing to match ERPNext expected values
       const stockMap: Record<string, string> = {
         "in stock": "In Stock",
+        "in_stock": "In Stock",
         "low stock": "Low Stock",
+        "low_stock": "Low Stock",
         "on order": "On Order",
+        "on_order": "On Order",
         "out of stock": "Out of Stock",
+        "out_of_stock": "Out of Stock",
       };
       payload.stock_status = stockMap[product.stock_status.toLowerCase()] || product.stock_status;
     }
@@ -315,11 +347,11 @@ export function productToERPNextFormat(
     payload.volumetric_weight = Number(product.volumetric_weight);
   }
 
-  // Add SEO fields if present
-  if (product.ai_title) payload.ai_title = product.ai_title;
-  if (product.ai_description) payload.summary = product.ai_description;
-  if (product.meta_title) payload.meta_title = product.meta_title;
-  if (product.meta_description) payload.meta_description = product.meta_description;
+  // Add SEO fields if present (sanitize to remove chars ERPNext rejects)
+  if (product.ai_title) payload.ai_title = sanitizeForERPNext(product.ai_title);
+  if (product.ai_description) payload.summary = sanitizeForERPNext(product.ai_description);
+  if (product.meta_title) payload.meta_title = sanitizeForERPNext(product.meta_title);
+  if (product.meta_description) payload.meta_description = sanitizeForERPNext(product.meta_description);
 
   // Add FAQs if present (stringify the array for ERPNext, limit to 3)
   if (product.faq && Array.isArray(product.faq) && product.faq.length > 0) {
@@ -361,7 +393,23 @@ export async function sendToERPNextAPI(items: ERPNextItemPayload[]): Promise<ERP
     body: JSON.stringify(items)
   });
 
+  // ERPNext batch API returns 400 when there are per-item errors, but the response body
+  // still contains valid created_items/updated_items/errors arrays. Parse it instead of
+  // throwing, so successful items in the batch aren't lost due to one bad item.
   if (!response.ok) {
+    if (response.status === 400) {
+      try {
+        const body = await response.json();
+        // Check if the response has the expected batch result structure
+        if (body.message && typeof body.message === "object" &&
+            (body.message.created_items || body.message.updated_items || body.message.errors)) {
+          console.warn(`[PROD] ERPNext API returned 400 with partial results: ${body.message.message || 'unknown'}`);
+          return body;
+        }
+      } catch {
+        // JSON parsing failed, fall through to throw
+      }
+    }
     const errorText = await response.text();
     console.error(`[PROD] ERPNext API HTTP ${response.status}: ${errorText}`);
     throw new Error(`ERPNext API error: ${response.status} ${response.statusText} - ${errorText}`);

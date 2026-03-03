@@ -12,6 +12,8 @@ export interface VendorStatistics {
   withCategoryAndWeight: number
   withAllData: number
   syncedToErpNext: number
+  pendingSync: number
+  needsResync: number
   failedToSync: number
   syncedToday: number
   syncedYesterday: number

@@ -114,6 +114,55 @@ class ProductsService {
 
 
 
+      // Use RPC function for sync filter (pending_sync or needs_resync)
+      if (filters.syncFilter) {
+        const limit = filters.limit || 20
+        const offset = filters.offset || 0
+
+        // Get vendor from dynamic filters if present
+        let vendor: string | null = filters.vendor || null
+        if (!vendor && filters.dynamicFilters) {
+          const vendorFilter = filters.dynamicFilters.find(f => f.field === 'vendor')
+          if (vendorFilter && vendorFilter.value && vendorFilter.value !== 'all') {
+            vendor = vendorFilter.value
+          }
+        }
+
+        const { data, error } = await supabase.rpc('get_products_by_sync_filter', {
+          p_sync_filter: filters.syncFilter,
+          p_limit: limit,
+          p_offset: offset,
+          p_ascending: sortOrder === 'asc',
+          p_search: filters.search || null,
+          p_vendor: vendor,
+        })
+
+        if (error) throw error
+
+        const products = (data || []).map((product: any) => {
+          let sync_status: 'synced' | 'failed' | 'pending' = 'pending'
+          if (product.erpnext_updated_at && (!product.failed_sync_at || new Date(product.failed_sync_at) < new Date(product.erpnext_updated_at))) {
+            sync_status = 'synced'
+          } else if (product.failed_sync_at && (!product.erpnext_updated_at || new Date(product.failed_sync_at) > new Date(product.erpnext_updated_at))) {
+            sync_status = 'failed'
+          }
+
+          const { total_count, ...productData } = product
+          return {
+            ...productData,
+            sync_status,
+          } as ScrapedProduct
+        })
+
+        const totalCount = data && data.length > 0 ? Number(data[0].total_count) : 0
+
+        return {
+          products,
+          count: totalCount,
+          error: null,
+        }
+      }
+
       // Regular query for other sort fields
       // Join with pending_products to get sync status and ai_title
       // Use 'planned' count for better performance with large datasets (estimates count from query planner)

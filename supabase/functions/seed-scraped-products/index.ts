@@ -136,7 +136,7 @@ function validateProduct(
     };
   }
 
-  // Number fields (required)
+  // Number fields (required, must be positive)
   const requiredNumberFields = ["price", "original_price"];
 
   for (const field of requiredNumberFields) {
@@ -145,6 +145,13 @@ function validateProduct(
         index,
         field,
         message: `Missing or invalid required field: '${field}' (must be a number) at product index ${index}`,
+      };
+    }
+    if (product[field] <= 0) {
+      return {
+        index,
+        field,
+        message: `Invalid '${field}': must be greater than 0 (got ${product[field]}) at product index ${index}`,
       };
     }
   }

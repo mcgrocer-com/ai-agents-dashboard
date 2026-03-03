@@ -375,11 +375,14 @@ export interface DynamicFilter {
 
 export type ValidationErrorCategory = 'http_error' | 'timeout' | 'unreachable' | 'post_processing' | 'image_mismatch'
 
+export type SyncFilter = 'pending_sync' | 'needs_resync'
+
 export interface ProductFilters {
   search?: string
   vendor?: string
   status?: AgentStatus | string
   validationErrorCategory?: ValidationErrorCategory
+  syncFilter?: SyncFilter
   dynamicFilters?: DynamicFilter[]
   sortBy?: 'name' | 'price' | 'updated_at' | 'created_at' | 'erpnext_updated_at' | 'failed_sync_at' | 'scraper_updated_at'
   sortOrder?: 'asc' | 'desc'
