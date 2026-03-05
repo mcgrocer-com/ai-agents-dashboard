@@ -6,8 +6,17 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import { getGeminiApiKey } from './vault.service';
 
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+// Lazy-initialized Google GenAI (fetches key from Supabase Vault)
+let _ai: GoogleGenAI | null = null;
+async function getAI(): Promise<GoogleGenAI> {
+  if (!_ai) {
+    const apiKey = await getGeminiApiKey();
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
 
 export type IssueSeverity = 'critical' | 'error' | 'warning' | 'info';
 
@@ -157,7 +166,8 @@ export class SeoValidator {
     }
 
     try {
-      const response = await ai.models.generateContent({
+      const aiClient = await getAI();
+      const response = await aiClient.models.generateContent({
         model: this.model,
         contents: `You are an SEO Validator Agent. Analyze this meta title for SEO effectiveness.
 
@@ -213,7 +223,8 @@ RESPOND WITH JSON ONLY:
     }
 
     try {
-      const response = await ai.models.generateContent({
+      const aiClient = await getAI();
+      const response = await aiClient.models.generateContent({
         model: this.model,
         contents: `You are an SEO Validator Agent. Analyze this meta description for SEO effectiveness.
 
@@ -275,7 +286,8 @@ RESPOND WITH JSON ONLY:
     }
 
     try {
-      const response = await ai.models.generateContent({
+      const aiClient = await getAI();
+      const response = await aiClient.models.generateContent({
         model: this.model,
         contents: `You are an SEO Validator Agent. Analyze this blog excerpt for quality.
 
@@ -337,7 +349,8 @@ RESPOND WITH JSON ONLY:
     }
 
     try {
-      const response = await ai.models.generateContent({
+      const aiClient = await getAI();
+      const response = await aiClient.models.generateContent({
         model: this.model,
         contents: `You are an SEO Validator Agent. Analyze heading structure for SEO.
 
@@ -397,7 +410,8 @@ RESPOND WITH JSON ONLY:
     }
 
     try {
-      const response = await ai.models.generateContent({
+      const aiClient = await getAI();
+      const response = await aiClient.models.generateContent({
         model: this.model,
         contents: `You are an SEO Validator Agent. Analyze links for SEO best practices.
 
@@ -466,7 +480,8 @@ RESPOND WITH JSON ONLY:
     }
 
     try {
-      const response = await ai.models.generateContent({
+      const aiClient = await getAI();
+      const response = await aiClient.models.generateContent({
         model: this.model,
         contents: `You are an SEO Validator Agent. Analyze images for accessibility and SEO.
 
@@ -531,7 +546,8 @@ RESPOND WITH JSON ONLY:
     }
 
     try {
-      const response = await ai.models.generateContent({
+      const aiClient = await getAI();
+      const response = await aiClient.models.generateContent({
         model: this.model,
         contents: `You are an SEO Validator Agent specialized in detecting AI-generated content patterns.
 
@@ -617,7 +633,8 @@ RESPOND WITH JSON ONLY:
     const textContent = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000);
 
     try {
-      const response = await ai.models.generateContent({
+      const aiClient = await getAI();
+      const response = await aiClient.models.generateContent({
         model: this.model,
         contents: `You are an SEO Tag Validator Agent. Analyze these blog tags for relevance and SEO effectiveness.
 

@@ -8,9 +8,17 @@ import { GoogleGenAI, createPartFromUri } from '@google/genai';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import type { ServiceResponse } from '@/types/blogger';
+import { getGeminiApiKey } from './vault.service';
 
-// Initialize Google GenAI with new SDK
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+// Lazy-initialized Google GenAI (fetches key from Supabase Vault)
+let _ai: GoogleGenAI | null = null;
+async function getAI(): Promise<GoogleGenAI> {
+  if (!_ai) {
+    const apiKey = await getGeminiApiKey();
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
 
 export interface ParsedFileResult {
   content: string;
@@ -26,8 +34,9 @@ async function waitForFileProcessing(fileName: string, maxWaitMs = 60000): Promi
   const startTime = Date.now();
   const pollIntervalMs = 2000;
 
+  const aiClient = await getAI();
   while (Date.now() - startTime < maxWaitMs) {
-    const file = await ai.files.get({ name: fileName });
+    const file = await aiClient.files.get({ name: fileName });
 
     if (file.state === 'ACTIVE') {
       return; // File is ready
@@ -55,7 +64,8 @@ export async function parsePdfWithGemini(
     console.log('[Gemini PDF Parser] Uploading file to Gemini...');
 
     // Upload file using File API (accepts Blob in browser)
-    const uploadedFile = await ai.files.upload({
+    const aiClient = await getAI();
+    const uploadedFile = await aiClient.files.upload({
       file: file,
       config: {
         displayName: file.name,
@@ -76,14 +86,14 @@ export async function parsePdfWithGemini(
     console.log('[Gemini PDF Parser] File ready, generating content...');
 
     // Get the processed file details
-    const processedFile = await ai.files.get({ name: uploadedFile.name });
+    const processedFile = await aiClient.files.get({ name: uploadedFile.name });
 
     if (!processedFile.uri || !processedFile.mimeType) {
       throw new Error('Processed file missing URI or MIME type');
     }
 
     // Generate content using the uploaded file
-    const response = await ai.models.generateContent({
+    const response = await aiClient.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [
         createPartFromUri(processedFile.uri, processedFile.mimeType),
@@ -108,7 +118,7 @@ Return the extracted text content only, no commentary.`,
 
     // Clean up - delete the uploaded file
     try {
-      await ai.files.delete({ name: uploadedFile.name });
+      await aiClient.files.delete({ name: uploadedFile.name });
       console.log('[Gemini PDF Parser] Cleaned up uploaded file');
     } catch (deleteError) {
       console.warn('[Gemini PDF Parser] Failed to delete file:', deleteError);
@@ -152,7 +162,8 @@ async function parsePdfWithInlineData(
       )
     );
 
-    const response = await ai.models.generateContent({
+    const aiClient = await getAI();
+    const response = await aiClient.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [
         {

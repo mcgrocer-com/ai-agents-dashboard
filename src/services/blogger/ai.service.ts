@@ -15,9 +15,17 @@ import type {
 } from '@/types/blogger';
 import { generateRelatedBlogLinks } from './shopify.service';
 import { supabase } from '@/lib/supabase/client';
+import { getGeminiApiKey } from './vault.service';
 
-// Initialize Google GenAI
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+// Lazy-initialized Google GenAI (fetches key from Supabase Vault)
+let _ai: GoogleGenAI | null = null;
+async function getAI(): Promise<GoogleGenAI> {
+  if (!_ai) {
+    const apiKey = await getGeminiApiKey();
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
 
 // Cache configuration
 const CACHE_TTL_DAYS = 7; // Default TTL: 7 days
@@ -383,7 +391,8 @@ Respond ONLY with a JSON object in this exact format (no markdown, no explanatio
 {"title": "Your meta title here", "description": "Your meta description here"}`;
     }
 
-    const response = await ai.models.generateContent({
+    const aiClient = await getAI();
+    const response = await aiClient.models.generateContent({
       model: 'gemini-2.0-flash',
       contents: prompt,
     });
@@ -721,11 +730,7 @@ async function extractArticleWithLLM(
   summary: string;
   images: ExtractedImage[];
 }> {
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-
-  if (!GEMINI_API_KEY) {
-    throw new Error('VITE_GEMINI_API_KEY not configured');
-  }
+  const GEMINI_API_KEY = await getGeminiApiKey();
 
   // Pre-clean HTML to reduce token usage (remove scripts, styles, SVGs)
   const cleanedHtml = html
@@ -1010,18 +1015,18 @@ export async function scrapeArticlesBatch(
     // Fallback: Try Stagehand for failed URLs (if configured)
     if (failedUrls.length > 0) {
       const RUNPOD_API_URL = import.meta.env.VITE_RUNPOD_API_URL;
-      const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-      if (RUNPOD_API_URL && GEMINI_API_KEY) {
+      if (RUNPOD_API_URL) {
         console.log(`[Scraper] Using Stagehand fallback for ${failedUrls.length} URLs...`);
 
         try {
+          const geminiKey = await getGeminiApiKey();
           const response = await fetch(`${RUNPOD_API_URL}/scrape-articles-batch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               urls: failedUrls,
-              api_key: GEMINI_API_KEY,
+              api_key: geminiKey,
               timeout: 60000,
             }),
             signal: AbortSignal.timeout(180000),

@@ -7,9 +7,17 @@ import { supabase } from '@/lib/supabase/client';
 import { GoogleGenAI } from '@google/genai';
 import type { ServiceResponse } from '@/types/blogger';
 import { callDecodoProxy } from './ai.service';
+import { getGeminiApiKey } from './vault.service';
 
-// Initialize Google GenAI for image generation
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+// Lazy-initialized Google GenAI (fetches key from Supabase Vault)
+let _ai: GoogleGenAI | null = null;
+async function getAI(): Promise<GoogleGenAI> {
+  if (!_ai) {
+    const apiKey = await getGeminiApiKey();
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
 
 const BUCKET_NAME = 'blog-images';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -193,7 +201,8 @@ Requirements:
     console.log('[Image Generation] Generating image for:', topic);
 
     // Use Gemini 2.5 Flash Image model (Nano Banana)
-    const response = await ai.models.generateContent({
+    const aiClient = await getAI();
+    const response = await aiClient.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: imagePrompt,
       config: {

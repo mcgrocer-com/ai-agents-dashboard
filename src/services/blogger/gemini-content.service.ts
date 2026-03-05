@@ -15,9 +15,17 @@ import { buildSystemPrompt } from './system-prompt';
 import { supabase } from '@/lib/supabase/client';
 import { seoValidator } from './seo-validator.service';
 import type { SeoValidationReport } from './seo-validator.service';
+import { getGeminiApiKey } from './vault.service';
 
-// Initialize Google GenAI with new SDK
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+// Lazy-initialized Google GenAI (fetches key from Supabase Vault)
+let _ai: GoogleGenAI | null = null;
+async function getAI(): Promise<GoogleGenAI> {
+  if (!_ai) {
+    const apiKey = await getGeminiApiKey();
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
 
 /**
  * Estimate token count from character count
@@ -397,7 +405,8 @@ async function handleFunctionCall(functionName: string, args: any, request: Gemi
 
             // Step 2: Use vision subagent to analyze the image
             try {
-              const visionResponse = await ai.models.generateContent({
+              const aiClient = await getAI();
+              const visionResponse = await aiClient.models.generateContent({
                 model: 'gemini-2.0-flash',
                 contents: [{
                   parts: [
@@ -495,7 +504,8 @@ async function generateBlogWithModel(
   // Step 2: Initialize chat with function calling (new SDK)
   addLog('info', `Initializing ${modelName} with function calling support`);
 
-  const chat = ai.chats.create({
+  const aiClient = await getAI();
+  const chat = aiClient.chats.create({
     model: modelName,
     config: {
       systemInstruction: systemPrompt,
@@ -1034,7 +1044,8 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
   "metaDescription": "Your SEO-optimized description here"
 }`;
 
-    const metaResult = await ai.models.generateContent({
+    const aiMetaClient = await getAI();
+    const metaResult = await aiMetaClient.models.generateContent({
       model: modelName,
       contents: metaPrompt,
     });
@@ -1309,7 +1320,8 @@ Return ONLY a JSON object with the fixed fields (only include fields that need f
   ]
 }`;
 
-          const fixResponse = await ai.models.generateContent({
+          const aiFixClient = await getAI();
+          const fixResponse = await aiFixClient.models.generateContent({
             model: modelName,
             contents: fixPrompt,
           });

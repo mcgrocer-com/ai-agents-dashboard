@@ -496,7 +496,7 @@ blogger_blog_products (
 
 | API | Purpose | Authentication |
 |-----|---------|----------------|
-| **Google Gemini** | AI content generation, SEO validation | `VITE_GEMINI_API_KEY` |
+| **Google Gemini** | AI content generation, SEO validation | Supabase Vault (`gemini_api_key`) |
 | **Decodo** | Keyword research, web scraping, article extraction | Proxy via Edge Function |
 | **Shopify GraphQL** | Product search, blog publishing | `SHOPIFY_API_KEY` |
 
@@ -506,7 +506,6 @@ blogger_blog_products (
 
 ```bash
 # Required
-VITE_GEMINI_API_KEY=           # Google Gemini AI
 VITE_SUPABASE_URL=             # Supabase project
 VITE_SUPABASE_ANON_KEY=        # Supabase client key
 SHOPIFY_API_KEY=               # Shopify Admin API

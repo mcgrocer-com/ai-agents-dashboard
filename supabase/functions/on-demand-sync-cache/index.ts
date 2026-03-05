@@ -157,9 +157,9 @@ async function processCacheEntry(
 
     // Build partial update with only changed fields
     const stockStatus = mapAvailabilityToStockStatus(result.availability);
+    // Only set updated_at here — push-to-pending owns scraper_updated_at
     const updates: Record<string, any> = {
       updated_at: new Date().toISOString(),
-      scraper_updated_at: new Date().toISOString(),
     };
 
     if (result.price && result.price > 0) {

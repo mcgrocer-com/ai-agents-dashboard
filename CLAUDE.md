@@ -66,7 +66,6 @@ product-checker-api/   # Standalone Node.js scraper API with per-site extractors
 ## Environment Variables
 
 - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` - Supabase connection (required)
-- `VITE_GEMINI_API_KEY` - Google Gemini for AI features
 - `SHOPIFY_API_KEY` - Shopify integration for blog/product sync
 
 ## Commands
