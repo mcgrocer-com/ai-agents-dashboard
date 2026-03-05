@@ -111,46 +111,16 @@ function mapAvailabilityToStockStatus(availability: string): string | null {
 }
 
 /**
- * Call update-scraped-product edge function to update products and trigger ERPNext sync
- */
-async function callUpdateScrapedProduct(
-  supabaseUrl: string,
-  serviceKey: string,
-  items: Array<{ url: string; [key: string]: any }>
-): Promise<{ success: boolean; results: Array<{ url: string; success: boolean; error?: string }> }> {
-  const response = await fetch(`${supabaseUrl}/functions/v1/update-scraped-product`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${serviceKey}`,
-    },
-    body: JSON.stringify(items),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[Sync] update-scraped-product returned ${response.status}: ${errorText}`);
-    return { success: false, results: items.map(i => ({ url: i.url, success: false, error: `HTTP ${response.status}` })) };
-  }
-
-  return await response.json();
-}
-
-/**
- * Process a single cache entry and sync to scraped_products via update-scraped-product
+ * Process a single cache entry and sync to scraped_products via direct update.
+ * The push-to-pending webhook handles downstream effects (ERPNext sync, etc.)
  */
 async function processCacheEntry(
   supabase: any,
-  supabaseUrl: string,
-  serviceKey: string,
   entry: CacheEntry,
   stats: SyncStats
 ): Promise<void> {
   const results = entry.results || [];
   console.log(`[Sync] Processing cache entry ${entry.id}: "${entry.query_normalized}" (${results.length} products)`);
-
-  // Collect update payloads for matched products
-  const updateItems: Array<{ url: string; price?: number; original_price?: number; stock_status?: string }> = [];
 
   for (const result of results) {
     stats.products_checked++;
@@ -171,7 +141,7 @@ async function processCacheEntry(
     // Normalize URL for matching (strip query params)
     const normalizedUrl = normalizeUrl(result.source_url);
 
-    // Find matching scraped product by URL to verify it exists
+    // Find matching scraped product by URL
     const { data: matchedProduct, error: matchError } = await supabase
       .from('scraped_products')
       .select('id, url, price, stock_status, vendor')
@@ -179,50 +149,45 @@ async function processCacheEntry(
       .single();
 
     if (matchError || !matchedProduct) {
-      // No match found - expected for external retailers not in our catalog
       stats.products_skipped_no_match++;
       continue;
     }
 
     stats.products_matched++;
 
-    // Build update payload for update-scraped-product
-    const updateItem: { url: string; price?: number; original_price?: number; stock_status?: string; timestamp?: string } = { url: matchedProduct.url, timestamp: new Date().toISOString() };
-
-    // Apply markup and prepare price fields
+    // Build partial update with only changed fields
     const stockStatus = mapAvailabilityToStockStatus(result.availability);
+    const updates: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+      scraper_updated_at: new Date().toISOString(),
+    };
 
     if (result.price && result.price > 0) {
       const markedUpPrice = applyDynamicMarkup(result.price);
-      updateItem.original_price = result.price;
-      updateItem.price = markedUpPrice;
+      updates.original_price = result.price;
+      updates.price = markedUpPrice;
       console.log(
         `[Sync] Price markup applied for ${matchedProduct.vendor}: ${result.price} → ${markedUpPrice} (${Math.round(((markedUpPrice - result.price) / result.price) * 100)}% markup)`
       );
     }
 
     if (stockStatus) {
-      updateItem.stock_status = stockStatus;
+      updates.stock_status = stockStatus;
     }
 
-    updateItems.push(updateItem);
-  }
+    // Direct update — push-to-pending webhook handles ERPNext sync
+    const { error: updateError } = await supabase
+      .from('scraped_products')
+      .update(updates)
+      .eq('url', matchedProduct.url);
 
-  // Call update-scraped-product with collected items
-  if (updateItems.length > 0) {
-    console.log(`[Sync] Sending ${updateItems.length} products to update-scraped-product`);
-
-    const updateResponse = await callUpdateScrapedProduct(supabaseUrl, serviceKey, updateItems);
-
-    for (const result of updateResponse.results || []) {
-      if (result.success) {
-        stats.products_updated++;
-        stats.pending_products_triggered++;
-        console.log(`[Sync] Updated via update-scraped-product: ${result.url}`);
-      } else {
-        stats.errors++;
-        console.error(`[Sync] Failed to update ${result.url}: ${result.error}`);
-      }
+    if (updateError) {
+      stats.errors++;
+      console.error(`[Sync] Failed to update ${matchedProduct.url}: ${updateError.message}`);
+    } else {
+      stats.products_updated++;
+      stats.pending_products_triggered++;
+      console.log(`[Sync] Updated: ${matchedProduct.url}`);
     }
   }
 
@@ -325,7 +290,7 @@ Deno.serve(async (req) => {
 
     // Process each cache entry
     for (const entry of cacheEntries) {
-      await processCacheEntry(supabase, supabaseUrl, supabaseServiceKey, entry, stats);
+      await processCacheEntry(supabase, entry, stats);
     }
 
     const duration = Date.now() - startTime;

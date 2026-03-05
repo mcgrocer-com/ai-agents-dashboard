@@ -62,6 +62,7 @@ interface ScrapedProduct {
   name?: string;
   description?: string;
   main_image?: string;
+  price?: number;
   rejected?: boolean;
   classification?: string;
 }
@@ -311,6 +312,9 @@ async function markCompletedProductsForSync(
       .from("pending_products")
       .update({
         erpnext_updated_at: null,  // Reset to trigger sync
+        sync_started_at: null,     // Clear any in-progress sync
+        failed_sync_error_message: null,  // Clear previous sync errors
+        failed_sync_at: null,      // Clear previous failure timestamp
         sync_full_product: true     // Flag to sync all product fields
       })
       .in("id", productIds);
@@ -419,6 +423,21 @@ Deno.serve(async (req) => {
     // Handle UPDATE: Check classification and manage pending_products entry accordingly
     if (payload.type === 'UPDATE') {
       console.log('🔄 Product updated in scraped_products, checking classification status');
+
+      // Track price changes by updating scraper_updated_at
+      const oldPrice = payload.old_record?.price;
+      const newPrice = scrapedProduct.price;
+      if (oldPrice !== undefined && newPrice !== undefined && oldPrice !== newPrice) {
+        console.log(`💰 Price changed for ${scrapedProduct.id}: ${oldPrice} → ${newPrice}`);
+        const { error: tsError } = await supabase
+          .from('scraped_products')
+          .update({ scraper_updated_at: new Date().toISOString() })
+          .eq('id', scrapedProduct.id);
+
+        if (tsError) {
+          console.warn(`⚠️ Failed to update scraper_updated_at for ${scrapedProduct.id}:`, tsError);
+        }
+      }
 
       // Check if product is now rejected (e.g., reclassified)
       if (scrapedProduct.rejected === true) {
