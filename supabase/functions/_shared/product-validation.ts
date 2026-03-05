@@ -209,10 +209,23 @@ function validateImages(
     }
     return {};
   }
-  if (typeof value !== 'object') {
-    return { error: `Invalid '${fieldName}': must be an array or object (got ${typeof value})` };
+  // Accept objects/arrays directly
+  if (typeof value === 'object') {
+    return { value };
   }
-  return { value };
+  // Accept JSON strings (images are stored as JSON.stringify() in the DB)
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return { value: parsed };
+      }
+    } catch {
+      // fall through to error
+    }
+    return { error: `Invalid '${fieldName}': must be an array or object (got non-JSON string)` };
+  }
+  return { error: `Invalid '${fieldName}': must be an array or object (got ${typeof value})` };
 }
 
 /**
@@ -495,6 +508,104 @@ export async function validateProductUpdate(
   fields: Record<string, unknown>,
 ): Promise<ValidationResult> {
   return validateProduct(fields, { mode: 'update', checkImages: false });
+}
+
+// ─── Agent Data Validation (pre-ERPNext sync) ──────────────────────
+
+export interface AgentDataValidationResult {
+  isValid: boolean;
+  invalidFields: string[];
+  /** Agent statuses that should be reset to 'pending' */
+  statusResets: Record<string, string>;
+}
+
+/**
+ * Validate that a product has all required agent data before syncing to ERPNext.
+ *
+ * Pure validation — no DB side effects. The caller is responsible for
+ * applying the returned `statusResets` to the database.
+ *
+ * Checks:
+ * - Category: non-empty, not '[]'
+ * - Breadcrumbs: non-empty array
+ * - Weight: > 0
+ * - Volumetric weight: > 0
+ * - Dimensions: at least one of height/width/length > 0
+ * - SEO: ai_title, ai_description, meta_title, meta_description all non-empty
+ */
+export function validateProductAgentData(product: {
+  category?: string | null;
+  breadcrumbs?: unknown;
+  weight?: number | null;
+  volumetric_weight?: number | null;
+  height?: number | null;
+  width?: number | null;
+  length?: number | null;
+  ai_title?: string | null;
+  ai_description?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+}): AgentDataValidationResult {
+  const invalidFields: string[] = [];
+
+  // Category validation
+  const hasValidCategory = product.category &&
+                           product.category !== '' &&
+                           product.category !== '[]';
+  if (!hasValidCategory) invalidFields.push('category');
+
+  // Breadcrumb validation
+  const hasValidBreadcrumb = product.breadcrumbs &&
+                             JSON.stringify(product.breadcrumbs) !== '[]' &&
+                             (Array.isArray(product.breadcrumbs) ? product.breadcrumbs.length > 0 : true);
+  if (!hasValidBreadcrumb) invalidFields.push('breadcrumb');
+
+  // Weight validation
+  const hasValidWeight = product.weight !== null &&
+                        product.weight !== undefined &&
+                        product.weight > 0;
+  if (!hasValidWeight) invalidFields.push('weight');
+
+  // Volumetric weight validation
+  const hasValidVolumetricWeight = product.volumetric_weight !== null &&
+                                   product.volumetric_weight !== undefined &&
+                                   product.volumetric_weight > 0;
+  if (!hasValidVolumetricWeight) invalidFields.push('volumetric_weight');
+
+  // Dimensions validation - at least one dimension required
+  const hasValidDimensions = (product.height !== null && product.height > 0) ||
+                            (product.width !== null && product.width > 0) ||
+                            (product.length !== null && product.length > 0);
+  if (!hasValidDimensions) invalidFields.push('dimensions');
+
+  // SEO validation - all four fields are required
+  const hasValidSEO = product.ai_title &&
+                     product.ai_title !== '' &&
+                     product.ai_description &&
+                     product.ai_description !== '' &&
+                     product.meta_title &&
+                     product.meta_title !== '' &&
+                     product.meta_description &&
+                     product.meta_description !== '';
+  if (!hasValidSEO) invalidFields.push('SEO');
+
+  // Determine which agent statuses need resetting
+  const statusResets: Record<string, string> = {};
+  if (!hasValidCategory || !hasValidBreadcrumb) {
+    statusResets.category_status = 'pending';
+  }
+  if (!hasValidWeight || !hasValidVolumetricWeight || !hasValidDimensions) {
+    statusResets.weight_and_dimension_status = 'pending';
+  }
+  if (!hasValidSEO) {
+    statusResets.seo_status = 'pending';
+  }
+
+  return {
+    isValid: invalidFields.length === 0,
+    invalidFields,
+    statusResets,
+  };
 }
 
 // ─── Image Ping Functions ───────────────────────────────────────────

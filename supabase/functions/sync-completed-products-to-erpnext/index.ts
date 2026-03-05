@@ -29,10 +29,8 @@ import {
   type PendingProduct,
   type ERPNextItemPayload,
   type VerifiedProduct,
-  type ExistingERPNextItem,
   productToERPNextFormat,
   sendToERPNextAPI,
-  getExistingERPNextItems,
   updateVerifiedProducts,
   syncAgentDataToScrapedProducts,
   clearSuccessfulSyncErrors,
@@ -40,8 +38,7 @@ import {
   getValidMainImage,
 } from "../_shared/erpnext-utils.ts";
 
-// Data source filter type (matches frontend)
-type SyncDataSource = 'All' | 'Scrapper';
+import { validateProductAgentData } from "../_shared/product-validation.ts";
 
 interface SyncResult {
   total_queried: number;
@@ -50,7 +47,6 @@ interface SyncResult {
   created_or_updated: number;  // Items ERPNext API claimed to process
   failed: number;              // Items ERPNext API returned errors for
   verified: number;            // Items actually confirmed in ERPNext
-  skipped_data_source: number; // Items skipped due to data_source filter
   skipped_invalid_image: number; // Items skipped due to invalid/missing main_image
   validation_resets: {         // Products reset from complete to pending due to invalid data
     category: number;
@@ -100,8 +96,8 @@ async function validateAndResetInvalidAgents(): Promise<{
       )
   `;
 
-  // Reset weight-dimension status for products with missing or invalid weight/dimensions
-  // Resets when: no weight OR all dimensions are zero (height AND width AND length)
+  // Reset weight-dimension status for products with missing or invalid weight/dimensions/volumetric_weight
+  // Resets when: no weight OR no volumetric_weight OR all dimensions are zero (height AND width AND length)
   // Note: All fields are now NUMERIC type after migration
   const weightResult = await sql`
     UPDATE pending_products
@@ -110,6 +106,9 @@ async function validateAndResetInvalidAgents(): Promise<{
       AND (
         -- Reset if weight is missing or zero
         (weight IS NULL OR weight <= 0)
+        OR
+        -- Reset if volumetric weight is missing or zero
+        (volumetric_weight IS NULL OR volumetric_weight <= 0)
         OR
         -- Reset if ALL dimensions are missing/zero (height AND width AND length)
         (
@@ -389,139 +388,60 @@ async function processClassificationValidation(
 }
 
 /**
- * Validate that a product has all required agent data before syncing to ERPNext
- * If validation fails, resets the corresponding agent status to 'pending'
- * Returns validation result with list of invalid fields
+ * Validate agent data and reset invalid statuses in the database.
+ * Delegates pure validation to shared product-validation.ts.
  */
-async function validateProductAgentData(product: PendingProduct): Promise<{
+async function validateAndResetAgentData(product: PendingProduct): Promise<{
   isValid: boolean;
   invalidFields: string[];
 }> {
-  const invalidFields: string[] = [];
+  const { isValid, invalidFields, statusResets } = validateProductAgentData(product);
 
-  // Category validation
-  const hasValidCategory = product.category &&
-                           product.category !== '' &&
-                           product.category !== '[]';
-  if (!hasValidCategory) invalidFields.push('category');
+  // Apply status resets to the database
+  if (Object.keys(statusResets).length > 0) {
+    const updateFields = Object.entries(statusResets)
+      .map(([key, value]) => `${key} = '${value}'`)
+      .join(', ');
 
-  // Breadcrumb validation
-  const hasValidBreadcrumb = product.breadcrumbs &&
-                             JSON.stringify(product.breadcrumbs) !== '[]' &&
-                             (Array.isArray(product.breadcrumbs) ? product.breadcrumbs.length > 0 : true);
-  if (!hasValidBreadcrumb) invalidFields.push('breadcrumb');
+    await sql.unsafe(`
+      UPDATE pending_products
+      SET ${updateFields}
+      WHERE id = '${product.id}'
+    `);
 
-  // Weight validation
-  const hasValidWeight = product.weight !== null &&
-                        product.weight !== undefined &&
-                        product.weight > 0;
-  if (!hasValidWeight) invalidFields.push('weight');
-
-  // Volumetric weight validation
-  const hasValidVolumetricWeight = product.volumetric_weight !== null &&
-                                   product.volumetric_weight !== undefined &&
-                                   product.volumetric_weight > 0;
-  if (!hasValidVolumetricWeight) invalidFields.push('volumetric_weight');
-
-  // Dimensions validation - at least one dimension required
-  const hasValidDimensions = (product.height !== null && product.height > 0) ||
-                            (product.width !== null && product.width > 0) ||
-                            (product.length !== null && product.length > 0);
-  if (!hasValidDimensions) invalidFields.push('dimensions');
-
-  // SEO validation - all four fields are required
-  const hasValidSEO = product.ai_title &&
-                     product.ai_title !== '' &&
-                     product.ai_description &&
-                     product.ai_description !== '' &&
-                     product.meta_title &&
-                     product.meta_title !== '' &&
-                     product.meta_description &&
-                     product.meta_description !== '';
-  if (!hasValidSEO) invalidFields.push('SEO');
-
-  // If validation failed, reset the appropriate agent statuses to 'pending'
-  if (invalidFields.length > 0) {
-    const updates: { [key: string]: string } = {};
-
-    // Reset category status if category or breadcrumb is invalid
-    if (!hasValidCategory || !hasValidBreadcrumb) {
-      updates.category_status = 'pending';
-    }
-
-    // Reset weight-dimension status if weight, volumetric_weight, or dimensions are invalid
-    if (!hasValidWeight || !hasValidVolumetricWeight || !hasValidDimensions) {
-      updates.weight_and_dimension_status = 'pending';
-    }
-
-    // Reset SEO status if SEO data is invalid
-    if (!hasValidSEO) {
-      updates.seo_status = 'pending';
-    }
-
-    // Update the database
-    if (Object.keys(updates).length > 0) {
-      const updateFields = Object.entries(updates)
-        .map(([key, value]) => `${key} = '${value}'`)
-        .join(', ');
-
-      await sql.unsafe(`
-        UPDATE pending_products
-        SET ${updateFields}
-        WHERE id = '${product.id}'
-      `);
-
-      console.log(`[VALIDATION] Reset agent statuses for product ${product.id}: ${Object.keys(updates).join(', ')}`);
-    }
+    console.log(`[VALIDATION] Reset agent statuses for product ${product.id}: ${Object.keys(statusResets).join(', ')}`);
   }
 
-  return {
-    isValid: invalidFields.length === 0,
-    invalidFields
-  };
+  return { isValid, invalidFields };
 }
 
 /**
  * Process a batch of products and sync to ERPNext
  *
- * OPTIMIZED: Uses single batch API call to check existence instead of N individual calls.
- * This reduces API overhead from O(n) to O(1) for existence checks.
- *
  * Key validations before sync:
- * 1. All required agent data must be present and valid
+ * 1. All required agent data must be present and valid (delegates to shared validateProductAgentData)
  * 2. Image URL must be valid http/https URL (ERPNext requirement)
- * 3. Data source filter applied (e.g., only sync Scrapper-sourced items)
  *
- * Dual-write pattern:
- * - Production ERPNext: Required, failures block process
- * - Staging ERPNext: Optional, failures logged only (non-blocking)
+ * ERPNext API handles create vs update internally by URL.
  *
  * @param products - Products to process
- * @param dataSourceFilter - Filter for ERPNext data_source ('All' = no filter, 'Scrapper' = only update items with data_source='Scrapper')
  * @returns Processing results with item codes, verification status, and error details
  */
 async function processBatch(
-  products: PendingProduct[],
-  dataSourceFilter: SyncDataSource = 'All'
+  products: PendingProduct[]
 ): Promise<{
   created_or_updated: string[];  // Item codes returned by ERPNext API
   failed: Array<{ url: string; error: string }>;  // Failed products with error messages
   verified: VerifiedProduct[];   // Actually verified in ERPNext
-  skipped_data_source: number;   // Products skipped due to data_source filter
   skipped_invalid_image: number; // Products skipped due to invalid/missing main_image
   invalid_image_products: Array<{ url: string; error: string }>; // Products with invalid images for error storage
 }> {
   const batchItems: ERPNextItemPayload[] = [];
   const productUrlMap = new Map<string, PendingProduct>();
-  let skippedDataSource = 0;
   let skippedInvalidImage = 0;
   const invalidImageProducts: Array<{ url: string; error: string }> = [];
 
-  // OPTIMIZATION: Batch check all URLs at once instead of individual lookups
-  const productUrls = products.filter(p => p.url).map(p => p.url!);
-  const existingItems = await getExistingERPNextItems(productUrls);
-
-  // Prepare batch items
+  // Prepare batch items — ERPNext API handles create vs update internally by URL
   for (const product of products) {
     try {
       if (!product.url) {
@@ -529,34 +449,8 @@ async function processBatch(
         continue;
       }
 
-      // Check if item exists using batched results
-      const existingItem: ExistingERPNextItem | undefined = existingItems.get(product.url);
-      const erpnextItemCode = existingItem?.itemCode || product.item_code;
-      const isUpdate = !!erpnextItemCode;
-
-      // DATA SOURCE FILTER: For updates, check if ERPNext item's data_source matches our filter
-      if (isUpdate && dataSourceFilter !== 'All' && existingItem) {
-        const erpnextDataSource = existingItem.dataSource;
-
-        // If ERPNext item has a different data_source than our filter, skip it
-        if (erpnextDataSource && erpnextDataSource !== dataSourceFilter) {
-          console.log(`[SYNC] Skipping product ${product.id} (${product.url}): ERPNext data_source='${erpnextDataSource}' doesn't match filter='${dataSourceFilter}'`);
-          skippedDataSource++;
-          continue;
-        }
-      }
-
-      // Check if we need to sync full product (set when scraped_products updated)
-      const syncFullProduct = product.sync_full_product === true;
-
-      // For creation, require description
-      if (!isUpdate && !product.description) {
-        console.error(`Skipping product ${product.id}: No description for creation`);
-        continue;
-      }
-
       // CRITICAL: Validate ALL agent data before sending to ERPNext
-      const validation = await validateProductAgentData(product);
+      const validation = await validateAndResetAgentData(product);
       if (!validation.isValid) {
         console.error(`[SYNC] Skipping product ${product.id} (${product.name}): Missing required agent data - ${validation.invalidFields.join(', ')}`);
         continue;
@@ -578,27 +472,14 @@ async function processBatch(
         continue;
       }
 
-      // Update product's item_code if we found it from ERPNext but don't have it in DB
-      if (erpnextItemCode && !product.item_code) {
-        product.item_code = erpnextItemCode;
-      }
-
-      const itemData = productToERPNextFormat(product, isUpdate, syncFullProduct);
+      // Always send full payload — ERPNext decides create vs update by URL
+      const itemData = productToERPNextFormat(product, false, true);
       batchItems.push(itemData);
       productUrlMap.set(product.url, product);
-
-      // Log when syncing full product
-      if (syncFullProduct) {
-        console.log(`[SYNC] Product ${product.id} marked for FULL sync (all fields will be sent)`);
-      }
 
     } catch (error) {
       console.error(`Error preparing product ${product.id}:`, error);
     }
-  }
-
-  if (skippedDataSource > 0) {
-    console.log(`[SYNC] Skipped ${skippedDataSource} products due to data_source filter (filter=${dataSourceFilter})`);
   }
 
   if (skippedInvalidImage > 0) {
@@ -610,7 +491,6 @@ async function processBatch(
       created_or_updated: [],
       failed: [],
       verified: [],
-      skipped_data_source: skippedDataSource,
       skipped_invalid_image: skippedInvalidImage,
       invalid_image_products: invalidImageProducts
     };
@@ -688,7 +568,6 @@ async function processBatch(
       created_or_updated,
       failed,
       verified,
-      skipped_data_source: skippedDataSource,
       skipped_invalid_image: skippedInvalidImage,
       invalid_image_products: invalidImageProducts
     };
@@ -704,7 +583,6 @@ async function processBatch(
         error: `Batch error: ${errorMessage}`
       })),
       verified: [],
-      skipped_data_source: skippedDataSource,
       skipped_invalid_image: skippedInvalidImage,
       invalid_image_products: invalidImageProducts
     };
@@ -718,8 +596,7 @@ async function syncCompletedProducts(
   batchSize: number = 25,
   apiBatchSize: number = 5,
   vendor?: string | string[],
-  prioritizeCopyright: boolean = false,
-  dataSourceFilter: SyncDataSource = 'All'
+  prioritizeCopyright: boolean = false
 ): Promise<SyncResult> {
   const result: SyncResult = {
     total_queried: 0,
@@ -728,7 +605,6 @@ async function syncCompletedProducts(
     created_or_updated: 0,
     failed: 0,
     verified: 0,
-    skipped_data_source: 0,
     skipped_invalid_image: 0,
     validation_resets: {
       category: 0,
@@ -792,12 +668,12 @@ async function syncCompletedProducts(
       console.log(`[SYNC] Processing batch ${Math.floor(i / apiBatchSize) + 1}: ${batch.length} products (elapsed: ${Math.round(elapsed / 1000)}s)`);
 
       try {
-        const batchResult = await processBatch(batch, dataSourceFilter);
+        const batchResult = await processBatch(batch);
 
         result.created_or_updated += batchResult.created_or_updated.length;
         result.failed += batchResult.failed.length;
         result.verified += batchResult.verified.length;
-        result.skipped_data_source += batchResult.skipped_data_source;
+
         result.skipped_invalid_image += batchResult.skipped_invalid_image;
         result.batches_processed++;
 
@@ -893,8 +769,8 @@ async function syncCompletedProducts(
 Deno.serve(async (req) => {
   try {
     // Parse request body for configuration (optional)
-    let batchSize = 5000;  // Query up to 5000 products per run; time budget (120s) will stop early if needed
-    let apiBatchSize = 25; // Send 25 products per ERPNext API call to reduce round trips
+    let batchSize = 1000;  // Query up to 1000 products per run; time budget (120s) will stop early if needed
+    let apiBatchSize = 100; // Send 100 products per ERPNext API call to reduce round trips
     let vendor: string | undefined;
 
     if (req.method === "POST") {
@@ -912,7 +788,6 @@ Deno.serve(async (req) => {
     // Cron jobs don't have user context, so query admin user directly
     let syncVendors: string[] | string | undefined = vendor;
     let prioritizeCopyright = false;
-    let syncDataSource: SyncDataSource = 'All';
     let syncEnabled = true; // Default to enabled
 
     if (!vendor) {
@@ -952,14 +827,6 @@ Deno.serve(async (req) => {
             console.log(`[SYNC] Admin user has copyright prioritization enabled`);
           }
 
-          // Check sync_data_source preference
-          if (userPreferences.sync_data_source) {
-            const dataSource = userPreferences.sync_data_source;
-            if (dataSource === 'All' || dataSource === 'Scrapper') {
-              syncDataSource = dataSource;
-              console.log(`[SYNC] Admin user has data_source filter: ${dataSource}`);
-            }
-          }
         }
       } catch (error) {
         console.warn("[SYNC] Failed to load admin preferences, using default behavior:", error);
@@ -981,7 +848,6 @@ Deno.serve(async (req) => {
             created_or_updated: 0,
             failed: 0,
             verified: 0,
-            skipped_data_source: 0,
             validation_resets: { category: 0, weight_dimension: 0, seo: 0, copyright: 0 },
             errors: [],
             sync_disabled: true
@@ -998,10 +864,9 @@ Deno.serve(async (req) => {
       ? syncVendors.join(', ')
       : syncVendors || 'all';
     const copyrightDesc = prioritizeCopyright ? ', prioritizing copyright-complete products' : '';
-    const dataSourceDesc = syncDataSource !== 'All' ? `, data_source filter: ${syncDataSource}` : '';
-    console.log(`[SYNC] Starting sync: batchSize=${batchSize}, apiBatchSize=${apiBatchSize}, vendors=${vendorDesc}${copyrightDesc}${dataSourceDesc}`);
+    console.log(`[SYNC] Starting sync: batchSize=${batchSize}, apiBatchSize=${apiBatchSize}, vendors=${vendorDesc}${copyrightDesc}`);
 
-    const result = await syncCompletedProducts(batchSize, apiBatchSize, syncVendors, prioritizeCopyright, syncDataSource);
+    const result = await syncCompletedProducts(batchSize, apiBatchSize, syncVendors, prioritizeCopyright);
 
     return new Response(
       JSON.stringify({
