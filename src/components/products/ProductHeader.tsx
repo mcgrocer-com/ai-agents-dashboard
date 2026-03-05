@@ -269,9 +269,9 @@ export function ProductHeader({
                 <p className="text-2xl font-bold text-gray-900">
                   {formatCurrency(price)}
                 </p>
-                {originalPrice !== undefined && originalPrice !== null && originalPrice !== price && (
-                  <p className="text-lg text-gray-500 line-through mt-1">
-                    {formatCurrency(originalPrice)}
+                {originalPrice !== undefined && originalPrice !== null && (
+                  <p className={`text-lg mt-1 ${originalPrice !== price ? 'text-gray-500 line-through' : 'text-gray-400'}`}>
+                    OP: {formatCurrency(originalPrice)}
                   </p>
                 )}
                 {onComparePrices && (
