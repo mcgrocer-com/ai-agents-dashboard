@@ -1,32 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { validateProductUpdate, filterToAllowedFields } from '../_shared/product-validation.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Fields that are allowed to be updated
-const ALLOWED_UPDATE_FIELDS = [
-  'name',
-  'price',
-  'original_price',
-  'description',
-  'stock_status',
-  'main_image',
-  'images',
-  'weight',
-  'height',
-  'width',
-  'length',
-  'category',
-  'breadcrumbs',
-  'variants',
-  'variant_count',
-  'ean_code',
-  'product_id',
-  'timestamp'
-] as const;
 
 const BATCH_SIZE = 10;
 
@@ -57,6 +36,71 @@ function jsonResponse(body: object, status: number) {
   });
 }
 
+/**
+ * Disable products in ERPNext by invoking the existing disable-products-in-erpnext edge function.
+ */
+async function disableInErpNext(supabaseClient: any, urls: string[]): Promise<{ success: boolean; error?: string }> {
+  if (urls.length === 0) return { success: true };
+
+  try {
+    const { data, error } = await supabaseClient.functions.invoke('disable-products-in-erpnext', {
+      body: { urls, action: 'disable' },
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (data && !data.success) {
+      return { success: false, error: data.error || 'Unknown ERPNext error' };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+  }
+}
+
+/**
+ * Handle a deleted product: blacklist in DB and disable in ERPNext.
+ */
+async function handleDeletedProduct(
+  supabaseClient: any,
+  url: string
+): Promise<ItemResult> {
+  const trimmedUrl = url.trim();
+  const now = new Date().toISOString();
+
+  // Blacklist the product in the database
+  const { error: blacklistError } = await supabaseClient
+    .from('scraped_products')
+    .update({
+      blacklisted: true,
+      blacklist_reason: 'Product deleted at source',
+      blacklisted_at: now,
+    })
+    .eq('url', trimmedUrl);
+
+  if (blacklistError) {
+    console.error(`[UPDATE_SCRAPED_PRODUCT] Error blacklisting deleted product ${trimmedUrl}:`, blacklistError);
+    return { url: trimmedUrl, success: false, error: blacklistError.message };
+  }
+
+  // Disable in ERPNext via the existing edge function
+  const erpResult = await disableInErpNext(supabaseClient, [trimmedUrl]);
+  if (!erpResult.success) {
+    console.warn(`[UPDATE_SCRAPED_PRODUCT] Blacklisted ${trimmedUrl} but ERPNext disable failed: ${erpResult.error}`);
+  } else {
+    console.log(`[UPDATE_SCRAPED_PRODUCT] Product deleted at source - blacklisted and disabled in ERPNext: ${trimmedUrl}`);
+  }
+
+  return {
+    url: trimmedUrl,
+    success: true,
+    fields_updated: ['blacklisted', 'blacklist_reason', 'blacklisted_at'],
+  };
+}
+
 async function processBatch(
   supabaseClient: any,
   batch: ProductUpdate[]
@@ -64,15 +108,17 @@ async function processBatch(
   const results: ItemResult[] = [];
 
   for (const item of batch) {
-    const { url, ...fields } = item;
+    const { url, deleted, ...fields } = item;
+
+    // Handle deleted products: blacklist and disable in ERPNext immediately
+    if (deleted) {
+      const result = await handleDeletedProduct(supabaseClient, url);
+      results.push(result);
+      continue;
+    }
 
     // Filter to allowed fields only
-    const filteredUpdates: Record<string, any> = {};
-    for (const [key, value] of Object.entries(fields)) {
-      if (ALLOWED_UPDATE_FIELDS.includes(key as any)) {
-        filteredUpdates[key] = value;
-      }
-    }
+    const filteredUpdates = filterToAllowedFields(fields);
 
     if (Object.keys(filteredUpdates).length === 0) {
       results.push({
@@ -83,11 +129,19 @@ async function processBatch(
       continue;
     }
 
+    // Validate and normalize the filtered fields (async: pings main_image if present)
+    const validation = await validateProductUpdate(filteredUpdates);
+    if (!validation.valid) {
+      const errorMsg = validation.errors.map(e => e.message).join('; ');
+      results.push({ url, success: false, error: errorMsg });
+      continue;
+    }
+
     const now = new Date().toISOString();
     const { error: updateError } = await supabaseClient
       .from('scraped_products')
       .update({
-        ...filteredUpdates,
+        ...validation.normalized,
         updated_at: now,
         scraper_updated_at: now,
       })
@@ -122,7 +176,7 @@ async function processBatch(
       results.push({
         url,
         success: true,
-        fields_updated: Object.keys(filteredUpdates),
+        fields_updated: Object.keys(validation.normalized || filteredUpdates),
       });
     }
   }

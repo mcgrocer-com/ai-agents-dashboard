@@ -166,6 +166,8 @@ class ProductsService {
       // Regular query for other sort fields
       // Join with pending_products to get sync status and ai_title
       // Use 'planned' count for better performance with large datasets (estimates count from query planner)
+      // Use 'exact' count for filtered views (e.g. blacklisted tab) where accuracy matters
+      const countMethod = filters.exactCount ? 'exact' : 'planned'
       let query = supabase
         .from('scraped_products')
         .select(`
@@ -178,7 +180,7 @@ class ProductsService {
             ai_title,
             validation_error
           )
-        `, { count: 'planned' })
+        `, { count: countMethod })
 
       // Apply search filter on id, product_id, name, description, and ai_title
       // For ID field, use exact match for performance; for text fields use pattern matching

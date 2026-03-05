@@ -388,6 +388,7 @@ export interface ProductFilters {
   sortOrder?: 'asc' | 'desc'
   limit?: number
   offset?: number
+  exactCount?: boolean
 }
 
 // ============================================================================

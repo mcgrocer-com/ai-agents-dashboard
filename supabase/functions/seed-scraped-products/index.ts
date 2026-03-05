@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { validateProductBatch, type ValidationError } from '../_shared/product-validation.ts';
 
 // Configuration
 const BATCH_SIZE = 500;
@@ -63,11 +64,7 @@ interface MappedProduct {
   volumetric_weight: number;
 }
 
-interface ValidationError {
-  index: number;
-  field: string;
-  message: string;
-}
+// ValidationError imported from shared product-validation.ts
 
 interface SeedResponse {
   success: boolean;
@@ -84,112 +81,7 @@ interface SeedResponse {
   errors: string[];
 }
 
-/**
- * Validate required fields for a product
- * Shopify source products have relaxed validation (only name + url required)
- */
-function validateProduct(
-  product: any,
-  index: number,
-): ValidationError | null {
-  const isShopify = product.source === "shopify";
-
-  // All products must have name and url
-  for (const field of ["name", "url"]) {
-    if (!product[field] || typeof product[field] !== "string" || product[field].trim() === "") {
-      return {
-        index,
-        field,
-        message: `Missing or invalid required field: '${field}' at product index ${index}`,
-      };
-    }
-  }
-
-  // Shopify products: only name + url required, rest will get defaults
-  if (isShopify) {
-    return null;
-  }
-
-  // Scrapper products: strict validation (original behaviour)
-  const requiredStringFields = [
-    "vendor", "description", "stock_status",
-    "main_image", "product_id", "timestamp"
-  ];
-
-  for (const field of requiredStringFields) {
-    if (!product[field] || typeof product[field] !== "string" || product[field].trim() === "") {
-      return {
-        index,
-        field,
-        message: `Missing or invalid required field: '${field}' at product index ${index}`,
-      };
-    }
-  }
-
-  // Validate stock_status values
-  const stockStatus = product.stock_status?.toLowerCase().trim();
-  if (stockStatus !== "in stock" && stockStatus !== "out of stock") {
-    return {
-      index,
-      field: "stock_status",
-      message: `Invalid stock_status at product index ${index}. Must be 'in stock' or 'out of stock' (case insensitive)`,
-    };
-  }
-
-  // Number fields (required, must be positive)
-  const requiredNumberFields = ["price", "original_price"];
-
-  for (const field of requiredNumberFields) {
-    if (product[field] === undefined || product[field] === null || typeof product[field] !== "number") {
-      return {
-        index,
-        field,
-        message: `Missing or invalid required field: '${field}' (must be a number) at product index ${index}`,
-      };
-    }
-    if (product[field] <= 0) {
-      return {
-        index,
-        field,
-        message: `Invalid '${field}': must be greater than 0 (got ${product[field]}) at product index ${index}`,
-      };
-    }
-  }
-
-  // Images field (required, must be array or object)
-  if (!product.images || (typeof product.images !== "object")) {
-    return {
-      index,
-      field: "images",
-      message: `Missing or invalid required field: 'images' (must be an array or object) at product index ${index}`,
-    };
-  }
-
-  return null;
-}
-
-/**
- * Validate all products and return errors
- */
-function validateProducts(products: any[]): {
-  valid: ScrapedProduct[];
-  validationErrors: ValidationError[];
-} {
-  const valid: ScrapedProduct[] = [];
-  const validationErrors: ValidationError[] = [];
-
-  for (let i = 0; i < products.length; i++) {
-    const error = validateProduct(products[i], i);
-
-    if (error) {
-      validationErrors.push(error);
-    } else {
-      valid.push(products[i] as ScrapedProduct);
-    }
-  }
-
-  return { valid, validationErrors };
-}
+// Product validation now handled by shared _shared/product-validation.ts
 
 /**
  * Generate MD5 hash from vendor and URL using SHA-256 (MD5 not available in Deno)
@@ -605,8 +497,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Validate all products
-    const { valid: validProducts, validationErrors } = validateProducts(rawProducts);
+    // Validate all products (no image pinging in batch — too slow for 500+ products)
+    const { valid: validProducts, validationErrors } = await validateProductBatch(rawProducts);
 
     if (validationErrors.length > 0) {
       return new Response(
@@ -643,7 +535,7 @@ Deno.serve(async (req: Request) => {
 
     // Step 1: Deduplicate by product_id
     const { unique: uniqueProducts, duplicatesCount: productIdDupes } =
-      deduplicateByProductId(validProducts);
+      deduplicateByProductId(validProducts as unknown as ScrapedProduct[]);
     stats.duplicates_removed += productIdDupes;
 
     // Step 2: Map to schema

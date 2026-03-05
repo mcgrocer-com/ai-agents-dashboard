@@ -284,11 +284,8 @@ export function productToERPNextFormat(
 
 
   }
-  // Variants
-  if (product.variants) {
-    payload.variants = product.variants;
-    payload.variant_attribute = "color"; // Default variant attribute
-  }
+  // Variants - intentionally excluded from ERPNext payload
+  // ERPNext currently has issues with variant products, so we skip variant data
 
   // Images - Use copyright images if available, otherwise use original images
   // IMPORTANT: ERPNext requires all URLs to start with http:// or https://

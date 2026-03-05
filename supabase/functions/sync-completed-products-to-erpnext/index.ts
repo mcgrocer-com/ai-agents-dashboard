@@ -238,7 +238,6 @@ async function getProductsNeedingSync(
       AND sp.blacklisted IS NOT TRUE
       AND (sp.rejected IS NOT TRUE OR sp.rejected IS NULL)
       AND sp.classification IS NOT NULL
-      AND (sp.variants IS NULL OR sp.variants::text = 'null' OR sp.variants::text = '[]')
       ${vendorClause}
       ${copyrightClause}
     ORDER BY

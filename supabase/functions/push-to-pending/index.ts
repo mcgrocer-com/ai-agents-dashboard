@@ -20,6 +20,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 import { classifyProduct } from '../_shared/gemini-classification.ts';
+import { validateProduct } from '../_shared/product-validation.ts';
 
 const BATCH_SIZE = 100;
 const EXPONENTIAL_BACKOFF_BASE_MS = 60000; // 1 minute base delay
@@ -60,6 +61,7 @@ interface ScrapedProduct {
   breadcrumbs?: any;
   name?: string;
   description?: string;
+  main_image?: string;
   rejected?: boolean;
   classification?: string;
 }
@@ -74,6 +76,7 @@ interface PendingProduct {
   weight_and_dimension_status: string;
   seo_status: string;
   faq_status: string;
+  validation_error?: string;
 }
 
 interface WebhookPayload {
@@ -94,7 +97,48 @@ async function createPendingProduct(
   scrapedProduct: ScrapedProduct,
 ): Promise<{ id: string | null; error: any | null; isDuplicate: boolean; rejected: boolean }> {
 
-  // STEP 1: Classify product using Gemini AI
+  // STEP 1: Validate product fields + image accessibility (cheap check before expensive Gemini call)
+  const validation = await validateProduct(
+    scrapedProduct as unknown as Record<string, unknown>,
+    { mode: 'seed', checkImages: true },
+  );
+
+  // If validation fails, skip Gemini classification to save API cost.
+  // Insert into pending_products with validation_error so it's visible but won't sync.
+  if (!validation.valid) {
+    const errorSummary = validation.errors.map(e => `${e.field}: ${e.message}`).join('; ');
+    console.warn(`⚠️ Validation failed for ${scrapedProduct.id}: ${errorSummary}`);
+    console.log(`⏭️ Skipping Gemini classification — validation failed for ${scrapedProduct.id}`);
+
+    const pendingProduct: PendingProduct = {
+      product_id: scrapedProduct.product_id,
+      scraped_product_id: scrapedProduct.id,
+      url: scrapedProduct.url || '',
+      vendor: scrapedProduct.vendor || '',
+      breadcrumbs: scrapedProduct.breadcrumbs || null,
+      category_status: 'pending',
+      weight_and_dimension_status: 'pending',
+      seo_status: 'pending',
+      faq_status: 'pending',
+      validation_error: errorSummary,
+    };
+
+    const { data, error } = await supabase
+      .from('pending_products')
+      .insert([pendingProduct])
+      .select();
+
+    if (error) {
+      if (error.code === '23505' || error.message.includes('duplicate') || error.message.includes('already exists')) {
+        return { id: null, error: null, isDuplicate: true, rejected: false };
+      }
+      return { id: null, error, isDuplicate: false, rejected: false };
+    }
+
+    return { id: data?.[0]?.id || null, error: null, isDuplicate: false, rejected: false };
+  }
+
+  // STEP 2: Classify product using Gemini AI (only if image is valid)
   console.log('🔍 Classifying product for UK medicine compliance:', {
     name: scrapedProduct.name,
     id: scrapedProduct.id,
@@ -149,7 +193,7 @@ async function createPendingProduct(
     return { id: null, error, isDuplicate: false, rejected: false };
   }
 
-  // STEP 2: Update scraped_products with classification results
+  // STEP 3: Update scraped_products with classification results
   const { error: updateError } = await supabase
     .from('scraped_products')
     .update({
@@ -165,7 +209,7 @@ async function createPendingProduct(
     // Continue anyway - classification is stored even if update fails
   }
 
-  // STEP 3: If product is REJECTED, do not create pending_products entry
+  // STEP 4: If product is REJECTED, do not create pending_products entry
   if (classification.rejected) {
     console.log('🚫 Product REJECTED - will not be added to pending_products:', {
       classification: classification.classification,
@@ -174,11 +218,10 @@ async function createPendingProduct(
     return { id: null, error: null, isDuplicate: false, rejected: true };
   }
 
-  // STEP 4: Product ACCEPTED - proceed with pending_products creation
+  // STEP 5: Product ACCEPTED - create pending_products entry
   console.log('✅ Product ACCEPTED - proceeding to pending_products:', {
     classification: classification.classification,
   });
-
   const pendingProduct: PendingProduct = {
     product_id: scrapedProduct.product_id,
     scraped_product_id: scrapedProduct.id,

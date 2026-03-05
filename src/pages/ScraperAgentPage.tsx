@@ -212,6 +212,7 @@ export function ScraperAgentPage() {
       dynamicFilters: dynamicFilters.length > 0 ? dynamicFilters : undefined,
       validationErrorCategory: activeTab === 'validation_issues' ? validationErrorCategory : undefined,
       syncFilter: activeTab === 'all' ? syncFilter : undefined,
+      exactCount: activeTab === 'blacklisted',
     }
 
     // Use appropriate service method based on active tab
@@ -1143,7 +1144,7 @@ export function ScraperAgentPage() {
       <div className="flex-shrink-0 flex items-center justify-between text-sm">
         <div className="flex items-center gap-4">
           <p className="text-secondary-600">
-            Showing {products.length} of {count.toLocaleString()}{' '}
+            Showing {products.length} of {Math.max(count, products.length).toLocaleString()}{' '}
             {activeTab === 'pinned' ? 'pinned ' : activeTab === 'validation_issues' ? 'products with validation issues' : activeTab === 'blacklisted' ? 'blacklisted products' : 'products'}
           </p>
           {selectionMode && selectedProductIds.size > 0 && (
