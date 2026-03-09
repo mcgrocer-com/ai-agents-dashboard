@@ -285,7 +285,7 @@ export function ProductDetailPage() {
           metaTitle={product.meta_title || undefined}
           metaDescription={product.meta_description || undefined}
           createdAt={product.created_at || undefined}
-          updatedAt={product.timestamp || undefined}
+          updatedAt={product.updated_at || undefined}
         />
       ),
     },

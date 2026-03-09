@@ -25,10 +25,6 @@ export interface ValidationOptions {
   index?: number;
   /** Product source. When 'shopify', only name + url required. */
   source?: string;
-  /** Run async image accessibility checks (HEAD requests). Default: false. */
-  checkImages?: boolean;
-  /** Timeout per image HEAD request in ms. Default: 5000. */
-  imagePingTimeoutMs?: number;
 }
 
 export interface ValidationResult {
@@ -36,13 +32,6 @@ export interface ValidationResult {
   errors: ValidationError[];
   /** Normalized payload, only populated when valid === true. */
   normalized?: Record<string, unknown>;
-}
-
-export interface ImagePingResult {
-  url: string;
-  accessible: boolean;
-  status?: number;
-  error?: string;
 }
 
 export interface BatchValidationResult {
@@ -329,7 +318,6 @@ export function filterToAllowedFields(
  *
  * In 'seed' mode: all required fields must be present and valid.
  * In 'update' mode: only fields present in the payload are validated.
- * When checkImages is true, pings main_image via HEAD request to verify accessibility.
  *
  * Returns { valid, errors, normalized }.
  */
@@ -440,19 +428,10 @@ export async function validateProduct(
   // ── OPTIONAL FIELDS ──
   applyOptionalNormalizations(product, normalized, errors, index);
 
-  // ── IMAGE ACCESSIBILITY CHECK (async, opt-in) ──
-  if (options.checkImages && errors.length === 0) {
-    const mainImage = (normalized.main_image || product.main_image) as string | undefined;
-    if (mainImage && typeof mainImage === 'string' && mainImage.startsWith('http')) {
-      const pingResult = await pingImageUrl(mainImage, options.imagePingTimeoutMs);
-      if (!pingResult.accessible) {
-        const detail = pingResult.status
-          ? `HTTP ${pingResult.status}`
-          : (pingResult.error || 'unreachable');
-        addError('main_image', `Main image not accessible: ${detail} (${mainImage})`);
-      }
-    }
-  }
+  // ── IMAGE ACCESSIBILITY CHECK — DISABLED ──
+  // Image HEAD-request checks caused widespread false validation errors
+  // (vendors rotate CDN URLs, return 404 for HEAD but serve images fine via GET).
+  // Removed 2026-03-09 to stop blocking valid products.
 
   const valid = errors.length === 0;
   return {
@@ -507,7 +486,7 @@ export async function validateProductBatch(
 export async function validateProductUpdate(
   fields: Record<string, unknown>,
 ): Promise<ValidationResult> {
-  return validateProduct(fields, { mode: 'update', checkImages: false });
+  return validateProduct(fields, { mode: 'update' });
 }
 
 // ─── Agent Data Validation (pre-ERPNext sync) ──────────────────────
@@ -608,41 +587,4 @@ export function validateProductAgentData(product: {
   };
 }
 
-// ─── Image Ping Functions ───────────────────────────────────────────
-
-const DEFAULT_IMAGE_PING_TIMEOUT_MS = 5_000;
-
-/**
- * Check if an image URL is accessible via HEAD request.
- */
-async function pingImageUrl(
-  url: string,
-  timeoutMs: number = DEFAULT_IMAGE_PING_TIMEOUT_MS,
-): Promise<ImagePingResult> {
-  if (!url || typeof url !== 'string') {
-    return { url: url || '', accessible: false, error: 'Invalid URL' };
-  }
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    return { url, accessible: false, error: 'URL must start with http:// or https://' };
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      method: 'HEAD',
-      signal: controller.signal,
-      redirect: 'follow',
-    });
-    return { url, accessible: response.ok, status: response.status };
-  } catch (error) {
-    const message = error instanceof DOMException && error.name === 'AbortError'
-      ? `Timeout after ${timeoutMs}ms`
-      : (error instanceof Error ? error.message : String(error));
-    return { url, accessible: false, error: message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
 

@@ -101,7 +101,7 @@ async function createPendingProduct(
   // STEP 1: Validate product fields + image accessibility (cheap check before expensive Gemini call)
   const validation = await validateProduct(
     scrapedProduct as unknown as Record<string, unknown>,
-    { mode: 'seed', checkImages: true },
+    { mode: 'seed' },
   );
 
   // If validation fails, skip Gemini classification to save API cost.

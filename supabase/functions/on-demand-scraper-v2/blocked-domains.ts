@@ -75,6 +75,7 @@ export const BLOCKED_DOMAINS = [
   'hellosupermarket.co.uk',
   'mealmatcher.co.uk',
   'grocerycompare.co.uk',
+  'grocefully.com',
 
   // === TECH/ELECTRONICS COMPARISON ===
   'uk.pcpartpicker.com',

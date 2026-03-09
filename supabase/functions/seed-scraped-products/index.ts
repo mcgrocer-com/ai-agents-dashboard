@@ -293,10 +293,27 @@ async function upsertProductsInBatches(
         const batchNum = i + batchIdx + 1;
         try {
           if (updateExisting) {
-            // Keep 'id' in payload — needed for new row inserts (NOT NULL column).
-            // id = hash(vendor+url), so same URL always produces the same id.
+            // Only update scraper-owned fields. Agent-populated fields (ai_title,
+            // ai_description, category, breadcrumbs, weight, height, width, length,
+            // volumetric_weight, status, seo fields) must NOT be overwritten —
+            // otherwise sanitized products lose their agent data.
             const batchWithTimestamp = batch.map((row) => ({
-              ...row,
+              id: row.id,
+              url: row.url,
+              vendor: row.vendor,
+              name: row.name,
+              price: row.price,
+              original_price: row.original_price,
+              description: row.description,
+              stock_status: row.stock_status,
+              images: row.images,
+              main_image: row.main_image,
+              variants: row.variants,
+              variant_count: row.variant_count,
+              product_id: row.product_id,
+              timestamp: row.timestamp,
+              ean_code: row.ean_code,
+              source: row.source,
               updated_at: new Date().toISOString(),
             }));
 
