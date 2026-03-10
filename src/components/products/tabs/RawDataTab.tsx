@@ -23,7 +23,7 @@ export function RawDataTab({ data }: RawDataTabProps) {
     const allowedFields = [
       'name',
       'price',
-      'original_price', // Maps to selling_price
+      'original_price', // Maps to price (standard/RRP price in ERPNext)
       'product_id',
       'description',
       'stock_status',
@@ -60,8 +60,10 @@ export function RawDataTab({ data }: RawDataTabProps) {
         }
 
         // Map field names to match ERPNext format
-        if (key === 'original_price') {
+        if (key === 'price') {
           productData['selling_price'] = value
+        } else if (key === 'original_price') {
+          productData['price'] = value
         } else if (key === 'breadcrumbs') {
           productData['breadcrumb'] = value
         } else if (key === 'ai_title') {
@@ -81,64 +83,154 @@ export function RawDataTab({ data }: RawDataTabProps) {
     return productData
   }
 
-  // Get ERPNext payload format
+  /**
+   * Sanitize text fields for ERPNext API compatibility.
+   * Mirrors sanitizeForERPNext in _shared/erpnext-utils.ts
+   */
+  const sanitizeForERPNext = (text: string): string => {
+    return text
+      .replace(/\\/g, '')
+      .replace(/\*/g, '')
+      .replace(/"/g, '')
+      .replace(/\?/g, '')
+      .replace(/\|/g, '-')
+      .replace(/\u2026/g, '...')
+      .replace(/[\u201C\u201D]/g, '')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u2013\u2014]/g, '-')
+      .replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  /**
+   * Check if a URL starts with http:// or https://
+   */
+  const isValidUrl = (url: string | null | undefined): boolean => {
+    if (!url || typeof url !== 'string') return false
+    return url.startsWith('http://') || url.startsWith('https://')
+  }
+
+  /**
+   * Filter array of URLs to only include valid ones
+   */
+  const filterValidUrls = (urls: unknown): string[] | null => {
+    if (!Array.isArray(urls)) return null
+    const valid = urls.filter((url): url is string => isValidUrl(url))
+    return valid.length > 0 ? valid : null
+  }
+
+  /**
+   * Get ERPNext payload format — mirrors productToERPNextFormat in _shared/erpnext-utils.ts
+   */
   const getErpnextPayload = (data: any) => {
     if (!data) return {}
 
-    const payload: any = {}
-
-    // Map fields to ERPNext format
-    if (data.name) payload.name = data.name
-    if (data.price !== undefined && data.price !== null) payload.price = data.price
-    if (data.original_price !== undefined && data.original_price !== null) {
-      payload.selling_price = data.original_price
+    const payload: any = {
+      url: data.url,
+      vendor: data.vendor || 'unknown',
+      timestamp: data.updated_at || new Date().toISOString(),
+      copyright: 'false',
     }
+
     if (data.product_id) payload.product_id = data.product_id
+
+    // Product fields (included for creation or full sync)
+    if (data.name) payload.name = sanitizeForERPNext(data.name)
     if (data.description) payload.description = data.description
-    if (data.stock_status) payload.stock_status = data.stock_status
-    if (data.url) payload.url = data.url
-    if (data.category) payload.category = data.category
-    if (data.breadcrumbs) payload.breadcrumb = data.breadcrumbs
-    if (data.ai_title) payload.ai_title = data.ai_title
-    if (data.ai_description) payload.summary = data.ai_description
-    if (data.vendor) payload.vendor = data.vendor
-    if (data.images) payload.images = data.images
-    if (data.main_image) payload.main_image = data.main_image
 
-    // SEO meta fields
-    if (data.meta_title) payload.meta_title = data.meta_title
-    if (data.meta_description) payload.meta_description = data.meta_description
+    // Price mapping: original_price → price, price → selling_price
+    if (data.original_price !== undefined && data.original_price !== null) {
+      payload.price = Number(data.original_price)
+    }
+    if (data.price !== undefined && data.price !== null) {
+      payload.selling_price = Number(data.price)
+    }
 
-    // Timestamp
+    // Normalize stock_status casing to match ERPNext expected values
+    if (data.stock_status) {
+      const stockMap: Record<string, string> = {
+        'in stock': 'In Stock',
+        'in_stock': 'In Stock',
+        'low stock': 'Low Stock',
+        'low_stock': 'Low Stock',
+        'on order': 'On Order',
+        'on_order': 'On Order',
+        'out of stock': 'Out of Stock',
+        'out_of_stock': 'Out of Stock',
+      }
+      payload.stock_status =
+        stockMap[data.stock_status.toLowerCase()] || data.stock_status
+    }
+
+    // Images — use copyright images if available, otherwise original
+    if (
+      data.non_copyright_images &&
+      Array.isArray(data.non_copyright_images) &&
+      data.non_copyright_images.length > 0
+    ) {
+      const validCopyrightImages = filterValidUrls(data.non_copyright_images)
+      if (validCopyrightImages && validCopyrightImages.length > 0) {
+        payload.main_image = validCopyrightImages[0]
+        payload.images = validCopyrightImages
+        payload.copyright = 'true'
+      } else {
+        if (isValidUrl(data.main_image)) payload.main_image = data.main_image
+        const validImages = filterValidUrls(data.images)
+        if (validImages) payload.images = validImages
+      }
+    } else {
+      if (isValidUrl(data.main_image)) payload.main_image = data.main_image
+      const validImages = filterValidUrls(data.images)
+      if (validImages) payload.images = validImages
+    }
+
+    // Use copyright description if available
+    if (data.non_copyright_desc) {
+      payload.description = data.non_copyright_desc
+      payload.copyright = 'true'
+    }
+
+    // Category fields — validate not empty
+    const isCategoryValid =
+      data.category && data.category !== '' && data.category !== '[]'
+    const isBreadcrumbValid =
+      data.breadcrumbs &&
+      JSON.stringify(data.breadcrumbs) !== '[]' &&
+      (Array.isArray(data.breadcrumbs) ? data.breadcrumbs.length > 0 : true)
+
+    if (isCategoryValid) payload.category = data.category
+    if (isBreadcrumbValid) payload.breadcrumb = data.breadcrumbs
+
+    // Weight/dimension fields
+    if (data.weight !== null && data.weight !== undefined)
+      payload.weight = Number(data.weight)
+    if (data.height !== null && data.height !== undefined)
+      payload.height = Number(data.height)
+    if (data.width !== null && data.width !== undefined)
+      payload.width = Number(data.width)
+    if (data.length !== null && data.length !== undefined)
+      payload.length = Number(data.length)
+    if (data.volumetric_weight !== null && data.volumetric_weight !== undefined)
+      payload.volumetric_weight = Number(data.volumetric_weight)
+
+    // SEO fields (sanitized)
+    if (data.ai_title) payload.ai_title = sanitizeForERPNext(data.ai_title)
+    if (data.ai_description)
+      payload.summary = sanitizeForERPNext(data.ai_description)
+    if (data.meta_title)
+      payload.meta_title = sanitizeForERPNext(data.meta_title)
+    if (data.meta_description)
+      payload.meta_description = sanitizeForERPNext(data.meta_description)
+
+    // FAQs (stringified JSON array, limit to 3)
+    if (data.faq && Array.isArray(data.faq) && data.faq.length > 0) {
+      payload.faqs = JSON.stringify(data.faq.slice(0, 3))
+    }
+
+    // Scraper timestamp
     if (data.timestamp) {
-      payload.timestamp = data.timestamp
-    } else if (data.created_at) {
-      payload.timestamp = new Date(data.created_at).toISOString()
-    }
-
-    // Dimensions - format to 3 decimal places
-    if (data.weight !== undefined && data.weight !== null) {
-      payload.weight = typeof data.weight === 'number' ? parseFloat(data.weight.toFixed(3)) : data.weight
-    }
-    if (data.height !== undefined && data.height !== null) {
-      payload.height = typeof data.height === 'number' ? parseFloat(data.height.toFixed(3)) : data.height
-    }
-    if (data.width !== undefined && data.width !== null) {
-      payload.width = typeof data.width === 'number' ? parseFloat(data.width.toFixed(3)) : data.width
-    }
-    if (data.length !== undefined && data.length !== null) {
-      payload.length = typeof data.length === 'number' ? parseFloat(data.length.toFixed(3)) : data.length
-    }
-    if (data.volumetric_weight !== undefined && data.volumetric_weight !== null) {
-      payload.volumetric_weight = typeof data.volumetric_weight === 'number'
-        ? parseFloat(data.volumetric_weight.toFixed(3))
-        : data.volumetric_weight
-    }
-
-    // Variants
-    if (data.variants) {
-      payload.variants = data.variants
-      payload.variant_attribute = "color" // Default variant attribute
+      payload.last_scrapped_at = data.timestamp
     }
 
     return payload
@@ -233,20 +325,22 @@ export function RawDataTab({ data }: RawDataTabProps) {
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <p className="text-xs text-blue-800 mb-2">
-            <strong>Note:</strong> This payload is formatted as an array (required by ERPNext API).
+            <strong>Note:</strong> This payload mirrors{' '}
+            <code className="bg-blue-100 px-1 rounded">productToERPNextFormat()</code>{' '}
+            from <code className="bg-blue-100 px-1 rounded">_shared/erpnext-utils.ts</code>.
           </p>
           <p className="text-xs text-blue-800">
             <strong>Field mappings:</strong>{' '}
-            <code className="bg-blue-100 px-1 rounded">original_price → selling_price</code>,{' '}
+            <code className="bg-blue-100 px-1 rounded">original_price → price</code>,{' '}
+            <code className="bg-blue-100 px-1 rounded">price → selling_price</code>,{' '}
             <code className="bg-blue-100 px-1 rounded">breadcrumbs → breadcrumb</code>,{' '}
-            <code className="bg-blue-100 px-1 rounded">ai_description → summary</code>
+            <code className="bg-blue-100 px-1 rounded">ai_description → summary</code>,{' '}
+            <code className="bg-blue-100 px-1 rounded">faq → faqs</code>,{' '}
+            <code className="bg-blue-100 px-1 rounded">timestamp → last_scrapped_at</code>
           </p>
           <p className="text-xs text-blue-800 mt-2">
-            <strong>Additional fields:</strong>{' '}
-            <code className="bg-blue-100 px-1 rounded">meta_title</code>,{' '}
-            <code className="bg-blue-100 px-1 rounded">meta_description</code>,{' '}
-            <code className="bg-blue-100 px-1 rounded">variants</code>,{' '}
-            <code className="bg-blue-100 px-1 rounded">variant_attribute</code> (default: "color")
+            <strong>Sanitization:</strong> Text fields (name, SEO) have special characters removed.
+            Copyright images/description used when available. Stock status normalized to Title Case.
           </p>
         </div>
       </div>
