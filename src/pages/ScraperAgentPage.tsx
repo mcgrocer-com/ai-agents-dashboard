@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban, RotateCcw, Eraser, Power, Undo2 } from 'lucide-react'
+import { Package, SlidersHorizontal, Pin, ChevronDown, ChevronUp, CloudUpload, AlertTriangle, Clock, CheckSquare, Square, XCircle, Send, Ban, RotateCcw, Eraser, Power, Undo2, Download } from 'lucide-react'
 import { productsService, blacklistService } from '@/services'
 
 import { supabase } from '@/lib/supabase/client'
@@ -17,6 +17,7 @@ import { VendorStatistics } from '@/components/scraper/VendorStatistics'
 import { VendorSelectionDialog } from '@/components/scraper/VendorSelectionDialog'
 import { ProductActionsMenu } from '@/components/scraper/ProductActionsMenu'
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog'
+import { ExportValidationDialog } from '@/components/scraper/ExportValidationDialog'
 import { useToast } from '@/hooks/useToast'
 import { useUserPreferences } from '@/hooks/useUserPreferences'
 import type { SyncDataSource } from '@/services/user.service'
@@ -120,6 +121,7 @@ export function ScraperAgentPage() {
   const [unblacklistConfirmOpen, setUnblacklistConfirmOpen] = useState(false)
   const [unblacklistConfirmMessage, setUnblacklistConfirmMessage] = useState('')
   const [isUnblacklisting, setIsUnblacklisting] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
 
   // Vendor selection dialog states
   const [showVendorDialog, setShowVendorDialog] = useState(false)
@@ -1039,6 +1041,14 @@ export function ScraperAgentPage() {
           )}
           <div className="ml-auto flex items-center gap-2">
             <button
+              onClick={() => setExportDialogOpen(true)}
+              disabled={products.length === 0}
+              className="px-4 py-1.5 rounded-lg text-xs font-medium bg-primary-100 text-primary-700 border border-primary-300 hover:bg-primary-200 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export for Rescrape
+            </button>
+            <button
               onClick={handleRemoveErrorsValidation}
               disabled={isRemovingErrors}
               className="px-4 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-700 border border-amber-300 hover:bg-amber-200 transition-colors disabled:opacity-50 flex items-center gap-1.5"
@@ -1251,6 +1261,18 @@ export function ScraperAgentPage() {
         confirmText="Unblacklist"
         variant="warning"
         loading={isUnblacklisting}
+      />
+
+      <ExportValidationDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        totalCount={count}
+        errorCategory={validationErrorCategory}
+        categoryLabel={
+          validationErrorCategory
+            ? { http_error: 'HTTP Error', timeout: 'Timeout', unreachable: 'Unreachable', post_processing: 'Post-processing', image_mismatch: 'Image Mismatch' }[validationErrorCategory]
+            : undefined
+        }
       />
     </div>
   )
