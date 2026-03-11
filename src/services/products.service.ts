@@ -196,12 +196,12 @@ class ProductsService {
           const cleanedId = filters.search.replace(/-/g, '')
           // Use exact match for ID (much faster than ilike)
           query = query.or(
-            `id.eq.${cleanedId},product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%`
+            `id.eq.${cleanedId},product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%,url.ilike.%${escapedSearch}%`
           )
         } else {
           // Use pattern matching for text search only
           query = query.or(
-            `product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%`
+            `product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%,url.ilike.%${escapedSearch}%`
           )
         }
       }
@@ -1013,12 +1013,12 @@ class ProductsService {
           const cleanedId = filters.search.replace(/-/g, '')
           // Use exact match for ID (much faster than ilike)
           query = query.or(
-            `id.eq.${cleanedId},product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%`
+            `id.eq.${cleanedId},product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%,url.ilike.%${escapedSearch}%`
           )
         } else {
           // Use pattern matching for text search only
           query = query.or(
-            `product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%`
+            `product_id.ilike.%${escapedSearch}%,name.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%,ai_title.ilike.%${escapedSearch}%,url.ilike.%${escapedSearch}%`
           )
         }
       }
