@@ -14,6 +14,21 @@ Deno.serve(async (req) => {
   try {
     const erpnextBaseUrl =
       Deno.env.get("ERPNEXT_BASE_URL") || "https://erpnext.mcgrocer.com";
+    const erpnextAuthToken = Deno.env.get("ERPNEXT_AUTH_TOKEN");
+
+    if (!erpnextAuthToken) {
+      console.error("[ERPNEXT] ERPNEXT_AUTH_TOKEN is not set");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "ERPNEXT_AUTH_TOKEN is not configured",
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     const body = await req.json();
     const urls: string[] = body.urls || [];
@@ -54,6 +69,7 @@ Deno.serve(async (req) => {
       {
         method: "POST",
         headers: {
+          "Authorization": `token ${erpnextAuthToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ urls, action }),

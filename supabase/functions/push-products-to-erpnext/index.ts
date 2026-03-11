@@ -126,13 +126,9 @@ async function processPush(products: PendingProduct[]): Promise<PushResult[]> {
       // Extract itemCode from ExistingERPNextItem object (not the object itself)
       const existingItem: ExistingERPNextItem | undefined = existingItems.get(product.url);
       const erpnextItemCode = existingItem?.itemCode || product.item_code;
-      const isUpdate = !!erpnextItemCode;
-
-      // Check sync_full_product flag
-      const syncFullProduct = product.sync_full_product === true;
 
       // For creation, require either copyright description or original description
-      if (!isUpdate && !product.non_copyright_desc && !product.description) {
+      if (!erpnextItemCode && !product.non_copyright_desc && !product.description) {
         results.push({
           productId: product.id,
           url: product.url,
@@ -158,7 +154,9 @@ async function processPush(products: PendingProduct[]): Promise<PushResult[]> {
         product.item_code = erpnextItemCode;
       }
 
-      const itemData = productToERPNextFormat(product, isUpdate, syncFullProduct);
+      // Always send full product data — matches sync-completed behavior
+      // ERPNext API handles create vs update internally by URL
+      const itemData = productToERPNextFormat(product, false, true);
       batchItems.push(itemData);
       productUrlMap.set(product.url, product);
 
@@ -232,7 +230,31 @@ async function processPush(products: PendingProduct[]): Promise<PushResult[]> {
         }
       }
     } else {
-      console.warn(`[PUSH] API Response unexpected format. Type: ${typeof apiResponse.message}`);
+      console.warn(`[PUSH] API Response unexpected format. Type: ${typeof apiResponse.message}, Full response: ${JSON.stringify(apiResponse)}`);
+      // Mark all sent products as failed when response format is unexpected
+      for (const [url, product] of productUrlMap) {
+        failed.push({
+          productId: product.id,
+          url,
+          error: `ERPNext API returned unexpected response format: ${typeof apiResponse.message}`
+        });
+      }
+    }
+
+    // Catch products sent to API but not matched in response (silent failures)
+    const accountedIds = new Set([
+      ...verified.map(v => v.product_id),
+      ...failed.map(f => f.productId)
+    ]);
+    for (const [url, product] of productUrlMap) {
+      if (!accountedIds.has(product.id)) {
+        console.warn(`[PUSH] Product ${product.id} (${url}) sent to API but not matched in response`);
+        failed.push({
+          productId: product.id,
+          url,
+          error: 'Product sent to ERPNext API but not matched in response'
+        });
+      }
     }
 
     // Update verified products

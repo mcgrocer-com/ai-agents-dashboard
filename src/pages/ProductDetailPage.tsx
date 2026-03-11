@@ -226,8 +226,14 @@ export function ProductDetailPage() {
         throw error || new Error('Failed to push product to ERPNext')
       }
 
+      // Check if edge function returned an error response
+      if (data.success === false && data.error) {
+        throw new Error(data.error + (data.details ? ` — ${data.details}` : ''))
+      }
+
       // Validate response structure
       if (!data.results || !Array.isArray(data.results) || data.results.length === 0) {
+        console.error('Unexpected ERPNext response:', JSON.stringify(data))
         throw new Error('Invalid response from ERPNext API: missing results')
       }
 

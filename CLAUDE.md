@@ -163,6 +163,10 @@ npm run test:erpnext # Test ERPNext connectivity
 - For Supabase/DB work, prefer `supabase-backend-expert` subagent
 - For edge function changes, use `edge-function-reviewer` for review
 
+## Skill Creation
+
+When a task is **repetitive** (done 2+ times with similar steps) or **complex** (multi-step workflow that benefits from a documented process), create a reusable skill using `/skill-creator`. Store in `.claude/skills/`.
+
 ## Conventions
 
 - Use TypeScript strict mode
