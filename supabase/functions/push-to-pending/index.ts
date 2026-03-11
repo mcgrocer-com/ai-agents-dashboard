@@ -515,9 +515,42 @@ Deno.serve(async (req) => {
           responseMessage = 'Product updated, classified as ACCEPTED, pending entry created';
         }
       } else {
-        console.log('✅ Pending product exists, continuing with sync check');
+        console.log('✅ Pending product exists, re-validating after update');
         pendingProductId = existingPending.id;
-        responseMessage = 'Product updated, checked for sync';
+
+        // Re-validate the updated scraped product data
+        const revalidation = await validateProduct(
+          scrapedProduct as unknown as Record<string, unknown>,
+          { mode: 'seed' },
+        );
+
+        if (!revalidation.valid) {
+          const errorSummary = revalidation.errors.map(e => `${e.field}: ${e.message}`).join('; ');
+          console.warn(`⚠️ Re-validation failed for ${scrapedProduct.id}: ${errorSummary}`);
+
+          const { error: valUpdateError } = await supabase
+            .from('pending_products')
+            .update({ validation_error: errorSummary })
+            .eq('id', existingPending.id);
+
+          if (valUpdateError) {
+            console.error('❌ Error updating validation_error:', valUpdateError);
+          }
+          responseMessage = 'Product updated, validation still failing';
+        } else {
+          // Validation now passes — clear the error
+          const { error: clearError } = await supabase
+            .from('pending_products')
+            .update({ validation_error: null })
+            .eq('id', existingPending.id);
+
+          if (clearError) {
+            console.error('❌ Error clearing validation_error:', clearError);
+          } else {
+            console.log('✅ Cleared validation_error for pending product');
+          }
+          responseMessage = 'Product updated, validation passed, checked for sync';
+        }
       }
     }
 
