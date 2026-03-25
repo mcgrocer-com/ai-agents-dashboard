@@ -554,12 +554,19 @@ A complete blog post ready for Shopify includes:
 ### Components (`src/components/blogger/`)
 - **BlogWizard** - Multi-step form container
 - **PersonaSelector** - Persona grid selection
+- **PersonaFormModal** - Create/edit persona modal
 - **TemplateSelector** - Template grid selection
+- **TemplateFormModal** - Create/edit template modal
 - **ContentGenerationChat** - AI generation with live logs
+- **BlogGenerationSettings** - Generation configuration (word count, tone, etc.)
+- **ContextFileUpload** - Upload context files (DOCX, PDF, Excel) for AI reference
 - **ContentEditor** - Markdown/HTML editor with preview
 - **SeoOptimizer** - Meta editor with scoring
 - **BlogPreview** - Full blog preview
+- **BlogList** - Blog listing with filtering and search
 - **BlogCard** - Blog list item with actions
+- **TopRankingArticles** - Display scraped competitor articles
+- **ProductSelector** - Search and select McGrocer products for linking
 - **AgentInsights** - AI processing insights
 
 ## Routes
