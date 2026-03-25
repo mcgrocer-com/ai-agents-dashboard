@@ -209,12 +209,6 @@ Every edge function has its own README with endpoint details, request/response s
 
 </details>
 
-### Troubleshooting & Fixes
-
-| Document | Description |
-|----------|-------------|
-| [supabase/edge-functions/SEED_SCRAPED_PRODUCTS_FIX.md](supabase/edge-functions/SEED_SCRAPED_PRODUCTS_FIX.md) | Fix for seed-scraped-products unique constraint errors |
-
 ### Context & Reference
 
 | Document | Description |
