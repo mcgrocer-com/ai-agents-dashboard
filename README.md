@@ -117,9 +117,7 @@ docs/                  # Detailed feature documentation
 
 | Document | Description |
 |----------|-------------|
-| [CLAUDE.md](CLAUDE.md) | AI development guidelines, project patterns, full project structure |
 | [docs/BLOGGER.md](docs/BLOGGER.md) | AI-powered blog content generator: 6-step wizard, personas, templates, SEO grading, Shopify integration |
-| [docs/TUNNEL-MAINTENANCE.md](docs/TUNNEL-MAINTENANCE.md) | Cloudflare Tunnel setup for the article scraper service |
 
 ### Supabase & Edge Functions
 

@@ -74,3 +74,7 @@ supabase/functions/test-staging-erpnext/
 
 # Migration reports
 SCRAPER_MIGRATION_REPORT.md
+
+# Internal docs (not for repo)
+CLAUDE.md
+docs/TUNNEL-MAINTENANCE.md
