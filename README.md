@@ -118,6 +118,7 @@ docs/                  # Detailed feature documentation
 | Document | Description |
 |----------|-------------|
 | [docs/BLOGGER.md](docs/BLOGGER.md) | AI-powered blog content generator: 6-step wizard, personas, templates, SEO grading, Shopify integration |
+| [docs/ERPNEXT-DATA-CONTRACT.md](docs/ERPNEXT-DATA-CONTRACT.md) | ERPNext sync data contract: required fields, SEO lengths, sanitization rules, agent validation, payload format |
 
 ### Supabase & Edge Functions
 
