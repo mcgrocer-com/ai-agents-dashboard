@@ -268,8 +268,6 @@ Primary tables:
 | `blogger_keywords` | Cached keyword research data |
 | `scraped_articles_cache` | Cached competitor article scrapes |
 
-Migrations are in [`supabase/migrations/`](supabase/migrations/).
-
 ## License
 
 Private - Internal use only.
