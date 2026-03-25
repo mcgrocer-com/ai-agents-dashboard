@@ -35,8 +35,10 @@ src/
     DashboardPage      # Main dashboard
     ProductDetailPage  # Single product view
     PinnedProductsPage # Pinned products view
+    AdminPage          # Admin settings page
+    LoginPage          # Authentication login page
     blogger/           # Blog management pages
-    shopping-assistant/# Price comparison pages
+    shopping-assistant/# Price comparison & vendor management pages
   components/          # UI components organized by domain
     ui/                # Reusable primitives (Toast, buttons, etc.)
     layout/            # DashboardLayout, sidebar, header
@@ -55,6 +57,7 @@ src/
     weight-dimension/  # Weight & dimension components
     common/            # Shared/generic components
     filters/           # Filter UI components
+    pages/             # Page-level components (AgentMonitoringPage)
   services/            # Supabase API layer (one service per domain)
     products.service.ts       # Main product CRUD
     erpnext.service.ts        # ERPNext integration
@@ -63,26 +66,55 @@ src/
     blacklist.service.ts      # Blacklist management
     agents.service.ts         # Agent management
     auth.service.ts           # Authentication
+    user.service.ts           # User management
     realtime.service.ts       # Realtime subscriptions
     stats.service.ts          # Dashboard statistics
+    activityStats.service.ts  # Activity/event statistics
+    apiHealth.service.ts      # API key health monitoring
     mariadbProducts.service.ts# Direct MariaDB queries
-    blogger/                  # Blog services (ai, content, shopify, SEO, etc.)
+    blogger/                  # Blog services (ai, content, shopify, SEO, file parsing, etc.)
     shopping-assistant/       # Price comparison services (vendors, cart, accounts)
   hooks/               # Custom React hooks (useProducts, useAuth, etc.)
   types/               # TypeScript interfaces (database.ts is primary)
   lib/supabase/        # Supabase client config
-supabase/functions/    # 36 Deno edge functions (deployed via Supabase CLI)
+supabase/functions/    # 37 Deno edge functions (deployed via Supabase CLI)
   _shared/             # Shared utilities
-    erpnext-utils.ts          # ERPNext fetch/sync helpers (25KB)
-    gemini-classification.ts  # Gemini AI classification logic (31KB)
-    product-validation.ts     # Validation rules (21KB)
+    erpnext-utils.ts          # ERPNext fetch/sync helpers
+    gemini-classification.ts  # Gemini AI classification logic
+    product-validation.ts     # Validation rules
   classify-product/    # AI classification (UK compliance)
+  classify-unclassified-products/ # Batch classify unclassified products
+  retry-failed-classifications/   # Retry failed classification attempts
   push-to-pending/     # Push scraped products to pending queue
+  manual-push-to-pending/  # Manual push to pending queue
   on-demand-scraper-v2/# On-demand product scraping
+  on-demand-learn-patterns/ # Learn scraping patterns from URLs
+  on-demand-sync-cache/    # Sync scraper cache
   sync-completed-products-to-erpnext/  # Sync validated products to ERPNext
   push-products-to-erpnext/            # Push products to ERPNext
-  shopify-*/           # Shopify blog integration (4 functions)
-  ...                  # See supabase/functions/ for full list
+  resync-product-to-erpnext/           # Resync single product to ERPNext
+  resync-vendor-to-erpnext/            # Resync all vendor products to ERPNext
+  disable-products-in-erpnext/         # Disable products in ERPNext
+  export-validation-errors/            # Export products with validation issues
+  update-scraped-product/              # Update a scraped product record
+  handle-deleted-products/             # Handle deleted product cleanup
+  seed-scraped-products/               # Seed scraped products data
+  fetch-vendor-products/               # Fetch products by vendor
+  populate-retry-log/                  # Populate retry log for failed syncs
+  add-product-copyright/               # Add product to copyright queue
+  remove-product-from-copyright/       # Remove product from copyright queue
+  clear-copyright-queue/               # Clear entire copyright queue
+  reset-agent-completed/               # Reset agent completed status
+  cleanup-old-3d-models/               # Clean up old 3D model files
+  check-api-key-health/                # Check API key health status
+  get-api-key/                         # Get API key from vault
+  test-staging-erpnext/                # Test staging ERPNext connection
+  price-comparison/                    # Price comparison across vendors
+  add-to-cart/                         # Add item to shopping cart
+  shopify-*/           # Shopify blog integration (5 functions)
+  scrape-article/      # Scrape competitor articles for blogger
+  decodo-proxy/        # Proxy for Decodo keyword research API
+  blog-preview/        # Generate blog preview HTML
 ```
 
 ## Key Patterns
@@ -103,6 +135,8 @@ supabase/functions/    # 36 Deno edge functions (deployed via Supabase CLI)
 - `supabase/functions/_shared/erpnext-utils.ts` - Shared ERPNext fetch/sync utilities
 - `supabase/functions/_shared/gemini-classification.ts` - Gemini AI classification logic
 - `supabase/functions/_shared/product-validation.ts` - Product validation rules
+- `supabase/functions/export-validation-errors/index.ts` - Export validation issues for rescraping
+- `src/components/scraper/ExportValidationDialog.tsx` - UI for exporting validation errors
 - `vite.config.ts` - Vite config with proxy to ERPNext API
 - `.github/workflows/deploy.yml` - CI/CD pipeline
 

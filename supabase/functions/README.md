@@ -125,6 +125,23 @@ Creates retry log entries on classification failures.
 
 ---
 
+### [`classify-unclassified-products`](./classify-unclassified-products/README.md)
+**Proactive Batch Classification**
+
+Classifies scraped products with no classification yet. Runs on cron to pre-classify before sync.
+
+- **Trigger**: Scheduled via pg_cron (every 10 minutes)
+- **Method**: `POST`
+- **Body**: `{ batchSize?: number, vendor?: string }`
+- **Features**:
+  - Prioritizes sync-ready products (all agents complete but unclassified)
+  - Backfills remaining slots with oldest unclassified products
+  - Excludes products already in retry log
+  - Rate limiting: 500ms between API calls
+  - Early stop on quota exceeded
+
+---
+
 ### [`populate-retry-log`](./populate-retry-log/README.md)
 **Bulk Retry Log Population**
 
@@ -175,6 +192,26 @@ Force resync a single product to ERPNext.
 **Vendor-Wide Resync**
 
 Resync all products from a specific vendor to ERPNext.
+
+---
+
+### [`disable-products-in-erpnext`](./disable-products-in-erpnext/README.md)
+**Enable/Disable Products in ERPNext**
+
+Toggles product visibility in ERPNext via the `disable_items` API.
+
+- **Method**: `POST`
+- **Body**: `{ urls: string[], action?: "disable" | "enable" }`
+
+---
+
+### [`test-staging-erpnext`](./test-staging-erpnext/README.md)
+**Staging ERPNext Test**
+
+Debug function to verify agent data is correctly sent to staging ERPNext. Read-only on Supabase.
+
+- **Method**: `POST`
+- **Body**: `{ limit?: number }`
 
 ---
 
@@ -237,6 +274,27 @@ Seed test data into scraped_products.
 ### [`scrape-article`](./scrape-article/README.md)
 Scrape article content from URLs for blogger.
 
+### [`export-validation-errors`](./export-validation-errors/README.md)
+Export products with validation errors for rescraping workflows.
+
+### [`get-api-key`](./get-api-key/README.md)
+Retrieve whitelisted API keys from Supabase Vault.
+
+### [`handle-deleted-products`](./handle-deleted-products/README.md)
+Blacklist deleted products in database and disable in ERPNext.
+
+### [`on-demand-scraper-v2`](./on-demand-scraper-v2/README.md)
+On-demand product scraping from vendor URLs.
+
+### [`on-demand-sync-cache`](./on-demand-sync-cache/README.md)
+Sync on-demand scraper cache.
+
+### [`on-demand-learn-patterns`](./on-demand-learn-patterns/README.md)
+Learn scraping patterns for new vendor sites.
+
+### [`update-scraped-product`](./update-scraped-product/README.md)
+Update individual scraped product fields.
+
 ---
 
 ## Shared Code
@@ -246,6 +304,7 @@ Shared utilities used across multiple functions:
 
 - **`gemini-classification.ts`** - UK medicine classification using Gemini AI
 - **`erpnext-utils.ts`** - ERPNext API integration utilities
+- **`product-validation.ts`** - Pre-sync product validation rules
 
 ---
 
@@ -331,4 +390,4 @@ npx supabase functions logs <function-name>
 
 ---
 
-**Last Updated**: 2025-12-29
+**Last Updated**: 2026-03-25

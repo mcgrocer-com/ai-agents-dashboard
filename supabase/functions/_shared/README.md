@@ -50,6 +50,29 @@ ERPNext API integration utilities.
 - [resync-product-to-erpnext](../resync-product-to-erpnext/README.md)
 - [resync-vendor-to-erpnext](../resync-vendor-to-erpnext/README.md)
 
+---
+
+### product-validation.ts
+
+Product validation rules for pre-sync quality checks.
+
+**Purpose**: Validates scraped products before they are pushed to ERPNext, ensuring required fields are present and data quality is met.
+
+**Exports**:
+- `validateProduct(product)` - Validate a single product against all rules
+- `ValidationResult` - Result interface with errors/warnings
+
+**Validation Rules**:
+- Price must be greater than 0
+- Required fields must be present (name, URL, vendor, etc.)
+- Agent completion checks (category, weight, SEO)
+- Data format validation
+
+**Used by**:
+- [push-products-to-erpnext](../push-products-to-erpnext/README.md)
+- [sync-completed-products-to-erpnext](../sync-completed-products-to-erpnext/README.md)
+- [export-validation-errors](../export-validation-errors/README.md)
+
 ## Usage
 
 Import shared utilities in your edge function:
@@ -57,6 +80,7 @@ Import shared utilities in your edge function:
 ```typescript
 import { classifyProduct, ClassificationResult } from '../_shared/gemini-classification.ts';
 import { pushToERPNext, PendingProduct } from '../_shared/erpnext-utils.ts';
+import { validateProduct } from '../_shared/product-validation.ts';
 ```
 
 ## Notes

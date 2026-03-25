@@ -109,6 +109,8 @@ Fine-tune SEO elements:
 | `templates.service.ts` | Template management |
 | `keywords.service.ts` | Keyword caching |
 | `images.service.ts` | Image rehosting to Supabase Storage |
+| `file-parser.service.ts` | Parse uploaded context files (DOCX, PDF, Excel) |
+| `vault.service.ts` | Supabase Vault integration for secure key storage |
 | `system-prompt.ts` | Dynamic system prompt builder |
 
 ### Edge Functions (`supabase/functions/`)
@@ -119,6 +121,7 @@ Fine-tune SEO elements:
 | `shopify-blogs` | List Shopify blogs | [README](../supabase/functions/shopify-blogs/README.md) |
 | `shopify-blog-articles` | List blog articles | [README](../supabase/functions/shopify-blog-articles/README.md) |
 | `shopify-push-blog` | Publish to Shopify | [README](../supabase/functions/shopify-push-blog/README.md) |
+| `shopify-published-blogs` | List published Shopify blog articles | [README](../supabase/functions/shopify-published-blogs/README.md) |
 | `decodo-proxy` | Keyword research via Google Suggest | [README](../supabase/functions/decodo-proxy/README.md) |
 | `scrape-article` | Scrape competitor articles | [README](../supabase/functions/scrape-article/README.md) |
 | `blog-preview` | Generate preview HTML | [README](../supabase/functions/blog-preview/README.md) |
@@ -599,4 +602,4 @@ A complete blog post ready for Shopify includes:
 
 ---
 
-**Last Updated**: 2025-12-30
+**Last Updated**: 2026-03-25
